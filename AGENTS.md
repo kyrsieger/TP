@@ -8,7 +8,6 @@
 
 ## 文档入口
 
-- [README](README.md)：项目概览与文档索引。
 - [产品设计](docs/DESIGN.md)：记录、文件、清理、分组、面板和操作规则。
 - [技术结构](docs/TECHNICAL-ARCHITECTURE.md)：架构、平台适配与验证顺序。系统能力仍需实测。
 - [术语表](docs/GLOSSARY.md)：统一术语；发现歧义时先查阅此文档。
