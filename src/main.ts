@@ -94,11 +94,12 @@ function renderList() {
   document.querySelector<HTMLElement>("#count")!.textContent = `${records.length} 条`;
   list.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败，使用路径引用" : record.storageMode === "reference" ? "路径引用" : record.storageMode === "copy" ? "已保存副本" : "";
+    const isText = record.kind === "text" || record.kind === "link";
     return `<article class="record ${selectedId === record.id ? "selected" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span><span class="kind-icon">${icons[record.kind]}</span>
-      <div class="record-main"><div class="record-heading"><strong>${escapeHtml(recordTitle(record))}</strong><span class="kind-label">${labels[record.kind]}</span></div>
+      <div class="record-main">${isText ? "" : `<div class="record-heading"><strong>${escapeHtml(recordTitle(record))}</strong><span class="kind-label">${labels[record.kind]}</span></div>`}
       ${record.preview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : ""}
-      <p>${escapeHtml(recordDetail(record))}</p><small>${status || (record.expiresAt ? "敏感记录" : new Date(record.usedAt).toLocaleString())}</small></div>
+      <p${isText ? ' class="record-text"' : ""}>${escapeHtml(recordDetail(record))}</p><small>${status || (record.expiresAt ? "敏感记录" : new Date(record.usedAt).toLocaleString())}</small></div>
       <div class="record-actions"><button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="收藏">${record.favorite ? "★" : "☆"}</button>
       <select data-group="${record.id}" aria-label="移动到分组"><option value="">未分组</option>${state.groups.map(group => `<option value="${group.id}" ${record.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}</select>
       <button class="delete" data-delete="${record.id}" title="删除记录">×</button></div></article>`;
