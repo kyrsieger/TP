@@ -218,7 +218,7 @@ function shortcutFromKey(event: KeyboardEvent): string | null {
 }
 
 root.innerHTML = `<div class="shell"><header><div class="brand"><span class="brand-icon">▣</span><div><b>TP Clipboard</b><small>本地剪贴板历史</small></div></div><button id="settings-button" title="设置">⚙</button></header>
-  <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"><button id="hide" title="隐藏">—</button></div>
+  <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"></div>
   <nav id="groups"></nav><div class="section-heading"><strong id="view-title">默认</strong><span id="count"></span><button id="delete-group" hidden>删除分组</button>
   <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option></select></label></div>
   <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Alt + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
@@ -237,7 +237,6 @@ root.addEventListener("click", async event => {
     selectedId = row.dataset.id!; row.classList.add("selected"); return;
   }
   if (element.id === "settings-button") { settingsOpen = !settingsOpen; renderSettings(); return; }
-  if (element.id === "hide") { await action("hide_panel"); return; }
   if (element.id === "add-group") {
     const name = window.prompt("新分组名称"); if (name) await action("add_group", { name }); return;
   }
