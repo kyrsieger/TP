@@ -29,6 +29,7 @@ let search = "";
 let selectedId: string | null = null;
 let pendingShortcutId: string | null = null;
 let settingsOpen = false;
+let clearingCache = false;
 let activeShortcut = "";
 let positionSaveTimer: number | undefined;
 let placing = false;
@@ -138,7 +139,9 @@ function renderSettings() {
     <label>固定位置<select id="fixed-position" ${s.positionMode === "cursor" ? "disabled" : ""}><option value="left" ${s.fixedPosition === "left" ? "selected" : ""}>左下角</option><option value="right" ${s.fixedPosition === "right" ? "selected" : ""}>右下角</option><option value="center" ${s.fixedPosition === "center" ? "selected" : ""}>下方居中</option></select></label>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆上次拖拽位置</label>
     <p class="hint">面板大小可直接拖拽窗口边缘调整，并在下次打开时恢复。</p>
-    <button id="save-settings" class="primary">保存设置</button>`;
+    <button id="save-settings" class="primary">保存设置</button>
+    <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
+    <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
 }
 
 function render() { renderGroups(); renderList(); renderSettings(); }
@@ -238,6 +241,23 @@ root.addEventListener("click", async event => {
   if (element.id === "delete-group" && view.startsWith("group:")) {
     if (window.confirm("删除这个分组？其中的记录会回到未分组状态。")) {
       await action("delete_group", { id: Number(view.slice(6)) }); view = "default"; render();
+    }
+    return;
+  }
+  if (element.id === "clear-cache") {
+    if (clearingCache || !window.confirm("清理所有普通记录及其本地文件？收藏和自建分组中的记录会保留。此操作无法撤销。")) return;
+    clearingCache = true;
+    renderSettings();
+    try {
+      const count = await call<number>("clear_cache");
+      await refresh();
+      toast(`已清理 ${count} 条普通记录及孤立附件`);
+    } catch (error) {
+      await refresh().catch(() => {});
+      toast(`清理缓存失败：${String(error)}`);
+    } finally {
+      clearingCache = false;
+      renderSettings();
     }
     return;
   }

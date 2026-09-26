@@ -1,6 +1,8 @@
 use std::{
+    collections::HashSet,
+    ffi::OsString,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::Mutex,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -261,6 +263,71 @@ fn clean(store: &Store) -> Result<bool> {
         remove_record(&conn, &store.dir, id)?;
     }
     Ok(!ids.is_empty())
+}
+
+fn clear_cache_data(store: &Store) -> Result<usize> {
+    let conn = store.db.lock().map_err(err)?;
+    let assets = store.dir.join("assets");
+    let mut protected = HashSet::<OsString>::new();
+    let mut stmt = conn
+        .prepare("SELECT id,files FROM records WHERE favorite != 0 OR group_id IS NOT NULL")
+        .map_err(err)?;
+    let records = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(err)?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(err)?;
+    for (id, files) in records {
+        protected.insert(OsString::from(id));
+        for file in serde_json::from_str::<Vec<FileItem>>(&files).map_err(err)? {
+            for path in [Some(file.original.as_str()), file.stored.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                if let Ok(relative) = Path::new(path).strip_prefix(&assets) {
+                    if let Some(Component::Normal(name)) = relative.components().next() {
+                        protected.insert(name.to_os_string());
+                    }
+                }
+            }
+        }
+    }
+    let mut stmt = conn
+        .prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL")
+        .map_err(err)?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(err)?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(err)?;
+    for id in &ids {
+        if protected.contains(std::ffi::OsStr::new(id)) {
+            conn.execute("DELETE FROM records WHERE id=?1", [id])
+                .map_err(err)?;
+        } else {
+            remove_record(&conn, &store.dir, id)?;
+        }
+    }
+    for entry in fs::read_dir(assets).map_err(err)? {
+        let entry = entry.map_err(err)?;
+        if protected.contains(&entry.file_name()) {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type().map_err(err)?.is_dir() {
+            fs::remove_dir_all(path).map_err(err)?;
+        } else {
+            fs::remove_file(path).map_err(err)?;
+        }
+    }
+    Ok(ids.len())
+}
+
+#[tauri::command]
+fn clear_cache(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<usize> {
+    let result = clear_cache_data(&store);
+    changed(&app);
+    result
 }
 
 #[tauri::command]
@@ -791,6 +858,7 @@ pub fn run() {
             set_favorite,
             move_group,
             delete_record,
+            clear_cache,
             preview_data,
             remember_paste_target,
             show_panel,
@@ -867,6 +935,87 @@ mod tests {
             .map(|r| r.id)
             .collect();
         assert_eq!(remaining, vec!["new", "saved"]);
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn clear_cache_removes_ordinary_records_and_orphan_assets() {
+        let store = test_store();
+        let assets = store.dir.join("assets");
+        let source = store.dir.join("original.txt");
+        fs::write(&source, b"original").unwrap();
+        for id in [
+            "image", "video", "file", "favorite", "grouped", "both", "shared", "orphan",
+        ] {
+            fs::create_dir_all(assets.join(id)).unwrap();
+            fs::write(assets.join(id).join("data.bin"), id).unwrap();
+        }
+        fs::write(assets.join("orphan.bin"), b"orphan").unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute("INSERT INTO groups(id,name) VALUES(1,'项目')", [])
+                .unwrap();
+            for (id, kind, favorite, group_id, stored_id) in [
+                ("text", "text", 0, None, None),
+                ("image", "image", 0, None, None),
+                ("video", "video", 0, None, Some("video")),
+                ("file", "file", 0, None, Some("file")),
+                ("favorite", "image", 1, None, None),
+                ("grouped", "file", 0, Some(1), Some("grouped")),
+                ("both", "video", 1, Some(1), Some("both")),
+                ("shared", "file", 0, None, Some("shared")),
+                ("shared-owner", "file", 1, None, Some("shared")),
+            ] {
+                let files = stored_id.map_or_else(
+                    || "[]".to_string(),
+                    |owner| {
+                        serde_json::to_string(&vec![FileItem {
+                            original: source.to_string_lossy().into_owned(),
+                            stored: Some(
+                                assets
+                                    .join(owner)
+                                    .join("data.bin")
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            ),
+                        }])
+                        .unwrap()
+                    },
+                );
+                conn.execute("INSERT INTO records(id,digest,kind,files,used_at,favorite,group_id,storage_mode) VALUES(?1,?1,?2,?3,?4,?5,?6,'copy')",
+                    params![id, kind, files, now(), favorite, group_id]).unwrap();
+            }
+        }
+        assert_eq!(clear_cache_data(&store).unwrap(), 5);
+        let mut remaining: Vec<String> = snapshot(&store)
+            .unwrap()
+            .records
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        remaining.sort();
+        assert_eq!(
+            remaining,
+            vec!["both", "favorite", "grouped", "shared-owner"]
+        );
+        for id in ["image", "video", "file", "orphan"] {
+            assert!(!assets.join(id).exists());
+        }
+        assert!(!assets.join("orphan.bin").exists());
+        for id in ["favorite", "grouped", "both", "shared"] {
+            assert!(assets.join(id).join("data.bin").exists());
+        }
+        assert!(source.exists());
+        assert!(store.dir.join("history.sqlite3").exists());
+        assert_eq!(
+            settings(&store.db.lock().unwrap()).unwrap().max_ordinary,
+            300
+        );
+        fs::write(assets.join("late-orphan.bin"), b"orphan").unwrap();
+        assert_eq!(clear_cache_data(&store).unwrap(), 0);
+        assert!(!assets.join("late-orphan.bin").exists());
         let dir = store.dir.clone();
         drop(store);
         fs::remove_dir_all(dir).unwrap();
