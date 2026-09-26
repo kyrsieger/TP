@@ -231,6 +231,14 @@ root.innerHTML = `<div class="shell"><header><div class="brand"><span class="bra
   <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option></select></label></div>
   <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Alt + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
 
+document.querySelector<HTMLElement>("#groups")!.addEventListener("wheel", event => {
+  const tabs = event.currentTarget as HTMLElement;
+  if (event.shiftKey || !event.deltaY || tabs.scrollWidth <= tabs.clientWidth) return;
+  event.preventDefault();
+  const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? tabs.clientWidth : 1;
+  tabs.scrollLeft += event.deltaY * unit;
+}, { passive: false });
+
 root.addEventListener("click", async event => {
   const element = event.target as HTMLElement;
   const group = element.closest<HTMLElement>("[data-view]");
