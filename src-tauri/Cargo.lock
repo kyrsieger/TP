@@ -4354,8 +4354,10 @@ version = "0.1.0"
 dependencies = [
  "active-win-pos-rs",
  "base64 0.22.1",
+ "block2",
  "clipboard-rs",
  "enigo",
+ "objc2-app-kit",
  "rusqlite",
  "serde",
  "serde_json",

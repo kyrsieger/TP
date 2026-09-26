@@ -22,6 +22,7 @@ type Settings = {
 type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
 
 const panel = getCurrentWindow();
+const isMacOS = navigator.userAgent.includes("Macintosh");
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let state: Snapshot;
 let view = "default";
@@ -34,6 +35,7 @@ let clearingCache = false;
 let activeShortcut = "";
 let positionSaveTimer: number | undefined;
 let placing = false;
+let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频" };
 const icons: Record<Kind, string> = { text: "文", link: "链", image: "图", file: "件", video: "影" };
@@ -140,7 +142,7 @@ function renderSettings() {
     <label class="inline"><input type="radio" name="mode" value="cursor" ${s.positionMode === "cursor" ? "checked" : ""}>跟随光标</label></fieldset>
     <label>固定位置<select id="fixed-position" ${s.positionMode === "cursor" ? "disabled" : ""}><option value="left" ${s.fixedPosition === "left" ? "selected" : ""}>左下角</option><option value="right" ${s.fixedPosition === "right" ? "selected" : ""}>右下角</option><option value="center" ${s.fixedPosition === "center" ? "selected" : ""}>下方居中</option></select></label>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆上次拖拽位置</label>
-    <p class="hint">面板大小可直接拖拽窗口边缘调整，并在下次打开时恢复。</p>
+    <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <button id="save-settings" class="primary">保存设置</button>
     <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
     <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
@@ -225,11 +227,86 @@ function shortcutFromKey(event: KeyboardEvent): string | null {
   return [...modifiers, key].join("+");
 }
 
-root.innerHTML = `<div class="shell"><header><div class="brand"><span class="brand-icon">▣</span><div><b>TP Clipboard</b><small>本地剪贴板历史</small></div></div><button id="settings-button" title="设置">⚙</button></header>
+root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-edge="left"></div><div class="resize-edge right" data-resize-edge="right"></div><div class="resize-edge top" data-resize-edge="top"></div><div class="resize-edge bottom" data-resize-edge="bottom"></div><header><div class="brand"><span class="brand-icon">▣</span><div><b>TP Clipboard</b><small>本地剪贴板历史</small></div></div><button id="settings-button" title="设置">⚙</button></header>
   <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"><button id="pin" aria-label="置顶" aria-pressed="false" title="置顶">📌</button></div>
   <nav id="groups"></nav><div class="section-heading"><strong id="view-title">默认</strong><span id="count"></span><button id="delete-group" hidden>删除分组</button>
   <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option></select></label></div>
   <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Alt + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
+
+root.querySelectorAll<HTMLElement>("[data-resize-edge]").forEach(handle => {
+  handle.addEventListener("pointerdown", async event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const edge = handle.dataset.resizeEdge!;
+    const now = performance.now();
+    const previous = lastResizePress;
+    lastResizePress = { edge, time: now, x: event.screenX, y: event.screenY };
+    if (previous?.edge === edge && now - previous.time < 500 &&
+        Math.abs(event.screenX - previous.x) < 6 && Math.abs(event.screenY - previous.y) < 6) {
+      lastResizePress = null;
+      try {
+        const [size, scale] = await Promise.all([panel.innerSize(), panel.scaleFactor()]);
+        await panel.setSize(new PhysicalSize(edge === "left" || edge === "right" ? Math.round(420 * scale) : size.width,
+          edge === "top" || edge === "bottom" ? Math.round(600 * scale) : size.height));
+        scheduleGeometrySave();
+      } catch (error) { toast(String(error)); }
+      return;
+    }
+    if (isMacOS) {
+      const start = { x: event.screenX, y: event.screenY };
+      let latest = start;
+      let initial: { size: PhysicalSize; position: PhysicalPosition; scale: number } | null = null;
+      let applying = false;
+      let ended = false;
+      const resize = async () => {
+        if (!initial || applying || (latest.x === start.x && latest.y === start.y)) return;
+        applying = true;
+        try {
+          let at: typeof latest;
+          do {
+            at = latest;
+            const dx = Math.round((at.x - start.x) * initial.scale);
+            const dy = Math.round((at.y - start.y) * initial.scale);
+            const width = initial.size.width + (edge === "right" ? dx : edge === "left" ? -dx : 0);
+            const height = initial.size.height + (edge === "bottom" ? dy : edge === "top" ? -dy : 0);
+            const nextWidth = Math.max(340 * initial.scale, width);
+            const nextHeight = Math.max(400 * initial.scale, height);
+            await panel.setSize(new PhysicalSize(nextWidth, nextHeight));
+            if (edge === "left" || edge === "top") {
+              await panel.setPosition(new PhysicalPosition(initial.position.x + (edge === "left" ? initial.size.width - nextWidth : 0),
+                initial.position.y + (edge === "top" ? initial.size.height - nextHeight : 0)));
+            }
+          } while (at !== latest);
+        } finally { applying = false; if (ended) scheduleGeometrySave(); }
+      };
+      const move = (next: PointerEvent) => {
+        latest = { x: next.screenX, y: next.screenY };
+        void resize().catch(error => toast(String(error)));
+      };
+      const end = (next: PointerEvent) => {
+        move(next);
+        ended = true;
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", end);
+        handle.removeEventListener("pointercancel", end);
+        if (!applying && initial) scheduleGeometrySave();
+      };
+      handle.setPointerCapture(event.pointerId);
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
+      try {
+        const [size, position, scale] = await Promise.all([panel.innerSize(), panel.outerPosition(), panel.scaleFactor()]);
+        initial = { size, position, scale };
+        await resize();
+      } catch (error) { toast(String(error)); }
+      return;
+    }
+    try {
+      await panel.startResizeDragging(({ left: "West", right: "East", top: "North", bottom: "South" } as const)[edge as "left" | "right" | "top" | "bottom"]);
+    } catch (error) { toast(String(error)); }
+  });
+});
 
 document.querySelector<HTMLElement>("#groups")!.addEventListener("wheel", event => {
   const tabs = event.currentTarget as HTMLElement;

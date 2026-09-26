@@ -817,9 +817,14 @@ pub fn run() {
                     .map_err(std::io::Error::other)?
                     .always_on_top
             };
-            app.get_webview_window("main")
-                .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?
-                .set_always_on_top(pinned)?;
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
+            window.set_always_on_top(pinned)?;
+            #[cfg(windows)]
+            platform::install_panel_resize_double_click(window.hwnd()?)?;
+            #[cfg(target_os = "macos")]
+            platform::install_panel_resize_double_click_macos(window.ns_window()?)?;
             let handle = app.handle().clone();
             thread::spawn(move || {
                 if let (Ok(ctx), Ok(mut watcher)) =
