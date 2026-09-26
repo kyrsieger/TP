@@ -24,12 +24,29 @@ pub fn source_is_1password() -> bool {
 
 #[cfg(windows)]
 pub fn capture_paste_target() -> Option<PasteTarget> {
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    if get_active_window().is_ok_and(|active| active.process_id == u64::from(std::process::id())) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId,
+    };
+    let window = unsafe { GetForegroundWindow() };
+    if window.0.is_null() {
         return None;
     }
-    let window = unsafe { GetForegroundWindow() }.0 as isize;
-    (window != 0).then_some(PasteTarget { window })
+    let mut process_id = 0;
+    unsafe { GetWindowThreadProcessId(window, Some(&mut process_id)) };
+    if process_id == std::process::id() {
+        return None;
+    }
+    let mut class = [0u16; 64];
+    let len = unsafe { GetClassNameW(window, &mut class) } as usize;
+    if matches!(
+        String::from_utf16_lossy(&class[..len]).as_str(),
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "NotifyIconOverflowWindow"
+    ) {
+        return None;
+    }
+    Some(PasteTarget {
+        window: window.0 as isize,
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -84,7 +101,7 @@ pub fn paste_to_target(target: PasteTarget) -> bool {
     if enigo.key(modifier, Direction::Press).is_err() {
         return false;
     }
-    let clicked = enigo.key(Key::Unicode('v'), Direction::Click).is_ok();
+    let clicked = enigo.key(Key::V, Direction::Click).is_ok();
     let released = enigo.key(modifier, Direction::Release).is_ok();
     clicked && released
 }

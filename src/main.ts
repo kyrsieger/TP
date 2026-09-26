@@ -27,6 +27,7 @@ let view = "default";
 let kindFilter = "all";
 let search = "";
 let selectedId: string | null = null;
+let pendingShortcutId: string | null = null;
 let settingsOpen = false;
 let activeShortcut = "";
 let positionSaveTimer: number | undefined;
@@ -191,9 +192,15 @@ async function placePanel() {
 
 async function registerShortcut(shortcut: string) {
   if (shortcut === activeShortcut) return;
-  if (shortcut) await register(shortcut, () => { void placePanel().then(() => call("show_panel")).catch(error => toast(String(error))); });
+  if (shortcut) await register(shortcut, () => { void openPanel().catch(error => toast(String(error))); });
   if (activeShortcut) await unregister(activeShortcut);
   activeShortcut = shortcut;
+}
+
+async function openPanel() {
+  await call("remember_paste_target");
+  await placePanel();
+  await call("show_panel");
 }
 
 function shortcutFromKey(event: KeyboardEvent): string | null {
@@ -285,8 +292,11 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (event.shiftKey && event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.focus(); return; }
-  if (event.altKey && /^[1-9]$/.test(event.key)) {
-    event.preventDefault(); const row = visibleRecords()[Number(event.key) - 1]; if (row) void apply(row.dataset.id!); return;
+  const shortcutDigit = /^Digit([1-9])$/.exec(event.code)?.[1];
+  if (event.altKey && shortcutDigit) {
+    event.preventDefault();
+    pendingShortcutId = visibleRecords()[Number(shortcutDigit) - 1]?.dataset.id ?? null;
+    return;
   }
   if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault(); cycleGroup(event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey) ? -1 : 1); return;
@@ -298,13 +308,23 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") { void action("hide_panel"); }
 });
 
+document.addEventListener("keyup", event => {
+  if (event.key !== "Alt" || !pendingShortcutId) return;
+  event.preventDefault();
+  const id = pendingShortcutId;
+  pendingShortcutId = null;
+  void apply(id);
+});
+
+window.addEventListener("blur", () => pendingShortcutId = null);
+
 document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", updateOrdinals);
 
 async function start() {
   try {
     await refresh(); await placePanel(); await registerShortcut(state.settings.shortcut);
     await listen("history-changed", () => { void refresh(); });
-    await listen("open-requested", () => { void placePanel().then(() => call("show_panel")).catch(error => toast(String(error))); });
+    await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });
     await panel.onMoved(() => scheduleGeometrySave());
     await panel.onResized(() => scheduleGeometrySave());
   } catch (error) { toast(`启动失败：${String(error)}`); }

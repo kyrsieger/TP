@@ -382,8 +382,16 @@ fn preview_data(store: tauri::State<Store>, id: String) -> Result<String> {
 }
 
 #[tauri::command]
+fn remember_paste_target(store: tauri::State<Store>) -> Result<()> {
+    if let Some(target) = platform::capture_paste_target() {
+        *store.paste_target.lock().map_err(err)? = Some(target);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
-    *store.paste_target.lock().map_err(err)? = platform::capture_paste_target();
+    remember_paste_target(store)?;
     let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
     window.show().map_err(err)?;
     window.set_focus().map_err(err)?;
@@ -737,6 +745,18 @@ pub fn run() {
                     }
                 }
             });
+            let handle = app.handle().clone();
+            thread::spawn(move || loop {
+                if let (Some(store), Some(target)) = (
+                    handle.try_state::<Store>(),
+                    platform::capture_paste_target(),
+                ) {
+                    if let Ok(mut current) = store.paste_target.lock() {
+                        *current = Some(target);
+                    }
+                }
+                thread::sleep(Duration::from_millis(100));
+            });
             use tauri::{
                 menu::{Menu, MenuItem},
                 tray::TrayIconBuilder,
@@ -772,6 +792,7 @@ pub fn run() {
             move_group,
             delete_record,
             preview_data,
+            remember_paste_target,
             show_panel,
             hide_panel,
             apply_record
