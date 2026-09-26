@@ -46,6 +46,8 @@ struct Settings {
     panel_height: f64,
     panel_x: Option<f64>,
     panel_y: Option<f64>,
+    #[serde(default)]
+    always_on_top: bool,
 }
 
 impl Default for Settings {
@@ -62,6 +64,7 @@ impl Default for Settings {
             panel_height: 600.0,
             panel_x: None,
             panel_y: None,
+            always_on_top: false,
         }
     }
 }
@@ -338,15 +341,19 @@ fn get_state(store: tauri::State<Store>) -> Result<Snapshot> {
 #[tauri::command]
 fn save_settings(app: tauri::AppHandle, store: tauri::State<Store>, value: Settings) -> Result<()> {
     value.validate()?;
-    store
-        .db
-        .lock()
-        .map_err(err)?
-        .execute(
-            "UPDATE settings SET value=?1 WHERE key='main'",
-            [serde_json::to_string(&value).map_err(err)?],
-        )
-        .map_err(err)?;
+    let conn = store.db.lock().map_err(err)?;
+    if settings(&conn)?.always_on_top != value.always_on_top {
+        app.get_webview_window("main")
+            .ok_or("面板窗口不存在")?
+            .set_always_on_top(value.always_on_top)
+            .map_err(err)?;
+    }
+    conn.execute(
+        "UPDATE settings SET value=?1 WHERE key='main'",
+        [serde_json::to_string(&value).map_err(err)?],
+    )
+    .map_err(err)?;
+    drop(conn);
     if clean(&store)? {
         changed(&app);
     }
@@ -527,7 +534,13 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
         .map_err(err)?;
     changed(&app);
     if let Some(target) = store.paste_target.lock().map_err(err)?.take() {
-        let _ = app.get_webview_window("main").map(|window| window.hide());
+        let pinned = {
+            let conn = store.db.lock().map_err(err)?;
+            settings(&conn)?.always_on_top
+        };
+        if !pinned {
+            let _ = app.get_webview_window("main").map(|window| window.hide());
+        }
         if platform::paste_to_target(target) {
             return Ok("已放回剪贴板，并已尝试粘贴到原窗口".into());
         }
@@ -794,6 +807,19 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             app.manage(initialize(app.path().app_data_dir()?).map_err(std::io::Error::other)?);
+            let pinned = {
+                let store = app.state::<Store>();
+                let conn = store
+                    .db
+                    .lock()
+                    .map_err(|_| std::io::Error::other("无法读取设置"))?;
+                settings(&conn)
+                    .map_err(std::io::Error::other)?
+                    .always_on_top
+            };
+            app.get_webview_window("main")
+                .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?
+                .set_always_on_top(pinned)?;
             let handle = app.handle().clone();
             thread::spawn(move || {
                 if let (Ok(ctx), Ok(mut watcher)) =
@@ -872,6 +898,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_settings_default_to_not_pinned() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("alwaysOnTop");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert!(!restored.always_on_top);
+    }
 
     fn test_store() -> Store {
         let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
