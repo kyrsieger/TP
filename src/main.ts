@@ -163,8 +163,11 @@ function moveSelection(direction: number) {
   if (!records.length) return;
   const index = records.findIndex(record => record.id === selectedId);
   selectedId = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
-  renderList();
-  document.querySelector<HTMLElement>(`.record[data-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest" });
+  const list = document.querySelector<HTMLElement>("#list")!;
+  list.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
+  const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === selectedId);
+  row?.classList.add("selected");
+  row?.scrollIntoView({ block: "nearest" });
   updateOrdinals();
 }
 
