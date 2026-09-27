@@ -32,6 +32,13 @@ fn now() -> i64 {
         .as_millis() as i64
 }
 
+fn is_hex_color(text: &str) -> bool {
+    let Some(digits) = text.trim().strip_prefix('#') else {
+        return false;
+    };
+    [3, 4, 6, 8].contains(&digits.len()) && digits.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
@@ -157,6 +164,26 @@ fn initialize(dir: PathBuf) -> Result<Store> {
         [serde_json::to_string(&Settings::default()).map_err(err)?],
     )
     .map_err(err)?;
+    let old_colors: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id,body FROM records WHERE kind='text'")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(err)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(err)?;
+        rows
+    };
+    for (id, body) in old_colors {
+        if is_hex_color(&body) {
+            conn.execute(
+                "UPDATE records SET kind='color',digest=?1 WHERE id=?2",
+                params![hash("color", body.as_bytes()), id],
+            )
+            .map_err(err)?;
+        }
+    }
     Ok(Store {
         db: Mutex::new(conn),
         dir,
@@ -493,7 +520,7 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
     };
     let ctx = ClipboardContext::new().map_err(err)?;
     match kind.as_str() {
-        "text" | "link" => {
+        "text" | "link" | "color" => {
             *store.suppressed_digest.lock().map_err(err)? = Some(digest.clone());
             ctx.set_text(body).map_err(err)?;
         }
@@ -710,7 +737,9 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
         if text.is_empty() {
             return Ok(());
         }
-        let kind = if url::Url::parse(text.trim())
+        let kind = if is_hex_color(&text) {
+            "color"
+        } else if url::Url::parse(text.trim())
             .is_ok_and(|url| ["http", "https"].contains(&url.scheme()))
         {
             "link"
@@ -903,6 +932,55 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_only_complete_hex_colors() {
+        for value in ["#abc", "#ABCD", "#12ab34", "#12345678", "  #abc  "] {
+            assert!(is_hex_color(value), "{value}");
+        }
+        for value in [
+            "abc",
+            "#ab",
+            "#abcde",
+            "#123456789",
+            "#12xz34",
+            "color: #abc",
+            "#abc\n#def",
+        ] {
+            assert!(!is_hex_color(value), "{value}");
+        }
+    }
+
+    #[test]
+    fn existing_hex_text_becomes_color_without_losing_metadata() {
+        let store = test_store();
+        let dir = store.dir.clone();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute("INSERT INTO groups(id,name) VALUES(1,'调色板')", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,body,used_at,favorite,group_id) VALUES('old',?1,'text','#AbC',?2,1,1)",
+                params![hash("text", b"#AbC"), now()],
+            ).unwrap();
+        }
+        drop(store);
+        let store = initialize(dir.clone()).unwrap();
+        let conn = store.db.lock().unwrap();
+        let (kind, digest, favorite, group_id): (String, String, i64, i64) = conn
+            .query_row(
+                "SELECT kind,digest,favorite,group_id FROM records WHERE id='old'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(kind, "color");
+        assert_eq!(digest, hash("color", b"#AbC"));
+        assert_eq!((favorite, group_id), (1, 1));
+        drop(conn);
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn older_settings_default_to_not_pinned() {

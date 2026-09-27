@@ -4,7 +4,7 @@ import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitor
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import "./styles.css";
 
-type Kind = "text" | "link" | "image" | "file" | "video";
+type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type FileItem = { original: string; stored: string | null };
 type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
@@ -39,8 +39,8 @@ let settingsSave: Promise<void> = Promise.resolve();
 let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 
-const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频" };
-const icons: Record<Kind, string> = { text: "文", link: "链", image: "图", file: "件", video: "影" };
+const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
+const icons: Record<Kind, string> = { text: "文", link: "链", image: "图", file: "件", video: "影", color: "色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
 const call = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => invoke<T>(name, args);
 
@@ -98,9 +98,10 @@ function renderList() {
   document.querySelector<HTMLElement>("#count")!.textContent = `${records.length} 条`;
   list.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败，使用路径引用" : record.storageMode === "reference" ? "路径引用" : record.storageMode === "copy" ? "已保存副本" : "";
-    const isText = record.kind === "text" || record.kind === "link";
+    const isText = record.kind === "text" || record.kind === "link" || record.kind === "color";
+    const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     return `<article class="record ${selectedId === record.id ? "selected" : ""}" data-id="${record.id}" tabindex="-1">
-      <span class="ordinal"></span><span class="kind-icon">${icons[record.kind]}</span>
+      <span class="ordinal"></span><span class="kind-icon ${swatch ? "color-swatch" : ""}" ${swatch ? `style="background-color:${record.body.trim()}" title="颜色"` : ""}>${swatch ? "" : icons[record.kind]}</span>
       <div class="record-main">${isText ? "" : `<div class="record-heading"><strong>${escapeHtml(recordTitle(record))}</strong><span class="kind-label">${labels[record.kind]}</span></div>`}
       ${record.preview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : ""}
       <p${isText ? ' class="record-text"' : ""}>${escapeHtml(recordDetail(record))}</p><small>${status || (record.expiresAt ? "敏感记录" : new Date(record.usedAt).toLocaleString())}</small></div>
@@ -260,7 +261,7 @@ function shortcutFromKey(event: KeyboardEvent): string | null {
 root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-edge="left"></div><div class="resize-edge right" data-resize-edge="right"></div><div class="resize-edge top" data-resize-edge="top"></div><div class="resize-edge bottom" data-resize-edge="bottom"></div>
   <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"><button id="pin" aria-label="置顶" aria-pressed="false" title="置顶"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M16 9V4l1-1V2H7v1l1 1v5c0 1.66-1.34 3-3 3v2h6v7l1 1 1-1v-7h6v-2c-1.66 0-3-1.34-3-3z"/></svg></button><button id="settings-button" aria-label="设置" title="设置">⚙</button></div>
   <nav id="groups"></nav><div class="section-heading"><strong id="view-title">默认</strong><span id="count"></span><button id="delete-group" hidden>删除分组</button>
-  <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option></select></label></div>
+  <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option><option value="color">颜色</option></select></label></div>
   <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Alt + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
 
 root.querySelectorAll<HTMLElement>("[data-resize-edge]").forEach(handle => {
