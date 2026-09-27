@@ -404,6 +404,30 @@ fn add_group(app: tauri::AppHandle, store: tauri::State<Store>, name: String) ->
 }
 
 #[tauri::command]
+fn rename_group(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    id: i64,
+    name: String,
+) -> Result<()> {
+    let name = name.trim();
+    if name.is_empty() || name == "默认" || name == "收藏" || name.chars().count() > 40 {
+        return Err("分组名称无效".into());
+    }
+    let updated = store
+        .db
+        .lock()
+        .map_err(err)?
+        .execute("UPDATE groups SET name=?1 WHERE id=?2", params![name, id])
+        .map_err(err)?;
+    if updated == 0 {
+        return Err("分组不存在".into());
+    }
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn delete_group(app: tauri::AppHandle, store: tauri::State<Store>, id: i64) -> Result<()> {
     store
         .db
@@ -914,6 +938,7 @@ pub fn run() {
             get_state,
             save_settings,
             add_group,
+            rename_group,
             delete_group,
             set_favorite,
             move_group,
