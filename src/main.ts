@@ -262,7 +262,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
   <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"><button id="pin" aria-label="置顶" aria-pressed="false" title="置顶"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M16 9V4l1-1V2H7v1l1 1v5c0 1.66-1.34 3-3 3v2h6v7l1 1 1-1v-7h6v-2c-1.66 0-3-1.34-3-3z"/></svg></button><button id="settings-button" aria-label="设置" title="设置">⚙</button></div>
   <nav id="groups"></nav><div class="section-heading"><strong id="view-title">默认</strong><span id="count"></span><button id="delete-group" hidden>删除分组</button>
   <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option><option value="color">颜色</option></select></label></div>
-  <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Alt + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
+  <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Ctrl + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
 
 root.querySelectorAll<HTMLElement>("[data-resize-edge]").forEach(handle => {
   handle.addEventListener("pointerdown", async event => {
@@ -449,7 +449,7 @@ document.addEventListener("keydown", event => {
   }
   if (event.shiftKey && event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.focus(); return; }
   const shortcutDigit = /^Digit([1-9])$/.exec(event.code)?.[1];
-  if (event.altKey && shortcutDigit) {
+  if (event.ctrlKey && shortcutDigit) {
     event.preventDefault();
     pendingShortcutId = visibleRecords()[Number(shortcutDigit) - 1]?.dataset.id ?? null;
     return;
@@ -465,7 +465,7 @@ document.addEventListener("keydown", event => {
 });
 
 document.addEventListener("keyup", event => {
-  if (event.key !== "Alt" || !pendingShortcutId) return;
+  if (event.key !== "Control" || !pendingShortcutId) return;
   event.preventDefault();
   const id = pendingShortcutId;
   pendingShortcutId = null;
