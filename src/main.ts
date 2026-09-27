@@ -155,6 +155,29 @@ function setRetentionMenuOpen(open: boolean) {
   trigger.setAttribute("aria-expanded", String(open));
 }
 
+function closeMoveGroupMenu() {
+  document.querySelector<HTMLElement>("#move-group-menu")!.hidden = true;
+  document.querySelector<HTMLElement>("[data-move-group-trigger][aria-expanded='true']")?.setAttribute("aria-expanded", "false");
+}
+
+function openMoveGroupMenu(trigger: HTMLElement) {
+  const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
+  const record = state.records.find(record => record.id === trigger.dataset.moveGroupTrigger)!;
+  menu.dataset.recordId = record.id;
+  menu.innerHTML = [{ id: null, name: "未分组" }, ...state.groups].map(group =>
+    `<button type="button" role="menuitemradio" data-move-group="${group.id ?? ""}" aria-checked="${record.groupId === group.id}">${escapeHtml(group.name)}</button>`).join("");
+  menu.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  const shell = document.querySelector<HTMLElement>(".shell")!;
+  const bounds = shell.getBoundingClientRect();
+  const button = trigger.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(button.right - bounds.left - menu.offsetWidth, shell.clientWidth - menu.offsetWidth - 8))}px`;
+  const below = button.bottom - bounds.top + 4;
+  const above = button.top - bounds.top - menu.offsetHeight - 4;
+  menu.style.top = `${below + menu.offsetHeight <= shell.clientHeight - 8 ? below : Math.max(8, above)}px`;
+  menu.querySelector<HTMLButtonElement>("[aria-checked='true']")?.focus();
+}
+
 function renderFilter() {
   const button = document.querySelector<HTMLButtonElement>("#kind-filter")!;
   const disabled = view !== "default";
@@ -178,6 +201,7 @@ function recordTitle(record: RecordItem): string {
 }
 
 function renderList() {
+  closeMoveGroupMenu();
   const list = document.querySelector<HTMLElement>("#list")!;
   const scrollTop = list.scrollTop;
   const records = filtered();
@@ -193,7 +217,7 @@ function renderList() {
       ${record.preview ? `<span class="preview-wrap"><img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}</span>` : ""}
       <div class="record-main"><div class="record-heading">${kindIcon}<strong>${escapeHtml(title)}</strong>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>
       <div class="record-actions"><button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
-      <label class="move-group" title="移动到分组">${icon("folder", 13)}<select data-group="${record.id}" aria-label="移动到分组"><option value="">未分组</option>${state.groups.map(group => `<option value="${group.id}" ${record.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}</select></label>
+      <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("folder", 13)}</button>
       <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
   }).join("") : `<div class="empty">这里还没有记录</div>`;
   list.scrollTop = scrollTop;
@@ -378,7 +402,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
     <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
       <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
     <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
-  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><section id="settings" hidden></section>
+  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><div id="move-group-menu" role="menu" aria-label="移动到分组" hidden></div><section id="settings" hidden></section>
   <div id="toast" role="status"></div></div>`;
 
 document.querySelector<HTMLElement>(".titlebar")!.addEventListener("pointerdown", event => {
@@ -514,6 +538,7 @@ root.addEventListener("click", async event => {
   if (!element.closest("#filter-wrap")) setFilterMenuOpen(false);
   const retentionMenu = document.querySelector<HTMLElement>("#retention-menu");
   if (retentionMenu && !element.closest(".retention-select")) setRetentionMenuOpen(false);
+  if (!element.closest("#move-group-menu,[data-move-group-trigger]")) closeMoveGroupMenu();
   if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
   if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
   if (element.closest("#close")) { await action("hide_panel"); return; }
@@ -533,6 +558,23 @@ root.addEventListener("click", async event => {
     saveSetting({ retentionDays: Number(retentionOption.dataset.retention) });
     return;
   }
+  const moveOption = element.closest<HTMLElement>("[data-move-group]");
+  if (moveOption) {
+    const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
+    const id = menu.dataset.recordId!;
+    const groupId = moveOption.dataset.moveGroup ? Number(moveOption.dataset.moveGroup) : null;
+    closeMoveGroupMenu();
+    if (state.records.find(record => record.id === id)?.groupId !== groupId) await action("move_group", { id, groupId });
+    return;
+  }
+  const moveTrigger = element.closest<HTMLElement>("[data-move-group-trigger]");
+  if (moveTrigger) {
+    const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
+    const open = menu.hidden || menu.dataset.recordId !== moveTrigger.dataset.moveGroupTrigger;
+    closeMoveGroupMenu();
+    if (open) openMoveGroupMenu(moveTrigger);
+    return;
+  }
   const group = element.closest<HTMLElement>("[data-view]");
   if (group) { selectGroup(group.dataset.view!); return; }
   const favorite = element.closest<HTMLElement>("[data-favorite]");
@@ -540,7 +582,7 @@ root.addEventListener("click", async event => {
   const deleteButton = element.closest<HTMLElement>("[data-delete]");
   if (deleteButton) { await action("delete_record", { id: deleteButton.dataset.delete }); return; }
   const row = element.closest<HTMLElement>(".record");
-  if (row && !element.closest("select,.move-group")) {
+  if (row) {
     document.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
     selectedId = row.dataset.id!; row.classList.add("selected"); return;
   }
@@ -570,12 +612,11 @@ root.addEventListener("dblclick", event => {
   const group = (event.target as HTMLElement).closest<HTMLElement>("#groups .group[data-view^='group:']");
   if (group) { startGroupEdit("rename", Number(group.dataset.view!.slice(6))); return; }
   const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
-  if (row && !(event.target as HTMLElement).closest("button,select,.move-group")) void apply(row.dataset.id!);
+  if (row && !(event.target as HTMLElement).closest("button,select")) void apply(row.dataset.id!);
 });
 
 root.addEventListener("change", event => {
   const element = event.target as HTMLInputElement | HTMLSelectElement;
-  if (element.dataset.group) void action("move_group", { id: element.dataset.group, groupId: element.value ? Number(element.value) : null });
   if (element.name === "mode") {
     const fixed = element.value === "fixed";
     (document.querySelector("#fixed-position") as HTMLSelectElement).disabled = !fixed;
@@ -625,6 +666,33 @@ root.addEventListener("keydown", event => {
 
 document.addEventListener("keydown", event => {
   if (!state || (event.target as HTMLElement).id === "shortcut") return;
+  if ((event.target as HTMLElement).matches("[data-move-group-trigger]") && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    (event.target as HTMLButtonElement).click();
+    return;
+  }
+  const moveMenu = document.querySelector<HTMLElement>("#move-group-menu")!;
+  if (!moveMenu.hidden && moveMenu.contains(event.target as Node)) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      const trigger = document.querySelector<HTMLElement>(`[data-move-group-trigger="${moveMenu.dataset.recordId}"]`);
+      closeMoveGroupMenu();
+      trigger?.focus();
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const options = [...moveMenu.querySelectorAll<HTMLButtonElement>("button")];
+      const index = options.indexOf(event.target as HTMLButtonElement);
+      options[(index + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length].focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      (event.target as HTMLButtonElement).click();
+    } else if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      closeMoveGroupMenu();
+      cycleGroup(event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey) ? -1 : 1);
+    }
+    return;
+  }
   if (event.key === "Escape" && !document.querySelector<HTMLElement>("#group-menu")!.hidden) { event.preventDefault(); closeGroupMenu(); return; }
   const filterMenu = document.querySelector<HTMLElement>("#filter-menu")!;
   if (event.key === "Escape" && !filterMenu.hidden) { event.preventDefault(); setFilterMenuOpen(false); return; }
@@ -661,9 +729,10 @@ document.addEventListener("keyup", event => {
   void apply(id);
 });
 
-window.addEventListener("blur", () => { pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); });
+window.addEventListener("blur", () => { pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu(); });
 
-document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", updateOrdinals);
+document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); });
+window.addEventListener("resize", closeMoveGroupMenu);
 
 async function start() {
   try {
