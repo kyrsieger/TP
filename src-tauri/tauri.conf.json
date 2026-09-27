@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "TP Clipboard",
+        "title": "TP",
         "width": 420,
         "height": 600,
         "minWidth": 340,
