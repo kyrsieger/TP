@@ -34,6 +34,8 @@ let settingsOpen = false;
 let clearingCache = false;
 let activeShortcut = "";
 let positionSaveTimer: number | undefined;
+const numberSaveTimers = new Map<string, number>();
+let settingsSave: Promise<void> = Promise.resolve();
 let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 
@@ -136,14 +138,13 @@ function renderSettings() {
   settings.innerHTML = `<h2>设置</h2><label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
     <label>普通记录数量上限<input id="max-ordinary" type="number" min="1" max="500" value="${s.maxOrdinary}"></label>
     <label>普通记录保留时间<select id="retention">${[[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].map(([value,label]) => `<option value="${value}" ${s.retentionDays === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-    <label>1Password 记录保留秒数<input id="sensitive" type="number" min="1" value="${s.sensitiveSeconds}"></label>
+    <label>1Password 记录保留秒数<input id="sensitive" type="number" min="1" max="4294967295" value="${s.sensitiveSeconds}"></label>
     <p class="hint">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
     <fieldset><legend>面板位置</legend><label class="inline"><input type="radio" name="mode" value="fixed" ${s.positionMode === "fixed" ? "checked" : ""}>固定位置</label>
     <label class="inline"><input type="radio" name="mode" value="cursor" ${s.positionMode === "cursor" ? "checked" : ""}>跟随光标</label></fieldset>
     <label>固定位置<select id="fixed-position" ${s.positionMode === "cursor" ? "disabled" : ""}><option value="left" ${s.fixedPosition === "left" ? "selected" : ""}>左下角</option><option value="right" ${s.fixedPosition === "right" ? "selected" : ""}>右下角</option><option value="center" ${s.fixedPosition === "center" ? "selected" : ""}>下方居中</option></select></label>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆上次拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
-    <button id="save-settings" class="primary">保存设置</button>
     <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
     <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
 }
@@ -211,6 +212,35 @@ async function registerShortcut(shortcut: string) {
   if (shortcut) await register(shortcut, () => { void openPanel().catch(error => toast(String(error))); });
   if (activeShortcut) await unregister(activeShortcut);
   activeShortcut = shortcut;
+}
+
+function saveSetting(patch: Partial<Settings>, reposition = false) {
+  settingsSave = settingsSave.then(async () => {
+    const previous = state.settings;
+    const next = { ...previous, ...patch };
+    if (Object.keys(patch).every(key => previous[key as keyof Settings] === next[key as keyof Settings])) return;
+    try {
+      if (patch.shortcut !== undefined) await registerShortcut(next.shortcut);
+      await call("save_settings", { value: next });
+      state.settings = next;
+    } catch (error) {
+      if (patch.shortcut !== undefined) await registerShortcut(previous.shortcut).catch(() => {});
+      renderSettings();
+      toast(String(error));
+      return;
+    }
+    if (reposition) await placePanel().catch(error => toast(String(error)));
+  });
+}
+
+function saveNumberSetting(element: HTMLInputElement, restoreInvalid = false) {
+  const key = element.id === "max-ordinary" ? "maxOrdinary" : "sensitiveSeconds";
+  const value = Number(element.value);
+  if (!element.value || !element.validity.valid || !Number.isInteger(value)) {
+    if (restoreInvalid) { element.value = String(state.settings[key]); toast("请输入有效的设置值"); }
+    return;
+  }
+  saveSetting({ [key]: value });
 }
 
 async function openPanel() {
@@ -357,18 +387,6 @@ root.addEventListener("click", async event => {
     }
     return;
   }
-  if (element.id === "save-settings") {
-    const next: Settings = { ...state.settings,
-      maxOrdinary: Number((document.querySelector("#max-ordinary") as HTMLInputElement).value),
-      retentionDays: Number((document.querySelector("#retention") as HTMLSelectElement).value),
-      sensitiveSeconds: Number((document.querySelector("#sensitive") as HTMLInputElement).value),
-      shortcut: (document.querySelector("#shortcut") as HTMLInputElement).value,
-      positionMode: (document.querySelector<HTMLInputElement>('input[name="mode"]:checked')!).value as Settings["positionMode"],
-      fixedPosition: (document.querySelector("#fixed-position") as HTMLSelectElement).value as Settings["fixedPosition"],
-      rememberPosition: (document.querySelector("#remember") as HTMLInputElement).checked };
-    try { await registerShortcut(next.shortcut); await call("save_settings", { value: next }); await refresh(); await placePanel(); toast("设置已保存"); }
-    catch (error) { await registerShortcut(state.settings.shortcut).catch(() => {}); toast(String(error)); }
-  }
 });
 
 root.addEventListener("dblclick", event => {
@@ -384,20 +402,41 @@ root.addEventListener("change", event => {
     const fixed = element.value === "fixed";
     (document.querySelector("#fixed-position") as HTMLSelectElement).disabled = !fixed;
     (document.querySelector("#remember") as HTMLInputElement).disabled = !fixed;
+    saveSetting({ positionMode: element.value as Settings["positionMode"] }, true);
+  }
+  if (element.id === "retention") saveSetting({ retentionDays: Number(element.value) });
+  if (element.id === "fixed-position") saveSetting({ fixedPosition: element.value as Settings["fixedPosition"] }, true);
+  if (element.id === "remember") saveSetting({ rememberPosition: (element as HTMLInputElement).checked }, true);
+  if (element.id === "max-ordinary" || element.id === "sensitive") {
+    window.clearTimeout(numberSaveTimers.get(element.id));
+    numberSaveTimers.delete(element.id);
+    saveNumberSetting(element as HTMLInputElement, true);
   }
 });
 
 root.addEventListener("input", event => {
   const element = event.target as HTMLInputElement;
   if (element.id === "search") { search = element.value; renderList(); }
+  if (element.id === "max-ordinary" || element.id === "sensitive") {
+    window.clearTimeout(numberSaveTimers.get(element.id));
+    numberSaveTimers.set(element.id, window.setTimeout(() => {
+      numberSaveTimers.delete(element.id);
+      saveNumberSetting(element);
+    }, 300));
+  }
 });
 
 root.addEventListener("keydown", event => {
   const element = event.target as HTMLElement;
   if (element.id === "shortcut") {
     event.preventDefault();
-    if (event.key === "Backspace" || event.key === "Delete") { (element as HTMLInputElement).value = ""; return; }
-    const shortcut = shortcutFromKey(event); if (shortcut) (element as HTMLInputElement).value = shortcut;
+    if (event.key === "Backspace" || event.key === "Delete") {
+      (element as HTMLInputElement).value = "";
+      saveSetting({ shortcut: "" });
+      return;
+    }
+    const shortcut = shortcutFromKey(event);
+    if (shortcut) { (element as HTMLInputElement).value = shortcut; saveSetting({ shortcut }); }
   }
 });
 
