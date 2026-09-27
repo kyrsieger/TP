@@ -8,6 +8,7 @@ type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type FileItem = { original: string; stored: string | null };
 type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
+  pinnedAt: number | null;
   groupId: number | null; usedAt: number; expiresAt: number | null;
   storageMode: string; status: string; preview: boolean;
 };
@@ -216,7 +217,10 @@ function renderList() {
       <span class="ordinal"></span>
       ${record.preview ? `<span class="preview-wrap"><img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}</span>` : ""}
       <div class="record-main"><div class="record-heading">${kindIcon}<strong>${escapeHtml(title)}</strong>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>
-      <div class="record-actions"><button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
+      ${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
+      ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}
+      <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
+      <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
       <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("folder", 13)}</button>
       <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
   }).join("") : `<div class="empty">这里还没有记录</div>`;
@@ -240,7 +244,7 @@ function visibleRecords(): HTMLElement[] {
 function updateOrdinals() {
   const list = document.querySelector<HTMLElement>("#list")!;
   list.querySelectorAll<HTMLElement>(".ordinal").forEach(el => el.textContent = "");
-  visibleRecords().forEach((row, index) => row.querySelector<HTMLElement>(".ordinal")!.textContent = String(index + 1));
+  visibleRecords().slice(0, 9).forEach((row, index) => row.querySelector<HTMLElement>(".ordinal")!.textContent = String(index + 1));
 }
 
 function renderSettings() {
@@ -577,6 +581,8 @@ root.addEventListener("click", async event => {
   }
   const group = element.closest<HTMLElement>("[data-view]");
   if (group) { selectGroup(group.dataset.view!); return; }
+  const recordPin = element.closest<HTMLElement>("[data-record-pin]");
+  if (recordPin) { const record = state.records.find(record => record.id === recordPin.dataset.recordPin)!; await action("set_record_pinned", { id: record.id, pinned: record.pinnedAt === null }); return; }
   const favorite = element.closest<HTMLElement>("[data-favorite]");
   if (favorite) { const record = state.records.find(record => record.id === favorite.dataset.favorite)!; await action("set_favorite", { id: record.id, favorite: !record.favorite }); return; }
   const deleteButton = element.closest<HTMLElement>("[data-delete]");

@@ -107,6 +107,7 @@ struct Record {
     body: String,
     files: Vec<FileItem>,
     favorite: bool,
+    pinned_at: Option<i64>,
     group_id: Option<i64>,
     used_at: i64,
     expires_at: Option<i64>,
@@ -153,12 +154,23 @@ fn initialize(dir: PathBuf) -> Result<Store> {
         CREATE TABLE IF NOT EXISTS records (
             id TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
             body TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
-            favorite INTEGER NOT NULL DEFAULT 0, group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+            favorite INTEGER NOT NULL DEFAULT 0, pinned_at INTEGER, group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
             used_at INTEGER NOT NULL, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'ready', preview INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS records_used ON records(used_at DESC);
         PRAGMA foreign_keys=ON;").map_err(err)?;
+    let has_pinned_at: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='pinned_at')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(err)?;
+    if !has_pinned_at {
+        conn.execute("ALTER TABLE records ADD COLUMN pinned_at INTEGER", [])
+            .map_err(err)?;
+    }
     conn.execute(
         "INSERT OR IGNORE INTO settings(key,value) VALUES('main',?1)",
         [serde_json::to_string(&Settings::default()).map_err(err)?],
@@ -194,7 +206,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
 
 fn snapshot(store: &Store) -> Result<Snapshot> {
     let conn = store.db.lock().map_err(err)?;
-    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,group_id,used_at,expires_at,storage_mode,status,preview FROM records ORDER BY used_at DESC").map_err(err)?;
+    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,expires_at,storage_mode,status,preview FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
     let mut records = stmt
         .query_map([], |r| {
             let files: String = r.get(3)?;
@@ -204,12 +216,13 @@ fn snapshot(store: &Store) -> Result<Snapshot> {
                 body: r.get(2)?,
                 files: serde_json::from_str(&files).unwrap_or_default(),
                 favorite: r.get::<_, i64>(4)? != 0,
-                group_id: r.get(5)?,
-                used_at: r.get(6)?,
-                expires_at: r.get(7)?,
-                storage_mode: r.get(8)?,
-                status: r.get(9)?,
-                preview: r.get::<_, i64>(10)? != 0,
+                pinned_at: r.get(5)?,
+                group_id: r.get(6)?,
+                used_at: r.get(7)?,
+                expires_at: r.get(8)?,
+                storage_mode: r.get(9)?,
+                status: r.get(10)?,
+                preview: r.get::<_, i64>(11)? != 0,
             })
         })
         .map_err(err)?
@@ -458,6 +471,29 @@ fn set_favorite(
         .map_err(err)?;
     clean(&store)?;
     changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_record_pinned(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    id: String,
+    pinned: bool,
+) -> Result<()> {
+    let conn = store.db.lock().map_err(err)?;
+    set_pinned(&conn, &id, pinned)?;
+    drop(conn);
+    changed(&app);
+    Ok(())
+}
+
+fn set_pinned(conn: &Connection, id: &str, pinned: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE records SET pinned_at=CASE WHEN ?2 THEN MAX(?3, COALESCE((SELECT MAX(pinned_at)+1 FROM records), ?3)) ELSE NULL END WHERE id=?1",
+        params![id, pinned, now()],
+    )
+    .map_err(err)?;
     Ok(())
 }
 
@@ -941,6 +977,7 @@ pub fn run() {
             rename_group,
             delete_group,
             set_favorite,
+            set_record_pinned,
             move_group,
             delete_record,
             clear_cache,
@@ -1018,6 +1055,79 @@ mod tests {
     fn test_store() -> Store {
         let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
         initialize(dir).unwrap()
+    }
+
+    #[test]
+    fn pinned_records_sort_by_pin_time_and_unpin_restores_use_order() {
+        let store = test_store();
+        {
+            let conn = store.db.lock().unwrap();
+            for (id, used_at) in [("new", 3000), ("middle", 2000), ("old", 1000)] {
+                conn.execute(
+                    "INSERT INTO records(id,digest,kind,used_at) VALUES(?1,?1,'text',?2)",
+                    params![id, used_at],
+                )
+                .unwrap();
+            }
+            set_pinned(&conn, "old", true).unwrap();
+            set_pinned(&conn, "middle", true).unwrap();
+        }
+        let records = snapshot(&store).unwrap().records;
+        assert_eq!(
+            records.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["middle", "old", "new"]
+        );
+        assert!(records[0].pinned_at > records[1].pinned_at);
+
+        set_pinned(&store.db.lock().unwrap(), "middle", false).unwrap();
+        assert_eq!(
+            snapshot(&store)
+                .unwrap()
+                .records
+                .iter()
+                .map(|r| r.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["old", "new", "middle"]
+        );
+        set_pinned(&store.db.lock().unwrap(), "old", false).unwrap();
+        assert_eq!(
+            snapshot(&store)
+                .unwrap()
+                .records
+                .iter()
+                .map(|r| r.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["new", "middle", "old"]
+        );
+
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn existing_records_gain_nullable_pin_time() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let conn = Connection::open(dir.join("history.sqlite3")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE records (
+            id TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
+            favorite INTEGER NOT NULL DEFAULT 0, group_id INTEGER,
+            used_at INTEGER NOT NULL, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'ready', preview INTEGER NOT NULL DEFAULT 0
+        ); INSERT INTO records(id,digest,kind,used_at) VALUES('old','old','text',1);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = initialize(dir.clone()).unwrap();
+        let records = snapshot(&store).unwrap().records;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].pinned_at, None);
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
