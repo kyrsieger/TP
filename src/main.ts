@@ -258,8 +258,8 @@ async function apply(id: string) {
 
 function cycleGroup(direction: number) {
   const views = ["default", "favorite", ...state.groups.map(group => `group:${group.id}`)];
-  view = views[(views.indexOf(view) + direction + views.length) % views.length];
-  selectedId = null; render();
+  selectGroup(views[(views.indexOf(view) + direction + views.length) % views.length]);
+  document.querySelector<HTMLElement>("#groups .group.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function moveSelection(direction: number) {
