@@ -40,9 +40,9 @@ let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
-const icons: Record<Kind, string> = { text: "文", link: "链", image: "图", file: "件", video: "影", color: "色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
 const call = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => invoke<T>(name, args);
+const icon = (name: string, size = 14) => `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#lu-${name}"/></svg>`;
 
 function toast(message: string) {
   const el = document.querySelector<HTMLElement>("#toast")!;
@@ -71,11 +71,28 @@ function renderGroups() {
   const groups = [{ id: "default", name: "默认" }, { id: "favorite", name: "收藏" },
     ...state.groups.map(group => ({ id: `group:${group.id}`, name: group.name }))];
   tabs.innerHTML = groups.map(group => `<button class="group ${view === group.id ? "active" : ""}" data-view="${group.id}">${escapeHtml(group.name)}</button>`).join("")
-    + `<button class="add-group" title="添加分组" id="add-group">＋</button>`;
+    + `<button class="add-group" title="添加分组" aria-label="添加分组" id="add-group">${icon("plus", 14)}</button>`
+    + `<button class="delete-group" title="删除当前分组" id="delete-group" ${view.startsWith("group:") ? "" : "hidden"}>删除分组</button>`;
   document.querySelector<HTMLElement>("#filter-wrap")!.hidden = view !== "default";
-  const name = groups.find(group => group.id === view)?.name ?? "默认";
-  document.querySelector<HTMLElement>("#view-title")!.textContent = name;
-  document.querySelector<HTMLElement>("#delete-group")!.hidden = !view.startsWith("group:");
+  if (view !== "default") setFilterMenuOpen(false);
+  renderFilter();
+}
+
+function setFilterMenuOpen(open: boolean) {
+  document.querySelector<HTMLElement>("#filter-menu")!.hidden = !open;
+  document.querySelector<HTMLElement>("#kind-filter")!.setAttribute("aria-expanded", String(open));
+}
+
+function renderFilter() {
+  const button = document.querySelector<HTMLButtonElement>("#kind-filter")!;
+  const selected = kindFilter !== "all";
+  button.innerHTML = icon(selected ? kindFilter : "filter", 14);
+  button.title = selected ? `类型筛选：${labels[kindFilter as Kind]}` : "类型筛选：全部";
+  button.setAttribute("aria-label", button.title);
+  button.classList.toggle("active", selected);
+  document.querySelector<HTMLElement>("#clear-filter")!.hidden = !selected;
+  document.querySelector<HTMLElement>("#filter-wrap")!.classList.toggle("active", selected);
+  document.querySelectorAll<HTMLElement>("[data-kind]").forEach(option => option.classList.toggle("active", option.dataset.kind === kindFilter));
 }
 
 function recordTitle(record: RecordItem): string {
@@ -95,24 +112,30 @@ function renderList() {
   const list = document.querySelector<HTMLElement>("#list")!;
   const scrollTop = list.scrollTop;
   const records = filtered();
-  document.querySelector<HTMLElement>("#count")!.textContent = `${records.length} 条`;
   list.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败，使用路径引用" : record.storageMode === "reference" ? "路径引用" : record.storageMode === "copy" ? "已保存副本" : "";
-    const isText = record.kind === "text" || record.kind === "link" || record.kind === "color";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
-    return `<article class="record ${selectedId === record.id ? "selected" : ""}" data-id="${record.id}" tabindex="-1">
-      <span class="ordinal"></span><span class="kind-icon ${swatch ? "color-swatch" : ""}" ${swatch ? `style="background-color:${record.body.trim()}" title="颜色"` : ""}>${swatch ? "" : icons[record.kind]}</span>
-      <div class="record-main">${isText ? "" : `<div class="record-heading"><strong>${escapeHtml(recordTitle(record))}</strong><span class="kind-label">${labels[record.kind]}</span></div>`}
-      ${record.preview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : ""}
-      <p${isText ? ' class="record-text"' : ""}>${escapeHtml(recordDetail(record))}</p><small>${status || (record.expiresAt ? "敏感记录" : new Date(record.usedAt).toLocaleString())}</small></div>
-      <div class="record-actions"><button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="收藏">${record.favorite ? "★" : "☆"}</button>
-      <select data-group="${record.id}" aria-label="移动到分组"><option value="">未分组</option>${state.groups.map(group => `<option value="${group.id}" ${record.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}</select>
-      <button class="delete" data-delete="${record.id}" title="删除记录">×</button></div></article>`;
+    const title = recordTitle(record);
+    const detail = recordDetail(record);
+    const subtitle = record.kind === "text" || record.kind === "link" || record.kind === "color"
+      ? record.body.split("\n").slice(1).join(" ").trim() : record.kind === "image" ? "" : detail;
+    const kindIcon = swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
+      : record.kind === "text" ? "" : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
+    const note = status || (record.expiresAt ? "敏感记录" : "");
+    return `<article class="record ${selectedId === record.id ? "selected" : ""} ${record.preview ? "has-preview" : ""}" data-id="${record.id}" tabindex="-1" title="${escapeHtml(detail)}">
+      <span class="ordinal"></span>
+      ${record.preview ? `<span class="preview-wrap"><img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}</span>` : ""}
+      <div class="record-main"><div class="record-heading">${kindIcon}<strong>${escapeHtml(title)}</strong></div>
+      <div class="record-meta">${subtitle ? `<span class="record-subtitle" title="${escapeHtml(subtitle)}">${escapeHtml(subtitle)}</span><span class="dot">·</span>` : ""}${note ? `<span class="record-note">${note}</span><span class="dot">·</span>` : ""}<time>${new Date(record.usedAt).toLocaleString()}</time></div></div>
+      <div class="record-actions"><button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
+      <label class="move-group" title="移动到分组">${icon("folder", 13)}<select data-group="${record.id}" aria-label="移动到分组"><option value="">未分组</option>${state.groups.map(group => `<option value="${group.id}" ${record.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}</select></label>
+      <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
   }).join("") : `<div class="empty">这里还没有记录</div>`;
   list.scrollTop = scrollTop;
   updateOrdinals();
   list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(async image => {
-    try { image.src = await call<string>("preview_data", { id: image.dataset.preview }); } catch { image.remove(); }
+    try { image.src = await call<string>("preview_data", { id: image.dataset.preview }); }
+    catch { image.closest(".record")?.classList.remove("has-preview"); image.closest(".preview-wrap")?.remove(); }
   });
 }
 
@@ -134,6 +157,7 @@ function updateOrdinals() {
 function renderSettings() {
   const settings = document.querySelector<HTMLElement>("#settings")!;
   settings.hidden = !settingsOpen;
+  document.querySelector<HTMLElement>("#settings-button")!.classList.toggle("active", settingsOpen);
   if (!settingsOpen) return;
   const s = state.settings;
   settings.innerHTML = `<h2>设置</h2><label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
@@ -259,10 +283,37 @@ function shortcutFromKey(event: KeyboardEvent): string | null {
 }
 
 root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-edge="left"></div><div class="resize-edge right" data-resize-edge="right"></div><div class="resize-edge top" data-resize-edge="top"></div><div class="resize-edge bottom" data-resize-edge="bottom"></div>
-  <div class="toolbar"><input id="search" placeholder="搜索当前分组 · Shift+Esc" aria-label="搜索当前分组"><button id="pin" aria-label="置顶" aria-pressed="false" title="置顶"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M16 9V4l1-1V2H7v1l1 1v5c0 1.66-1.34 3-3 3v2h6v7l1 1 1-1v-7h6v-2c-1.66 0-3-1.34-3-3z"/></svg></button><button id="settings-button" aria-label="设置" title="设置">⚙</button></div>
-  <nav id="groups"></nav><div class="section-heading"><strong id="view-title">默认</strong><span id="count"></span><button id="delete-group" hidden>删除分组</button>
-  <label id="filter-wrap">类型 <select id="kind-filter"><option value="all">全部</option><option value="text">文本</option><option value="image">图片</option><option value="video">视频</option><option value="file">文件</option><option value="link">链接</option><option value="color">颜色</option></select></label></div>
-  <main id="list"></main><section id="settings" hidden></section><footer>双击应用 · Ctrl + 1–9 选取可见记录</footer><div id="toast" role="status"></div></div>`;
+  <svg class="svg-defs" aria-hidden="true"><defs>
+    <symbol id="lu-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.12 2.12 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.12 2.12 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.12 2.12 0 0 0 1.597-1.16z"/></symbol>
+    <symbol id="lu-star-fill" viewBox="0 0 24 24"><path fill="currentColor" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.12 2.12 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.12 2.12 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.12 2.12 0 0 0 1.597-1.16z"/></symbol>
+    <symbol id="lu-pin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4a1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="lu-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0a2.34 2.34 0 0 0 3.319 1.915a2.34 2.34 0 0 1 2.33 4.033a2.34 2.34 0 0 0 0 3.831a2.34 2.34 0 0 1-2.33 4.033a2.34 2.34 0 0 0-3.319 1.915a2.34 2.34 0 0 1-4.659 0a2.34 2.34 0 0 0-3.32-1.915a2.34 2.34 0 0 1-2.33-4.033a2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></g></symbol>
+    <symbol id="lu-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M5 12h14m-7-7v14"/></symbol>
+    <symbol id="lu-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="lu-minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M5 12h14"/></symbol>
+    <symbol id="lu-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="lu-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></g></symbol>
+    <symbol id="lu-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></g></symbol>
+    <symbol id="lu-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></g></symbol>
+    <symbol id="lu-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></g></symbol>
+    <symbol id="lu-video" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></g></symbol>
+    <symbol id="lu-folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="lu-filter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M22 3H2l8 9.46V19l4 2v-8.54Z"/></symbol>
+    <symbol id="lu-text" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M4 6h16M12 6v13M8 19h8"/></symbol>
+    <symbol id="lu-color" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></symbol>
+  </defs></svg>
+  <header class="titlebar"><svg class="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="#4f46e5" stroke-width="2"/><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="#4f46e5"/></svg><span class="appname">TP</span>
+    <div class="winbtns"><button id="minimize" class="winbtn" title="最小化" aria-label="最小化">${icon("minus", 13)}</button><button id="maximize" class="winbtn" title="最大化或还原" aria-label="最大化或还原">${icon("square", 11)}</button><button id="close" class="winbtn close" title="隐藏面板" aria-label="隐藏面板">${icon("x", 13)}</button></div>
+  </header>
+  <div class="toolbar"><label class="search-box">${icon("search", 13)}<input id="search" placeholder="搜索 · Shift+Esc" aria-label="搜索当前分组"></label>
+    <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
+      <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
+    <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
+  <nav id="groups" aria-label="分组"></nav><main id="list"></main><section id="settings" hidden></section><div id="toast" role="status"></div></div>`;
+
+document.querySelector<HTMLElement>(".titlebar")!.addEventListener("pointerdown", event => {
+  if (event.button === 0 && !(event.target as HTMLElement).closest("button")) void panel.startDragging().catch(error => toast(String(error)));
+});
 
 root.querySelectorAll<HTMLElement>("[data-resize-edge]").forEach(handle => {
   handle.addEventListener("pointerdown", async event => {
@@ -349,6 +400,18 @@ document.querySelector<HTMLElement>("#groups")!.addEventListener("wheel", event 
 
 root.addEventListener("click", async event => {
   const element = event.target as HTMLElement;
+  const filterMenu = document.querySelector<HTMLElement>("#filter-menu")!;
+  if (!element.closest("#filter-wrap")) setFilterMenuOpen(false);
+  if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
+  if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
+  if (element.closest("#close")) { await action("hide_panel"); return; }
+  if (element.closest("#kind-filter")) {
+    setFilterMenuOpen(filterMenu.hidden === true);
+    return;
+  }
+  if (element.closest("#clear-filter")) { kindFilter = "all"; setFilterMenuOpen(false); renderFilter(); renderList(); return; }
+  const kindOption = element.closest<HTMLElement>("[data-kind]");
+  if (kindOption) { kindFilter = kindOption.dataset.kind!; setFilterMenuOpen(false); renderFilter(); renderList(); return; }
   const group = element.closest<HTMLElement>("[data-view]");
   if (group) { view = group.dataset.view!; selectedId = null; render(); return; }
   const favorite = element.closest<HTMLElement>("[data-favorite]");
@@ -356,16 +419,16 @@ root.addEventListener("click", async event => {
   const deleteButton = element.closest<HTMLElement>("[data-delete]");
   if (deleteButton) { await action("delete_record", { id: deleteButton.dataset.delete }); return; }
   const row = element.closest<HTMLElement>(".record");
-  if (row && !element.closest("select")) {
+  if (row && !element.closest("select,.move-group")) {
     document.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
     selectedId = row.dataset.id!; row.classList.add("selected"); return;
   }
-  if (element.id === "settings-button") { settingsOpen = !settingsOpen; renderSettings(); return; }
+  if (element.closest("#settings-button")) { settingsOpen = !settingsOpen; renderSettings(); return; }
   if (element.closest("#pin")) { await action("save_settings", { value: { ...state.settings, alwaysOnTop: !state.settings.alwaysOnTop } }); return; }
-  if (element.id === "add-group") {
+  if (element.closest("#add-group")) {
     const name = window.prompt("新分组名称"); if (name) await action("add_group", { name }); return;
   }
-  if (element.id === "delete-group" && view.startsWith("group:")) {
+  if (element.closest("#delete-group") && view.startsWith("group:")) {
     if (window.confirm("删除这个分组？其中的记录会回到未分组状态。")) {
       await action("delete_group", { id: Number(view.slice(6)) }); view = "default"; render();
     }
@@ -392,12 +455,11 @@ root.addEventListener("click", async event => {
 
 root.addEventListener("dblclick", event => {
   const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
-  if (row && !(event.target as HTMLElement).closest("button,select")) void apply(row.dataset.id!);
+  if (row && !(event.target as HTMLElement).closest("button,select,.move-group")) void apply(row.dataset.id!);
 });
 
 root.addEventListener("change", event => {
   const element = event.target as HTMLInputElement | HTMLSelectElement;
-  if (element.id === "kind-filter") { kindFilter = element.value; renderList(); }
   if (element.dataset.group) void action("move_group", { id: element.dataset.group, groupId: element.value ? Number(element.value) : null });
   if (element.name === "mode") {
     const fixed = element.value === "fixed";
@@ -443,6 +505,8 @@ root.addEventListener("keydown", event => {
 
 document.addEventListener("keydown", event => {
   if (!state || (event.target as HTMLElement).id === "shortcut") return;
+  const filterMenu = document.querySelector<HTMLElement>("#filter-menu")!;
+  if (event.key === "Escape" && !filterMenu.hidden) { event.preventDefault(); setFilterMenuOpen(false); return; }
   if (settingsOpen) {
     if (event.key === "Escape") { settingsOpen = false; renderSettings(); }
     return;
