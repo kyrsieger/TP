@@ -156,6 +156,14 @@ function setRetentionMenuOpen(open: boolean) {
   trigger.setAttribute("aria-expanded", String(open));
 }
 
+function setFixedPositionMenuOpen(open: boolean) {
+  const menu = document.querySelector<HTMLElement>("#fixed-position-menu");
+  const trigger = document.querySelector<HTMLElement>("#fixed-position-trigger");
+  if (!menu || !trigger) return;
+  menu.hidden = !open;
+  trigger.setAttribute("aria-expanded", String(open));
+}
+
 function closeMoveGroupMenu() {
   document.querySelector<HTMLElement>("#move-group-menu")!.hidden = true;
   document.querySelector<HTMLElement>("[data-move-group-trigger][aria-expanded='true']")?.setAttribute("aria-expanded", "false");
@@ -194,7 +202,7 @@ function renderFilter() {
   document.querySelectorAll<HTMLElement>("[data-kind]").forEach(option => option.classList.toggle("active", option.dataset.kind === kindFilter));
 }
 
-function recordTitle(record: RecordItem): string {
+function recordListText(record: RecordItem): string {
   if (record.kind === "image") return "图片";
   if (record.files.length > 1) return `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`;
   if (record.files.length === 1) return record.files[0].original.split(/[\\/]/).pop() || "文件";
@@ -209,14 +217,14 @@ function renderList() {
   list.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本失败，路径引用" : record.storageMode === "reference" ? "路径引用" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
-    const title = recordTitle(record);
+    const text = recordListText(record);
     const kindIcon = swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
       : record.kind === "text" ? "" : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
     return `<article class="record ${selectedId === record.id ? "selected" : ""} ${record.preview ? "has-preview" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
       ${record.preview ? `<span class="preview-wrap"><img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}</span>` : ""}
-      <div class="record-main"><div class="record-heading">${kindIcon}<strong>${escapeHtml(title)}</strong>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>
+      <div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>
       ${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
       ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}
       <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
@@ -255,7 +263,7 @@ function renderSettings() {
   const s = state.settings;
   settings.innerHTML = `<h2>设置</h2><label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
     <label>普通记录数量上限<input id="max-ordinary" type="number" min="1" max="500" value="${s.maxOrdinary}"></label>
-    <div class="setting-field"><span class="setting-label">普通记录保留时间</span><div class="retention-select">
+    <div class="setting-field"><span class="setting-label">普通记录保留时间</span><div class="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="retention-value">${([[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].find(([value]) => value === s.retentionDays) ?? [s.retentionDays, `${s.retentionDays} 天`])[1]}</span>${icon("chevron", 14)}</button>
       <div id="retention-menu" role="listbox" hidden>${[[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].map(([value,label]) => `<button type="button" role="option" data-retention="${value}" aria-selected="${s.retentionDays === value}">${label}</button>`).join("")}</div>
     </div></div>
@@ -263,7 +271,10 @@ function renderSettings() {
     <p class="hint">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
     <fieldset><legend>面板位置</legend><label class="inline"><input type="radio" name="mode" value="fixed" ${s.positionMode === "fixed" ? "checked" : ""}>固定位置</label>
     <label class="inline"><input type="radio" name="mode" value="cursor" ${s.positionMode === "cursor" ? "checked" : ""}>跟随光标</label></fieldset>
-    <label>固定位置<select id="fixed-position" ${s.positionMode === "cursor" ? "disabled" : ""}><option value="left" ${s.fixedPosition === "left" ? "selected" : ""}>左下角</option><option value="right" ${s.fixedPosition === "right" ? "selected" : ""}>右下角</option><option value="center" ${s.fixedPosition === "center" ? "selected" : ""}>下方居中</option></select></label>
+    <div class="setting-field"><span class="setting-label">固定位置</span><div class="setting-select fixed-position-select">
+      <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" ${s.positionMode === "cursor" ? "disabled" : ""}><span class="fixed-position-value">${{ left: "左下角", right: "右下角", center: "下方居中" }[s.fixedPosition]}</span>${icon("chevron", 14)}</button>
+      <div id="fixed-position-menu" role="listbox" hidden>${[["left","左下角"],["right","右下角"],["center","下方居中"]].map(([value,label]) => `<button type="button" role="option" data-fixed-position="${value}" aria-selected="${s.fixedPosition === value}">${label}</button>`).join("")}</div>
+    </div></div>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆上次拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
@@ -542,6 +553,8 @@ root.addEventListener("click", async event => {
   if (!element.closest("#filter-wrap")) setFilterMenuOpen(false);
   const retentionMenu = document.querySelector<HTMLElement>("#retention-menu");
   if (retentionMenu && !element.closest(".retention-select")) setRetentionMenuOpen(false);
+  const fixedPositionMenu = document.querySelector<HTMLElement>("#fixed-position-menu");
+  if (fixedPositionMenu && !element.closest(".fixed-position-select")) setFixedPositionMenuOpen(false);
   if (!element.closest("#move-group-menu,[data-move-group-trigger]")) closeMoveGroupMenu();
   if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
   if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
@@ -560,6 +573,15 @@ root.addEventListener("click", async event => {
     document.querySelectorAll<HTMLElement>("[data-retention]").forEach(option => option.setAttribute("aria-selected", String(option === retentionOption)));
     setRetentionMenuOpen(false);
     saveSetting({ retentionDays: Number(retentionOption.dataset.retention) });
+    return;
+  }
+  if (element.closest("#fixed-position-trigger")) { setFixedPositionMenuOpen(fixedPositionMenu?.hidden === true); return; }
+  const fixedPositionOption = element.closest<HTMLButtonElement>("[data-fixed-position]");
+  if (fixedPositionOption) {
+    document.querySelector<HTMLElement>(".fixed-position-value")!.textContent = fixedPositionOption.textContent;
+    document.querySelectorAll<HTMLElement>("[data-fixed-position]").forEach(option => option.setAttribute("aria-selected", String(option === fixedPositionOption)));
+    setFixedPositionMenuOpen(false);
+    saveSetting({ fixedPosition: fixedPositionOption.dataset.fixedPosition as Settings["fixedPosition"] }, true);
     return;
   }
   const moveOption = element.closest<HTMLElement>("[data-move-group]");
@@ -618,18 +640,18 @@ root.addEventListener("dblclick", event => {
   const group = (event.target as HTMLElement).closest<HTMLElement>("#groups .group[data-view^='group:']");
   if (group) { startGroupEdit("rename", Number(group.dataset.view!.slice(6))); return; }
   const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
-  if (row && !(event.target as HTMLElement).closest("button,select")) void apply(row.dataset.id!);
+  if (row && !(event.target as HTMLElement).closest("button")) void apply(row.dataset.id!);
 });
 
 root.addEventListener("change", event => {
-  const element = event.target as HTMLInputElement | HTMLSelectElement;
+  const element = event.target as HTMLInputElement;
   if (element.name === "mode") {
     const fixed = element.value === "fixed";
-    (document.querySelector("#fixed-position") as HTMLSelectElement).disabled = !fixed;
+    (document.querySelector("#fixed-position-trigger") as HTMLButtonElement).disabled = !fixed;
+    if (!fixed) setFixedPositionMenuOpen(false);
     (document.querySelector("#remember") as HTMLInputElement).disabled = !fixed;
     saveSetting({ positionMode: element.value as Settings["positionMode"] }, true);
   }
-  if (element.id === "fixed-position") saveSetting({ fixedPosition: element.value as Settings["fixedPosition"] }, true);
   if (element.id === "remember") saveSetting({ rememberPosition: (element as HTMLInputElement).checked }, true);
   if (element.id === "max-ordinary" || element.id === "sensitive") {
     window.clearTimeout(numberSaveTimers.get(element.id));
@@ -705,7 +727,9 @@ document.addEventListener("keydown", event => {
   if (settingsOpen) {
     if (event.key === "Escape") {
       const retentionMenu = document.querySelector<HTMLElement>("#retention-menu");
+      const fixedPositionMenu = document.querySelector<HTMLElement>("#fixed-position-menu");
       if (retentionMenu && !retentionMenu.hidden) setRetentionMenuOpen(false);
+      else if (fixedPositionMenu && !fixedPositionMenu.hidden) setFixedPositionMenuOpen(false);
       else { settingsOpen = false; renderSettings(); }
     }
     return;
