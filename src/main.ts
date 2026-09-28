@@ -302,13 +302,14 @@ function renderList() {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     const media = record.kind === "image" || record.kind === "video";
+    const hasPreview = record.preview || (record.kind === "image" && record.files.length > 0 && record.status !== "pending");
     const text = media ? "" : recordListText(record);
     const kindIcon = media ? "" : swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
       : record.kind === "text" ? "" : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
     return `<article class="record ${selectedId === record.id ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
-      ${media ? `<span class="preview-wrap">${record.preview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
+      ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
         : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
       <span class="record-indicators">${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
       ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}</span>

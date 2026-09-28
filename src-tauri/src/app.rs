@@ -578,6 +578,20 @@ fn save_list_thumbnail(source: &Path, output: &Path) -> Result<()> {
     list_thumbnail(&image).save(output).map_err(err)
 }
 
+fn save_image_file_preview(source: &Path, dir: &Path) -> Result<()> {
+    let image = image::ImageReader::open(source)
+        .map_err(err)?
+        .with_guessed_format()
+        .map_err(err)?
+        .decode()
+        .map_err(err)?;
+    fs::create_dir_all(dir).map_err(err)?;
+    image.save(dir.join("image.png")).map_err(err)?;
+    list_thumbnail(&image)
+        .save(dir.join("thumbnail.png"))
+        .map_err(err)
+}
+
 #[tauri::command]
 fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) -> Result<String> {
     let (kind, files): (String, String) = {
@@ -602,6 +616,17 @@ fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) ->
         let frame = dir.join("frame.png");
         if kind == "image" {
             let original = dir.join("image.png");
+            if !original.exists() {
+                let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
+                if let Some(file) = files.first() {
+                    let source = file
+                        .stored
+                        .as_deref()
+                        .filter(|path| Path::new(path).exists())
+                        .unwrap_or(&file.original);
+                    save_image_file_preview(Path::new(source), &dir)?;
+                }
+            }
             if role == "thumbnail" && !thumbnail.exists() {
                 save_list_thumbnail(&original, &thumbnail)?;
                 let _ = fs::remove_file(&legacy);
@@ -762,19 +787,19 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
         .map_err(err)?
     };
     let ctx = ClipboardContext::new().map_err(err)?;
+    let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
     match kind.as_str() {
         "text" | "link" | "color" => {
             *store.suppressed_digest.lock().map_err(err)? = Some(digest.clone());
             ctx.set_text(body).map_err(err)?;
         }
-        "image" => {
+        "image" if files.is_empty() => {
             let path = store.dir.join("assets").join(&id).join("image.png");
             *store.suppressed_digest.lock().map_err(err)? = Some(digest.clone());
             ctx.set_image(RustImageData::from_path(&path.to_string_lossy()).map_err(err)?)
                 .map_err(err)?;
         }
-        "file" | "video" => {
-            let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
+        "image" | "file" | "video" => {
             let paths: Vec<String> = files
                 .iter()
                 .map(|file| {
@@ -833,6 +858,27 @@ fn video(path: &str) -> bool {
         })
 }
 
+fn image_file(path: &str) -> bool {
+    let path = Path::new(path);
+    path.is_file()
+        && path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+            matches!(
+                s.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tif" | "tiff" | "ico"
+            )
+        })
+}
+
+fn file_kind(paths: &[String]) -> &'static str {
+    if paths.iter().all(|path| video(path)) {
+        "video"
+    } else if paths.iter().all(|path| image_file(path)) {
+        "image"
+    } else {
+        "file"
+    }
+}
+
 fn file_size(path: &Path) -> std::io::Result<u64> {
     let meta = fs::metadata(path)?;
     if meta.is_file() {
@@ -858,7 +904,7 @@ fn copy_path(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn save_files(app: tauri::AppHandle, id: String, mut files: Vec<FileItem>) {
+fn save_files(app: tauri::AppHandle, id: String, kind: String, mut files: Vec<FileItem>) {
     let store = app.state::<Store>();
     let total = files.iter().try_fold(0u64, |sum, file| {
         file_size(Path::new(&file.original))
@@ -912,7 +958,22 @@ fn save_files(app: tauri::AppHandle, id: String, mut files: Vec<FileItem>) {
         let _ = fs::remove_dir_all(store.dir.join("assets").join(&id));
         return;
     }
-    if !files.is_empty() && files.iter().all(|file| video(&file.original)) {
+    if kind == "image" {
+        let source = files[0].stored.as_ref().unwrap_or(&files[0].original);
+        let dir = store.dir.join("assets").join(&id);
+        let preview_ready = match store.media_lock.lock() {
+            Ok(_media) => {
+                dir.join("image.png").exists()
+                    || save_image_file_preview(Path::new(source), &dir).is_ok()
+            }
+            Err(_) => false,
+        };
+        if preview_ready {
+            if let Ok(conn) = store.db.lock() {
+                let _ = conn.execute("UPDATE records SET preview=1 WHERE id=?1", [&id]);
+            }
+        }
+    } else if kind == "video" {
         let source = files[0].stored.as_ref().unwrap_or(&files[0].original);
         let dir = store.dir.join("assets").join(&id);
         let frame = dir.join("frame.png");
@@ -952,11 +1013,7 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     let store = app.state::<Store>();
     let files = ctx.get_files().unwrap_or_default();
     let (kind, body, file_items, image_bytes, digest) = if !files.is_empty() {
-        let kind = if files.iter().all(|path| video(path)) {
-            "video"
-        } else {
-            "file"
-        };
+        let kind = file_kind(&files);
         let digest = file_digest(&files, kind)?;
         (
             kind.to_string(),
@@ -1057,7 +1114,7 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     }
     if !file_items.is_empty() {
         let app = app.clone();
-        thread::spawn(move || save_files(app, id, file_items));
+        thread::spawn(move || save_files(app, id, kind, file_items));
     }
     if clean(&store)? {
         changed(app);
@@ -1231,6 +1288,69 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_files_use_image_kind_without_changing_mixed_file_groups() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("one.PNG");
+        let jpeg = dir.join("two.jpg");
+        let text = dir.join("notes.txt");
+        DynamicImage::new_rgb8(12, 8).save(&png).unwrap();
+        DynamicImage::new_rgb8(12, 8).save(&jpeg).unwrap();
+        fs::write(&text, b"text").unwrap();
+        let png = png.to_string_lossy().into_owned();
+        let jpeg = jpeg.to_string_lossy().into_owned();
+        let text = text.to_string_lossy().into_owned();
+
+        assert_eq!(file_kind(&[png.clone()]), "image");
+        assert_eq!(file_kind(&[png.clone(), jpeg]), "image");
+        assert_eq!(file_kind(&[png, text]), "file");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn image_file_preview_decodes_jpeg() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.jpg");
+        DynamicImage::new_rgb8(12, 8).save(&source).unwrap();
+        let preview = dir.join("preview");
+
+        save_image_file_preview(&source, &preview).unwrap();
+
+        assert_eq!(
+            image::open(preview.join("image.png")).unwrap().dimensions(),
+            (12, 8)
+        );
+        assert_eq!(
+            image::open(preview.join("thumbnail.png"))
+                .unwrap()
+                .dimensions(),
+            (12, 8)
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn image_file_preview_uses_file_contents_when_extension_is_wrong() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let jpeg = dir.join("source.jpg");
+        let source = dir.join("source.png");
+        DynamicImage::new_rgb8(12, 8).save(&jpeg).unwrap();
+        fs::rename(jpeg, &source).unwrap();
+
+        save_image_file_preview(&source, &dir.join("preview")).unwrap();
+
+        assert_eq!(
+            image::open(dir.join("preview/image.png"))
+                .unwrap()
+                .dimensions(),
+            (12, 8)
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn list_thumbnails_crop_long_images_and_keep_normal_images() {
