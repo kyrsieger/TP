@@ -29,7 +29,7 @@ function render(payload: PreviewPayload) {
   const group = payload.groupName === null ? "" : `<div><dt>分组</dt><dd>${escapeHtml(payload.groupName)}</dd></div>`;
   const status = payload.status === "pending" ? "保存副本中" : payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   const details = `<dl class="details"><div><dt>类型</dt><dd>${labels[payload.kind]}</dd></div>${group}${created}${status ? `<div><dt>状态</dt><dd>${status}</dd></div>` : ""}</dl>`;
-  const paths = payload.files.length ? `<ul class="files">${payload.files.map(file => `<li class="file"><strong>${escapeHtml(fileName(file.original))}</strong><div class="path">${escapeHtml(file.original)}</div></li>`).join("")}</ul>` : "";
+  const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><strong>${escapeHtml(fileName(file.original))}</strong><div class="path">${escapeHtml(file.original)}</div></li>`).join("")}</ul>` : "";
   let content = "";
   if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${escapeHtml(payload.body)}</pre>`;
   if (payload.kind === "color") {
@@ -73,6 +73,26 @@ async function loadSingle(payload: PreviewPayload, token: number) {
   await measure(payload, token);
 }
 
+async function loadFileText(payload: PreviewPayload, token: number) {
+  await Promise.all(payload.files.map(async (_, index) => {
+    let content: string | null = null;
+    let error = "";
+    try {
+      content = await invoke<string | null>("file_text_preview", { id: payload.id, index });
+    } catch (reason) {
+      error = String(reason);
+    }
+    if (token !== generation || (content === null && !error)) return;
+    const file = root.querySelector<HTMLElement>(`.file[data-index="${index}"]`);
+    if (!file) return;
+    const preview = document.createElement(content === null ? "p" : "pre");
+    preview.className = content === null ? "file-text-error" : "file-text-content";
+    preview.textContent = content ?? `文本预览不可用：${error}`;
+    file.append(preview);
+  }));
+  await measure(payload, token);
+}
+
 async function showContent(payload: PreviewPayload) {
   carousel?.destroy();
   carousel = null;
@@ -94,7 +114,10 @@ async function showContent(payload: PreviewPayload) {
     await carousel.start();
     await measure(payload, token);
   } else if (payload.kind === "image" || payload.kind === "video") await loadSingle(payload, token);
-  else await measure(payload, token);
+  else {
+    await measure(payload, token);
+    if (payload.kind === "file") void loadFileText(payload, token);
+  }
 }
 
 document.body.addEventListener("pointerenter", () => { if (currentId) void emitTo("main", "preview-enter", currentId); });

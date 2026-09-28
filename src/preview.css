@@ -21,11 +21,14 @@ body{overflow:hidden}
 .unavailable{margin:0;padding:20px;text-align:center;color:#8a93a3;font-size:12px}
 .unavailable + .details{margin-top:14px}
 .files{margin:0;padding:10px 12px 10px 29px;border-radius:7px;background:#f6f7fb}
+.files.single-file{padding-left:12px;list-style:none}
 .file{padding:0;font-size:12px}
 .file + .file{margin-top:10px}
 .file::marker{color:#5b6472}
 .file strong{display:block;margin-bottom:4px;font-weight:600;overflow-wrap:anywhere}
 .path{color:#5b6472;line-height:1.5;overflow-wrap:anywhere;user-select:text}
+.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:#fff;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:#c4cad6 transparent}
+.file-text-error{margin:8px 0 0;color:#8a93a3;font-size:12px}
 .color-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0 20px;font-size:13px;user-select:text}
 .color-disc{display:block;width:112px;height:112px;border-radius:50%;outline:1px solid rgba(23,28,40,.12)}
 [hidden]{display:none!important}

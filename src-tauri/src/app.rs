@@ -677,6 +677,93 @@ fn save_image_file_preview(source: &Path, dir: &Path) -> Result<()> {
     save_indexed_image_file_preview(source, dir, 0).map(|_| ())
 }
 
+fn text_file_extension(path: &Path) -> bool {
+    const EXTENSIONS: &str =
+        "md markdown mdx txt text log json jsonc json5 csv tsv ts tsx js jsx mjs cjs \
+        css scss less html htm xml yml yaml toml ini cfg conf properties kt kts java py rs \
+        go c cpp h hpp cs swift sh bash zsh ps1 bat cmd sql rb php vue svelte svg";
+    path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+        EXTENSIONS
+            .split_ascii_whitespace()
+            .any(|ext| ext.eq_ignore_ascii_case(s))
+    })
+}
+
+fn read_text_file_preview(path: &Path) -> Result<Option<String>> {
+    if !text_file_extension(path) || !path.is_file() {
+        return Ok(None);
+    }
+    if fs::metadata(path).map_err(err)?.len() > 1024 * 1024 {
+        return Err("文件超过 1 MB，无法预览".into());
+    }
+    let bytes = fs::read(path).map_err(err)?;
+    let text = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        String::from_utf8(bytes[3..].to_vec()).map_err(|_| "文件内容不是可预览的文本")?
+    } else if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        let little_endian = bytes[0] == 0xff;
+        if bytes.len() % 2 != 0 {
+            return Err("文件内容不是可预览的文本".into());
+        }
+        let units = bytes[2..].chunks_exact(2).map(|pair| {
+            if little_endian {
+                u16::from_le_bytes([pair[0], pair[1]])
+            } else {
+                u16::from_be_bytes([pair[0], pair[1]])
+            }
+        });
+        String::from_utf16(&units.collect::<Vec<_>>()).map_err(|_| "文件内容不是可预览的文本")?
+    } else {
+        String::from_utf8(bytes).map_err(|_| "文件内容不是可预览的文本")?
+    };
+    if text
+        .chars()
+        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+    {
+        return Err("文件内容不是可预览的文本".into());
+    }
+    Ok(Some(text))
+}
+
+fn file_text_preview_path(conn: &Connection, id: &str, index: usize) -> Result<Option<PathBuf>> {
+    let (kind, files, mode): (String, String, String) = conn
+        .query_row(
+            "SELECT kind,files,storage_mode FROM records WHERE id=?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(err)?;
+    if kind != "file" {
+        return Ok(None);
+    }
+    let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
+    let file = files.get(index).ok_or("无效的文件序号")?;
+    if !text_file_extension(Path::new(&file.original)) {
+        return Ok(None);
+    }
+    let path = if mode == "copy" {
+        file.stored.as_deref().ok_or("文件副本不可用")?
+    } else {
+        &file.original
+    };
+    Ok(Some(PathBuf::from(path)))
+}
+
+#[tauri::command]
+fn file_text_preview(
+    store: tauri::State<Store>,
+    id: String,
+    index: usize,
+) -> Result<Option<String>> {
+    let path = {
+        let conn = store.db.lock().map_err(err)?;
+        file_text_preview_path(&conn, &id, index)?
+    };
+    match path {
+        Some(path) => read_text_file_preview(&path),
+        None => Ok(None),
+    }
+}
+
 #[tauri::command]
 fn preview_data(
     store: tauri::State<Store>,
@@ -1377,6 +1464,7 @@ pub fn run() {
             clear_cache,
             get_cache_size,
             preview_data,
+            file_text_preview,
             remember_paste_target,
             show_panel,
             hide_panel,
@@ -1394,6 +1482,76 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_file_preview_accepts_text_and_rejects_binary_files() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        for extension in ["md", "JSON", "txt", "ts", "tsx", "css", "kt", "java"] {
+            let path = dir.join(format!("sample.{extension}"));
+            fs::write(&path, "line 1\n中文").unwrap();
+            assert_eq!(
+                read_text_file_preview(&path).unwrap().as_deref(),
+                Some("line 1\n中文")
+            );
+        }
+        for extension in ["pdf", "docx", "xlsx"] {
+            let path = dir.join(format!("sample.{extension}"));
+            fs::write(&path, b"plain bytes").unwrap();
+            assert_eq!(read_text_file_preview(&path).unwrap(), None);
+        }
+        let disguised = dir.join("disguised.txt");
+        fs::write(&disguised, b"abc\0def").unwrap();
+        assert!(read_text_file_preview(&disguised).is_err());
+        fs::write(&disguised, [0xff, 0xfe, b'A', 0, 0x2d, 0x4e]).unwrap();
+        assert_eq!(
+            read_text_file_preview(&disguised).unwrap().as_deref(),
+            Some("A中")
+        );
+        fs::write(&disguised, vec![b'a'; 1024 * 1024 + 1]).unwrap();
+        assert!(read_text_file_preview(&disguised).is_err());
+        fs::create_dir(dir.join("folder.txt")).unwrap();
+        assert_eq!(
+            read_text_file_preview(&dir.join("folder.txt")).unwrap(),
+            None
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn text_file_preview_reads_copy_and_reference_by_record_mode() {
+        let store = test_store();
+        let original = store.dir.join("original.md");
+        let stored = store.dir.join("stored.md");
+        fs::write(&original, "original").unwrap();
+        fs::write(&stored, "stored").unwrap();
+        let files = serde_json::to_string(&vec![FileItem {
+            original: original.to_string_lossy().into_owned(),
+            stored: Some(stored.to_string_lossy().into_owned()),
+            is_directory: false,
+        }])
+        .unwrap();
+        let conn = store.db.lock().unwrap();
+        for (id, mode) in [("copy", "copy"), ("reference", "reference")] {
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,files,storage_mode,used_at) VALUES(?1,?1,'file',?2,?3,1)",
+                params![id, files, mode],
+            ).unwrap();
+        }
+        assert_eq!(
+            file_text_preview_path(&conn, "copy", 0).unwrap(),
+            Some(stored)
+        );
+        assert_eq!(
+            file_text_preview_path(&conn, "reference", 0).unwrap(),
+            Some(original)
+        );
+        assert!(file_text_preview_path(&conn, "copy", 1).is_err());
+        drop(conn);
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn record_directory_selects_all_originals_by_folder() {
