@@ -344,7 +344,10 @@ async function placePanel() {
 
 async function registerShortcut(shortcut: string) {
   if (shortcut === activeShortcut) return;
-  if (shortcut) await register(shortcut, () => { void openPanel().catch(error => toast(String(error))); });
+  if (shortcut) await register(shortcut, () => {
+    if (settingsOpen) { settingsOpen = false; renderSettings(); }
+    void openPanel().catch(error => toast(String(error)));
+  });
   if (activeShortcut) await unregister(activeShortcut);
   activeShortcut = shortcut;
 }
