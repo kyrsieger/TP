@@ -1485,7 +1485,7 @@ mod tests {
 
     #[test]
     fn text_file_preview_accepts_text_and_rejects_binary_files() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         for extension in ["md", "JSON", "txt", "ts", "tsx", "css", "kt", "java"] {
             let path = dir.join(format!("sample.{extension}"));
@@ -1555,7 +1555,7 @@ mod tests {
 
     #[test]
     fn record_directory_selects_all_originals_by_folder() {
-        let root = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         let first_dir = root.join("first");
         let second_dir = root.join("second");
         let copy_dir = root.join("copy");
@@ -1596,7 +1596,7 @@ mod tests {
 
     #[test]
     fn image_files_use_image_kind_without_changing_mixed_file_groups() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let png = dir.join("one.PNG");
         let jpeg = dir.join("two.jpg");
@@ -1621,7 +1621,7 @@ mod tests {
 
     #[test]
     fn directory_named_like_video_stays_file_kind() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         let folder = dir.join("archive.mp4");
         fs::create_dir_all(&folder).unwrap();
         assert_eq!(file_kind(&[folder.to_string_lossy().into_owned()]), "file");
@@ -1669,7 +1669,7 @@ mod tests {
 
     #[test]
     fn image_file_preview_decodes_jpeg() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let source = dir.join("source.jpg");
         DynamicImage::new_rgb8(12, 8).save(&source).unwrap();
@@ -1692,7 +1692,7 @@ mod tests {
 
     #[test]
     fn image_file_preview_uses_file_contents_when_extension_is_wrong() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let jpeg = dir.join("source.jpg");
         let source = dir.join("source.png");
@@ -1712,7 +1712,7 @@ mod tests {
 
     #[test]
     fn image_file_previews_keep_each_file_in_its_own_slot() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let first = dir.join("first.png");
         let second = dir.join("second.png");
@@ -1828,7 +1828,7 @@ mod tests {
 
     #[test]
     fn old_records_keep_creation_time_empty_after_migration() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let conn = Connection::open(dir.join("history.sqlite3")).unwrap();
         conn.execute_batch(
@@ -1856,7 +1856,7 @@ mod tests {
     }
 
     fn test_store() -> Store {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         initialize(dir).unwrap()
     }
 
@@ -1910,7 +1910,7 @@ mod tests {
 
     #[test]
     fn existing_records_gain_nullable_pin_time() {
-        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let conn = Connection::open(dir.join("history.sqlite3")).unwrap();
         conn.execute_batch(

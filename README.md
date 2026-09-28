@@ -4,6 +4,8 @@
 
 项目已开始实现，采用 Tauri 2、TypeScript 和 Rust。记录、分组与设置保存在本机 SQLite；图片及小文件副本保存在应用数据目录。当前开发机器只有 Windows，macOS 的编译与运行验证留待获得 Mac 环境后进行。
 
+应用、主程序和安装包的名称为 TP；npm 与 Rust 包名使用小写 `tp`。Tauri 应用标识保留为 `com.tp.clipboard`，以沿用现有安装身份与本地数据目录。
+
 ## 本地运行
 
 需要 Node.js、Rust 和 Tauri 2 对应的平台构建工具。在项目根目录运行：

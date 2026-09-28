@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    tp_clipboard_lib::run()
+    tp_lib::run()
 }
