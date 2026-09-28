@@ -275,7 +275,7 @@ function renderSettings() {
       <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" ${s.positionMode === "cursor" ? "disabled" : ""}><span class="fixed-position-value">${{ left: "左下角", right: "右下角", center: "下方居中" }[s.fixedPosition]}</span>${icon("chevron", 14)}</button>
       <div id="fixed-position-menu" role="listbox" hidden>${[["left","左下角"],["right","右下角"],["center","下方居中"]].map(([value,label]) => `<button type="button" role="option" data-fixed-position="${value}" aria-selected="${s.fixedPosition === value}">${label}</button>`).join("")}</div>
     </div></div>
-    <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆上次拖拽位置</label>
+    <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
     <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
@@ -352,6 +352,10 @@ function saveSetting(patch: Partial<Settings>, reposition = false) {
     const next = { ...previous, ...patch };
     if (Object.keys(patch).every(key => previous[key as keyof Settings] === next[key as keyof Settings])) return;
     try {
+      if (patch.rememberPosition && !previous.rememberPosition) {
+        const position = await panel.outerPosition();
+        next.panelX = position.x; next.panelY = position.y;
+      }
       if (patch.shortcut !== undefined) await registerShortcut(next.shortcut);
       await call("save_settings", { value: next });
       state.settings = next;
@@ -652,7 +656,10 @@ root.addEventListener("change", event => {
     (document.querySelector("#remember") as HTMLInputElement).disabled = !fixed;
     saveSetting({ positionMode: element.value as Settings["positionMode"] }, true);
   }
-  if (element.id === "remember") saveSetting({ rememberPosition: (element as HTMLInputElement).checked }, true);
+  if (element.id === "remember") {
+    const enabled = element.checked;
+    saveSetting({ rememberPosition: enabled }, !enabled);
+  }
   if (element.id === "max-ordinary" || element.id === "sensitive") {
     window.clearTimeout(numberSaveTimers.get(element.id));
     numberSaveTimers.delete(element.id);
