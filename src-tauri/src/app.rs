@@ -17,6 +17,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
 use crate::platform;
@@ -376,6 +377,20 @@ fn clear_cache(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<usiz
 #[tauri::command]
 fn get_state(store: tauri::State<Store>) -> Result<Snapshot> {
     snapshot(&store)
+}
+
+#[tauri::command]
+fn autostart_enabled(app: tauri::AppHandle) -> Result<bool> {
+    app.autolaunch().is_enabled().map_err(err)
+}
+
+#[tauri::command]
+fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<()> {
+    if enabled {
+        app.autolaunch().enable().map_err(err)
+    } else {
+        app.autolaunch().disable().map_err(err)
+    }
 }
 
 #[tauri::command]
@@ -894,6 +909,10 @@ impl ClipboardHandler for Watcher {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .setup(|app| {
             app.manage(initialize(app.path().app_data_dir()?).map_err(std::io::Error::other)?);
             let pinned = {
@@ -910,6 +929,9 @@ pub fn run() {
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
             window.set_always_on_top(pinned)?;
+            if !std::env::args().any(|arg| arg == "--autostart") {
+                window.show()?;
+            }
             #[cfg(windows)]
             platform::install_panel_resize_double_click(window.hwnd()?)?;
             #[cfg(target_os = "macos")]
@@ -972,6 +994,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
+            autostart_enabled,
+            set_autostart,
             save_settings,
             add_group,
             rename_group,

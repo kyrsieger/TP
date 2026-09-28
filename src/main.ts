@@ -37,6 +37,8 @@ let groupEdit: { mode: "create" | "rename"; id: number | null } | null = null;
 let groupSaving = false;
 let contextGroupId: number | null = null;
 let activeShortcut = "";
+let autostartEnabled: boolean | null = null;
+let autostartSaving = false;
 let positionSaveTimer: number | undefined;
 const numberSaveTimers = new Map<string, number>();
 let settingsSave: Promise<void> = Promise.resolve();
@@ -261,7 +263,8 @@ function renderSettings() {
   document.querySelector<HTMLElement>("#settings-button")!.classList.toggle("active", settingsOpen);
   if (!settingsOpen) return;
   const s = state.settings;
-  settings.innerHTML = `<h2>设置</h2><label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
+  settings.innerHTML = `<h2>设置</h2><label class="inline"><input id="autostart" type="checkbox" ${autostartEnabled ? "checked" : ""} ${autostartEnabled === null || autostartSaving ? "disabled" : ""}>开机启动</label>
+    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
     <label>普通记录数量上限<input id="max-ordinary" type="number" min="1" max="500" value="${s.maxOrdinary}"></label>
     <div class="setting-field"><span class="setting-label">普通记录保留时间</span><div class="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="retention-value">${([[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].find(([value]) => value === s.retentionDays) ?? [s.retentionDays, `${s.retentionDays} 天`])[1]}</span>${icon("chevron", 14)}</button>
@@ -618,7 +621,16 @@ root.addEventListener("click", async event => {
     document.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
     selectedId = row.dataset.id!; row.classList.add("selected"); return;
   }
-  if (element.closest("#settings-button")) { settingsOpen = !settingsOpen; renderSettings(); return; }
+  if (element.closest("#settings-button")) {
+    settingsOpen = !settingsOpen;
+    renderSettings();
+    if (settingsOpen && !autostartSaving) {
+      try { autostartEnabled = await call<boolean>("autostart_enabled"); }
+      catch (error) { autostartEnabled = null; toast(String(error)); }
+      renderSettings();
+    }
+    return;
+  }
   if (element.closest("#pin")) { await action("save_settings", { value: { ...state.settings, alwaysOnTop: !state.settings.alwaysOnTop } }); return; }
   if (element.closest("#add-group")) { startGroupEdit("create"); return; }
   if (element.id === "clear-cache") {
@@ -649,6 +661,17 @@ root.addEventListener("dblclick", event => {
 
 root.addEventListener("change", event => {
   const element = event.target as HTMLInputElement;
+  if (element.id === "autostart") {
+    const previous = autostartEnabled;
+    const enabled = element.checked;
+    autostartEnabled = enabled;
+    autostartSaving = true;
+    renderSettings();
+    void call("set_autostart", { enabled }).catch(error => {
+      autostartEnabled = previous;
+      toast(String(error));
+    }).finally(() => { autostartSaving = false; renderSettings(); });
+  }
   if (element.name === "mode") {
     const fixed = element.value === "fixed";
     (document.querySelector("#fixed-position-trigger") as HTMLButtonElement).disabled = !fixed;
