@@ -222,6 +222,15 @@ function recordListText(record: RecordItem): string {
   return record.body.split("\n")[0] || "空文本";
 }
 
+function fileTagText(files: FileItem[]): string {
+  const extensions = files.map(file => {
+    const name = file.original.split(/[\\/]/).pop() || "";
+    const dot = name.lastIndexOf(".");
+    return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : "文件";
+  });
+  return extensions.every(extension => extension === extensions[0]) ? extensions[0] || "文件" : "多格式";
+}
+
 function closePreview() {
   if (previewId) void emitTo("preview", "preview-clear", previewGeneration).catch(() => {});
   window.clearTimeout(hoverTimer);
@@ -304,8 +313,10 @@ function renderList() {
     const media = record.kind === "image" || record.kind === "video";
     const hasPreview = record.preview || (record.kind === "image" && record.files.length > 0 && record.status !== "pending");
     const text = media ? "" : recordListText(record);
+    const fileTag = record.kind === "file" ? escapeHtml(fileTagText(record.files)) : "";
     const kindIcon = media ? "" : swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
-      : record.kind === "text" ? "" : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
+      : record.kind === "text" ? "" : record.kind === "file" ? `<span class="file-tag" title="${fileTag}">${fileTag}</span>`
+      : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
     return `<article class="record ${selectedId === record.id ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
