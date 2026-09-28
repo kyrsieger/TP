@@ -4424,6 +4424,7 @@ dependencies = [
  "block2",
  "clipboard-rs",
  "enigo",
+ "image",
  "objc2-app-kit",
  "rusqlite",
  "serde",

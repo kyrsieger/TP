@@ -48,11 +48,14 @@ let hoveredId: string | null = null;
 let previewId: string | null = null;
 let previewHovered = false;
 let previewReady = false;
+let largePreviewReady = false;
+let largePreviewId: string | null = null;
 let hoverTimer: number | undefined;
 let hoverStartedAt = 0;
 let previewCloseTimer: number | undefined;
 let previewGeneration = 0;
 let previewPlacement: { x: number; rowY: number; width: number; scale: number; top: number; bottom: number } | null = null;
+let thumbnailObserver: IntersectionObserver;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -214,13 +217,13 @@ function renderFilter() {
 }
 
 function recordListText(record: RecordItem): string {
-  if (record.kind === "image") return "图片";
   if (record.files.length > 1) return `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`;
   if (record.files.length === 1) return record.files[0].original.split(/[\\/]/).pop() || "文件";
   return record.body.split("\n")[0] || "空文本";
 }
 
 function closePreview() {
+  if (previewId) void emitTo("preview", "preview-clear", previewGeneration).catch(() => {});
   window.clearTimeout(hoverTimer);
   window.clearTimeout(previewCloseTimer);
   hoveredId = null;
@@ -269,11 +272,13 @@ async function preparePreview(id: string) {
       id, kind: record.kind, body: record.body, files: record.files,
       createdAt: record.createdAt, groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
       preview: record.preview, status: record.status, storageMode: record.storageMode, width: width / scale,
+      generation: token,
     });
   } catch (error) { if (token === previewGeneration) toast(`预览失败：${String(error)}`); }
 }
 
 function hoverRecord(id: string) {
+  if (largePreviewId) return;
   if (hoveredId === id) return;
   closePreview();
   hoveredId = id;
@@ -285,21 +290,28 @@ function renderList() {
   closePreview();
   closeMoveGroupMenu();
   const list = document.querySelector<HTMLElement>("#list")!;
+  thumbnailObserver?.disconnect();
   const scrollTop = list.scrollTop;
   const records = filtered();
+  if (selectedId && !records.some(record => record.id === selectedId)) selectedId = null;
+  if (largePreviewId && !records.some(record => record.id === largePreviewId)) {
+    largePreviewId = null;
+    void call("hide_large_preview").catch(() => {});
+  }
   list.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本失败，路径引用" : record.storageMode === "reference" ? "路径引用" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
-    const text = recordListText(record);
-    const kindIcon = swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
+    const media = record.kind === "image" || record.kind === "video";
+    const text = media ? "" : recordListText(record);
+    const kindIcon = media ? "" : swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
       : record.kind === "text" ? "" : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
-    return `<article class="record ${selectedId === record.id ? "selected" : ""} ${record.preview ? "has-preview" : ""}" data-id="${record.id}" tabindex="-1">
+    return `<article class="record ${selectedId === record.id ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
-      ${record.preview ? `<span class="preview-wrap"><img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}</span>` : ""}
-      <div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>
-      ${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
-      ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}
+      ${media ? `<span class="preview-wrap">${record.preview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
+        : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
+      <span class="record-indicators">${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
+      ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}</span>
       <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
       <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
       <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("folder", 13)}</button>
@@ -307,10 +319,29 @@ function renderList() {
   }).join("") : `<div class="empty">这里还没有记录</div>`;
   list.scrollTop = scrollTop;
   updateOrdinals();
-  list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(async image => {
-    try { image.src = await call<string>("preview_data", { id: image.dataset.preview }); }
-    catch { image.closest(".record")?.classList.remove("has-preview"); image.closest(".preview-wrap")?.remove(); }
-  });
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const image = entry.target as HTMLImageElement;
+      observer.unobserve(image);
+      void call<string>("preview_data", { id: image.dataset.preview, role: "thumbnail" }).then(src => { image.src = src; })
+        .catch(() => { image.closest(".preview-wrap")?.replaceChildren(Object.assign(document.createElement("span"), { className: "preview-unavailable", textContent: "预览图不可用" })); });
+    }
+  }, { root: list, rootMargin: "180px 0px" });
+  thumbnailObserver = observer;
+  list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(image => observer.observe(image));
+}
+
+async function openLargePreview(id: string) {
+  if (largePreviewId) return;
+  const record = state.records.find(item => item.id === id);
+  if (!record || (record.kind !== "image" && record.kind !== "video")) return;
+  if (record.kind === "video" && !record.preview) { toast("首帧预览不可用"); return; }
+  if (!largePreviewReady) { toast("大图预览尚未就绪"); return; }
+  closePreview();
+  largePreviewId = id;
+  try { await emitTo("large-preview", "large-preview-content", { id, kind: record.kind }); }
+  catch (error) { largePreviewId = null; toast(`预览失败：${String(error)}`); }
 }
 
 function visibleRecords(): HTMLElement[] {
@@ -639,7 +670,7 @@ root.addEventListener("click", async event => {
   if (!element.closest("#move-group-menu,[data-move-group-trigger]")) closeMoveGroupMenu();
   if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
   if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
-  if (element.closest("#close")) { await action("hide_panel"); return; }
+  if (element.closest("#close")) { largePreviewId = null; await action("hide_panel"); return; }
   if (element.closest("#kind-filter")) {
     setFilterMenuOpen(filterMenu.hidden === true);
     return;
@@ -693,7 +724,7 @@ root.addEventListener("click", async event => {
   const row = element.closest<HTMLElement>(".record");
   if (row) {
     document.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
-    selectedId = row.dataset.id!; row.classList.add("selected"); return;
+    selectedId = row.dataset.id!; row.classList.add("selected"); row.focus({ preventScroll: true }); return;
   }
   if (element.closest("#settings-button")) {
     settingsOpen = !settingsOpen;
@@ -851,8 +882,17 @@ document.addEventListener("keydown", event => {
   if (event.key === "ArrowUp" || event.key === "ArrowDown") {
     event.preventDefault(); moveSelection(event.key === "ArrowUp" ? -1 : 1); return;
   }
+  if (event.code === "Space" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
+      !(event.target as HTMLElement).closest("input, textarea, button, [contenteditable='true']") && selectedId) {
+    const record = state.records.find(item => item.id === selectedId);
+    if (record?.kind === "image" || record?.kind === "video") {
+      event.preventDefault();
+      if (!event.repeat) void openLargePreview(selectedId);
+      return;
+    }
+  }
   if (event.key === "Enter" && selectedId) { event.preventDefault(); void apply(selectedId); return; }
-  if (event.key === "Escape") { void action("hide_panel"); }
+  if (event.key === "Escape") { largePreviewId = null; void action("hide_panel"); }
 });
 
 document.addEventListener("keyup", event => {
@@ -888,6 +928,37 @@ window.addEventListener("resize", () => { closeMoveGroupMenu(); closePreview(); 
 
 async function start() {
   try {
+    await listen("large-preview-ready", () => { largePreviewReady = true; });
+    await listen<{ id: string; width: number; height: number }>("large-preview-loaded", async event => {
+      const { id, width: imageWidth, height: imageHeight } = event.payload;
+      if (largePreviewId !== id) return;
+      if (selectedId !== id) {
+        largePreviewId = null;
+        void emitTo("large-preview", "large-preview-clear");
+        return;
+      }
+      try {
+        const [position, size, scale] = await Promise.all([panel.outerPosition(), panel.outerSize(), panel.scaleFactor()]);
+        const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
+        if (largePreviewId !== id) return;
+        if (!monitor) throw new Error("无法确定当前屏幕");
+        const area = monitor.workArea;
+        const maxWidth = Math.max(1, Math.round(Math.min(area.size.width * .9, 1600 * scale)));
+        const maxHeight = Math.max(1, Math.round(Math.min(area.size.height * .9, 1000 * scale)));
+        const imageScale = Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
+        const width = Math.max(1, Math.round(imageWidth * scale * imageScale));
+        const height = Math.max(1, Math.round(imageHeight * scale * imageScale));
+        const x = Math.round(area.position.x + (area.size.width - width) / 2);
+        const y = Math.round(area.position.y + (area.size.height - height) / 2);
+        await call("show_large_preview", { x, y, width, height });
+        if (largePreviewId !== id) await call("hide_large_preview");
+      } catch (error) {
+        largePreviewId = null;
+        void emitTo("large-preview", "large-preview-clear");
+        toast(`预览失败：${String(error)}`);
+      }
+    });
+    await listen("large-preview-closed", () => { largePreviewId = null; });
     await listen("preview-ready", () => {
       previewReady = true;
       if (hoveredId) {
@@ -921,7 +992,11 @@ async function start() {
     await listen<string>("preview-blur", event => {
       if (event.payload === previewId) closePreview();
     });
+    await listen<string>("preview-space", event => {
+      if (event.payload === selectedId) void openLargePreview(event.payload);
+    });
     await emitTo("preview", "preview-ping");
+    await emitTo("large-preview", "large-preview-ping");
     await refresh(); await placePanel(); await registerShortcut(state.settings.shortcut);
     await listen("history-changed", () => { void refresh(); });
     await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });

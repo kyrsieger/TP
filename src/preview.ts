@@ -6,13 +6,15 @@ type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type PreviewPayload = {
   id: string; kind: Kind; body: string; files: { original: string }[];
   createdAt: number | null; groupName: string | null; preview: boolean;
-  status: string; storageMode: string; width: number;
+  status: string; storageMode: string; width: number; generation: number;
 };
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let currentId: string | null = null;
+let currentKind: Kind | null = null;
+let currentRequest: number | null = null;
 let generation = 0;
 
 function fileName(path: string) { return path.split(/[\\/]/).pop() || path; }
@@ -34,14 +36,19 @@ function render(payload: PreviewPayload) {
 
 async function showContent(payload: PreviewPayload) {
   currentId = payload.id;
+  currentKind = payload.kind;
+  currentRequest = payload.generation;
   const token = ++generation;
   render(payload);
   const image = document.querySelector<HTMLImageElement>("#large-preview");
   if (image) {
     try {
-      image.src = await invoke<string>("preview_data", { id: payload.id, full: payload.kind === "image" });
+      const src = await invoke<string>("preview_data", { id: payload.id, role: "preview" });
+      if (token !== generation) return;
+      image.src = src;
       await image.decode();
     } catch {
+      if (token !== generation) return;
       image.closest(".media")!.innerHTML = `<p class="unavailable">预览图不可用</p>`;
     }
   }
@@ -53,9 +60,24 @@ async function showContent(payload: PreviewPayload) {
 document.body.addEventListener("pointerenter", () => { if (currentId) void emitTo("main", "preview-enter", currentId); });
 document.body.addEventListener("pointerleave", () => { if (currentId) void emitTo("main", "preview-leave", currentId); });
 window.addEventListener("blur", () => { if (currentId) void emitTo("main", "preview-blur", currentId); });
+document.addEventListener("keydown", event => {
+  if (event.code === "Space" && currentId && (currentKind === "image" || currentKind === "video")) {
+    event.preventDefault();
+    if (!event.repeat) void emitTo("main", "preview-space", currentId);
+  }
+});
 
 async function start() {
   await listen<PreviewPayload>("preview-content", event => { void showContent(event.payload); });
+  await listen<number>("preview-clear", event => {
+    if (event.payload !== currentRequest) return;
+    generation++;
+    currentId = null;
+    currentKind = null;
+    currentRequest = null;
+    document.querySelector<HTMLImageElement>("#large-preview")?.removeAttribute("src");
+    root.replaceChildren();
+  });
   await listen("preview-ping", () => { void emitTo("main", "preview-ready"); });
   await emitTo("main", "preview-ready");
 }

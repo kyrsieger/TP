@@ -33,6 +33,18 @@
         "focus": false,
         "skipTaskbar": true,
         "alwaysOnTop": true
+      },
+      {
+        "label": "large-preview",
+        "title": "TP 大图预览",
+        "url": "large-preview.html",
+        "width": 900,
+        "height": 650,
+        "decorations": false,
+        "resizable": false,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {

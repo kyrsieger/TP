@@ -279,11 +279,20 @@ pub fn video_preview(source: &Path, output: &Path) -> bool {
             return false;
         }
     }
-    Command::new("ffmpeg")
+    let ready = Command::new("ffmpeg")
         .args(["-v", "error", "-y", "-i"])
         .arg(source)
-        .args(["-frames:v", "1", "-vf", "scale=360:-1"])
+        .args([
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease",
+        ])
         .arg(output)
         .status()
-        .is_ok_and(|status| status.success() && output.exists())
+        .is_ok_and(|status| status.success() && output.exists());
+    if !ready {
+        let _ = std::fs::remove_file(output);
+    }
+    ready
 }

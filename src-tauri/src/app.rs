@@ -13,6 +13,7 @@ use clipboard_rs::{
     common::RustImage, Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher,
     ClipboardWatcherContext, RustImageData,
 };
+use image::{DynamicImage, GenericImageView};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -134,6 +135,7 @@ struct Snapshot {
 struct Store {
     db: Mutex<Connection>,
     dir: PathBuf,
+    media_lock: Mutex<()>,
     paste_target: Mutex<Option<platform::PasteTarget>>,
     suppressed_digest: Mutex<Option<String>>,
 }
@@ -212,6 +214,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
     Ok(Store {
         db: Mutex::new(conn),
         dir,
+        media_lock: Mutex::new(()),
         paste_target: Mutex::new(None),
         suppressed_digest: Mutex::new(None),
     })
@@ -554,22 +557,90 @@ fn delete_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) 
     Ok(())
 }
 
+fn list_thumbnail(image: &DynamicImage) -> DynamicImage {
+    let (width, height) = image.dimensions();
+    if u64::from(width) * 5 <= u64::from(height) * 2 {
+        let top = (height - width) / 10;
+        let crop = image.crop_imm(0, top, width, width);
+        crop.thumbnail(width.min(320), width.min(320))
+    } else if u64::from(width) >= u64::from(height) * 3 {
+        let crop_width = (u64::from(height) * 9 / 4) as u32;
+        image
+            .crop_imm((width - crop_width) / 2, 0, crop_width, height)
+            .thumbnail(crop_width.min(720), height.min(320))
+    } else {
+        image.thumbnail(width.min(720), height.min(320))
+    }
+}
+
+fn save_list_thumbnail(source: &Path, output: &Path) -> Result<()> {
+    let image = image::open(source).map_err(err)?;
+    list_thumbnail(&image).save(output).map_err(err)
+}
+
 #[tauri::command]
-fn preview_data(store: tauri::State<Store>, id: String, full: Option<bool>) -> Result<String> {
-    let kind: String = {
+fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) -> Result<String> {
+    let (kind, files): (String, String) = {
         let conn = store.db.lock().map_err(err)?;
-        conn.query_row("SELECT kind FROM records WHERE id=?1", [&id], |r| r.get(0))
-            .map_err(err)?
+        conn.query_row("SELECT kind,files FROM records WHERE id=?1", [&id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .map_err(err)?
     };
     if kind != "image" && kind != "video" {
         return Err("此记录没有图片预览".into());
     }
-    let file = if kind == "image" && full == Some(true) {
-        "image.png"
-    } else {
-        "preview.png"
+    let role = role.as_deref().unwrap_or("thumbnail");
+    if !matches!(role, "thumbnail" | "preview" | "full") {
+        return Err("无效的预览类型".into());
+    }
+    let path = {
+        let _media = store.media_lock.lock().map_err(err)?;
+        let dir = store.dir.join("assets").join(id);
+        let thumbnail = dir.join("thumbnail.png");
+        let legacy = dir.join("preview.png");
+        let frame = dir.join("frame.png");
+        if kind == "image" {
+            let original = dir.join("image.png");
+            if role == "thumbnail" && !thumbnail.exists() {
+                save_list_thumbnail(&original, &thumbnail)?;
+                let _ = fs::remove_file(&legacy);
+            }
+            if role == "thumbnail" {
+                thumbnail
+            } else {
+                original
+            }
+        } else {
+            if !thumbnail.exists() {
+                let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
+                if let Some(file) = files.first() {
+                    let source = file
+                        .stored
+                        .as_deref()
+                        .filter(|path| Path::new(path).exists())
+                        .unwrap_or(&file.original);
+                    if !frame.exists() && Path::new(source).exists() {
+                        let _ = platform::video_preview(Path::new(source), &frame);
+                    }
+                }
+                let source = if frame.exists() { &frame } else { &legacy };
+                if source.exists() {
+                    save_list_thumbnail(source, &thumbnail)?;
+                    if frame.exists() {
+                        let _ = fs::remove_file(&legacy);
+                    }
+                }
+            }
+            if role == "thumbnail" {
+                thumbnail
+            } else if frame.exists() {
+                frame
+            } else {
+                legacy
+            }
+        }
     };
-    let path = store.dir.join("assets").join(id).join(file);
     Ok(format!(
         "data:image/png;base64,{}",
         STANDARD.encode(fs::read(path).map_err(err)?)
@@ -597,6 +668,11 @@ fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
 fn hide_panel(app: tauri::AppHandle) -> Result<()> {
     if let Some(preview) = app.get_webview_window("preview") {
         preview.hide().map_err(err)?;
+    }
+    if let Some(large) = app.get_webview_window("large-preview") {
+        large.hide().map_err(err)?;
+        let _ = app.emit_to("large-preview", "large-preview-clear", ());
+        let _ = app.emit_to("main", "large-preview-closed", ());
     }
     app.get_webview_window("main")
         .ok_or("面板窗口不存在")?
@@ -635,6 +711,41 @@ fn preview_focused(app: tauri::AppHandle) -> Result<bool> {
     app.get_webview_window("preview")
         .ok_or("预览窗口不存在")?
         .is_focused()
+        .map_err(err)
+}
+
+#[tauri::command]
+fn show_large_preview(
+    app: tauri::AppHandle,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<()> {
+    let large = app
+        .get_webview_window("large-preview")
+        .ok_or("大图预览窗口不存在")?;
+    large
+        .set_size(tauri::PhysicalSize::new(width, height))
+        .map_err(err)?;
+    large
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(err)?;
+    large.show().map_err(err)?;
+    large.set_focus().map_err(err)
+}
+
+#[tauri::command]
+fn hide_large_preview(app: tauri::AppHandle) -> Result<()> {
+    app.get_webview_window("large-preview")
+        .ok_or("大图预览窗口不存在")?
+        .hide()
+        .map_err(err)?;
+    let _ = app.emit_to("large-preview", "large-preview-clear", ());
+    let _ = app.emit_to("main", "large-preview-closed", ());
+    app.get_webview_window("main")
+        .ok_or("面板窗口不存在")?
+        .set_focus()
         .map_err(err)
 }
 
@@ -800,10 +911,12 @@ fn save_files(app: tauri::AppHandle, id: String, mut files: Vec<FileItem>) {
         let _ = fs::remove_dir_all(store.dir.join("assets").join(&id));
         return;
     }
-    if files.len() == 1 && video(&files[0].original) {
+    if !files.is_empty() && files.iter().all(|file| video(&file.original)) {
         let source = files[0].stored.as_ref().unwrap_or(&files[0].original);
-        let preview = store.dir.join("assets").join(&id).join("preview.png");
-        if platform::video_preview(Path::new(source), &preview) {
+        let dir = store.dir.join("assets").join(&id);
+        let frame = dir.join("frame.png");
+        if platform::video_preview(Path::new(source), &frame) {
+            let _ = save_list_thumbnail(&frame, &dir.join("thumbnail.png"));
             if let Ok(conn) = store.db.lock() {
                 let _ = conn.execute("UPDATE records SET preview=1 WHERE id=?1", [&id]);
             }
@@ -930,10 +1043,8 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
         fs::create_dir_all(&dir).map_err(err)?;
         fs::write(dir.join("image.png"), &bytes).map_err(err)?;
         let image = RustImageData::from_bytes(&bytes).map_err(err)?;
-        image
-            .thumbnail(380, 260)
-            .map_err(err)?
-            .save_to_path(&dir.join("preview.png").to_string_lossy())
+        list_thumbnail(&image.get_dynamic_image().map_err(err)?)
+            .save(dir.join("thumbnail.png"))
             .map_err(err)?;
         store
             .db
@@ -1054,6 +1165,23 @@ pub fn run() {
                         .app_handle()
                         .get_webview_window("preview")
                         .map(|preview| preview.hide());
+                    let _ = window
+                        .app_handle()
+                        .get_webview_window("large-preview")
+                        .map(|large| large.hide());
+                    let _ = window
+                        .app_handle()
+                        .emit_to("large-preview", "large-preview-clear", ());
+                    let _ = window
+                        .app_handle()
+                        .emit_to("main", "large-preview-closed", ());
+                } else if window.label() == "large-preview" {
+                    let _ = window
+                        .app_handle()
+                        .emit_to("large-preview", "large-preview-clear", ());
+                    let _ = window
+                        .app_handle()
+                        .emit_to("main", "large-preview-closed", ());
                 }
                 let _ = window.hide();
             }
@@ -1078,6 +1206,8 @@ pub fn run() {
             show_preview,
             hide_preview,
             preview_focused,
+            show_large_preview,
+            hide_large_preview,
             apply_record
         ])
         .run(tauri::generate_context!())
@@ -1087,6 +1217,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_thumbnails_crop_long_images_and_keep_normal_images() {
+        let tall = DynamicImage::ImageRgba8(image::ImageBuffer::from_fn(100, 600, |_, y| {
+            if y < 150 {
+                image::Rgba([255, 0, 0, 255])
+            } else {
+                image::Rgba([0, 0, 255, 255])
+            }
+        }));
+        let tall_thumb = list_thumbnail(&tall);
+        assert_eq!(tall_thumb.dimensions(), (100, 100));
+        assert_eq!(tall_thumb.get_pixel(50, 50).0, [255, 0, 0, 255]);
+
+        let wide = DynamicImage::ImageRgba8(image::ImageBuffer::from_fn(600, 100, |x, _| {
+            if (150..450).contains(&x) {
+                image::Rgba([0, 255, 0, 255])
+            } else {
+                image::Rgba([255, 0, 0, 255])
+            }
+        }));
+        let wide_thumb = list_thumbnail(&wide);
+        assert_eq!(wide_thumb.dimensions(), (225, 100));
+        assert_eq!(wide_thumb.get_pixel(112, 50).0, [0, 255, 0, 255]);
+
+        assert_eq!(
+            list_thumbnail(&DynamicImage::new_rgba8(200, 100)).dimensions(),
+            (200, 100)
+        );
+    }
 
     #[test]
     fn recognizes_only_complete_hex_colors() {
