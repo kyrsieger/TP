@@ -881,6 +881,13 @@ fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
     Ok(())
 }
 
+fn open_panel_from_tray(app: &tauri::AppHandle) {
+    if let Err(error) = show_panel(app.clone(), app.state::<Store>()) {
+        eprintln!("Failed to open panel from tray: {error}");
+    }
+    let _ = app.emit("open-requested", ());
+}
+
 #[tauri::command]
 fn hide_panel(app: tauri::AppHandle) -> Result<()> {
     if let Some(preview) = app.get_webview_window("preview") {
@@ -1328,13 +1335,22 @@ impl ClipboardHandler for Watcher {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<_, ()>::new("store")
+                .setup(|app, _| {
+                    app.manage(
+                        initialize(app.path().app_data_dir()?).map_err(std::io::Error::other)?,
+                    );
+                    Ok(())
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--autostart"]),
         ))
         .setup(|app| {
-            app.manage(initialize(app.path().app_data_dir()?).map_err(std::io::Error::other)?);
             let pinned = {
                 let store = app.state::<Store>();
                 let conn = store
@@ -1348,6 +1364,21 @@ pub fn run() {
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
+            #[cfg(windows)]
+            window.with_webview(|webview| unsafe {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                use windows::core::Interface;
+
+                let result = webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.Settings())
+                    .and_then(|settings| settings.cast::<ICoreWebView2Settings3>())
+                    .and_then(|settings| settings.SetAreBrowserAcceleratorKeysEnabled(false));
+                if let Err(error) = result {
+                    eprintln!("Failed to disable panel browser shortcuts: {error}");
+                }
+            })?;
             window.set_always_on_top(pinned)?;
             if !std::env::args().any(|arg| arg == "--autostart") {
                 window.show()?;
@@ -1406,12 +1437,12 @@ pub fn run() {
                             ..
                         }
                     ) {
-                        let _ = tray.app_handle().emit("open-requested", ());
+                        open_panel_from_tray(tray.app_handle());
                     }
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open" => {
-                        let _ = app.emit("open-requested", ());
+                        open_panel_from_tray(app);
                     }
                     "quit" => app.exit(0),
                     _ => {}

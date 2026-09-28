@@ -39,6 +39,8 @@ let groupEdit: { mode: "create" | "rename"; id: number | null } | null = null;
 let groupSaving = false;
 let contextGroupId: number | null = null;
 let activeShortcut = "";
+let shortcutError: string | null = null;
+let shortcutDraft: string | null = null;
 let autostartEnabled: boolean | null = null;
 let autostartSaving = false;
 let positionSaveTimer: number | undefined;
@@ -63,6 +65,7 @@ let backToTopTarget: HTMLElement | null = null;
 let backToTopFrame = 0;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
+const displayShortcut = (shortcut: string) => shortcut.split("+").map(part => part === "Control" ? "Ctrl" : part).join("+");
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
 const call = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => invoke<T>(name, args);
 const icon = (name: string, size = 14) => `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#lu-${name}"/></svg>`;
@@ -273,7 +276,7 @@ async function preparePreview(id: string) {
     if (!monitor || token !== previewGeneration || hoveredId !== id) return;
     const area = monitor.workArea;
     const margin = Math.round(12 * scale);
-    const gap = Math.round(10 * scale);
+    const gap = Math.round(2 * scale);
     const right = area.position.x + area.size.width - margin;
     const left = area.position.x + margin;
     const desired = Math.round(420 * scale);
@@ -488,7 +491,7 @@ function renderSettings() {
   if (!settingsOpen) return;
   const s = state.settings;
   settings.innerHTML = `<h2>设置</h2><label class="inline"><input id="autostart" type="checkbox" ${autostartEnabled ? "checked" : ""} ${autostartEnabled === null || autostartSaving ? "disabled" : ""}>开机启动</label>
-    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(s.shortcut)}" readonly></label>
+    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(displayShortcut(shortcutDraft ?? s.shortcut))}" readonly>${shortcutError ? `<span class="shortcut-error" role="alert">${escapeHtml(shortcutError)}</span>` : ""}</label>
     <label>普通记录数量上限<input id="max-ordinary" type="number" min="1" max="500" value="${s.maxOrdinary}"></label>
     <div class="setting-field"><span class="setting-label">普通记录保留时间</span><div class="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="retention-value">${([[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].find(([value]) => value === s.retentionDays) ?? [s.retentionDays, `${s.retentionDays} 天`])[1]}</span>${icon("chevron", 14)}</button>
@@ -570,7 +573,8 @@ async function placePanel() {
 
 async function registerShortcut(shortcut: string) {
   if (shortcut === activeShortcut) return;
-  if (shortcut) await register(shortcut, () => {
+  if (shortcut) await register(shortcut, event => {
+    if (event.state !== "Pressed") return;
     if (settingsOpen) { settingsOpen = false; renderSettings(); }
     void openPanel().catch(error => toast(String(error)));
   });
@@ -578,11 +582,23 @@ async function registerShortcut(shortcut: string) {
   activeShortcut = shortcut;
 }
 
+function shortcutFailure(shortcut: string, error: unknown) {
+  const detail = String(error);
+  if (!shortcut) return `无法清除快捷键：${detail}`;
+  return /already registered/i.test(detail)
+    ? `${displayShortcut(shortcut)} 已被占用，请更换组合键或解除占用。`
+    : `无法启用 ${displayShortcut(shortcut)}：${detail}`;
+}
+
 function saveSetting(patch: Partial<Settings>, reposition = false) {
   settingsSave = settingsSave.then(async () => {
     const previous = state.settings;
     const next = { ...previous, ...patch };
-    if (Object.keys(patch).every(key => previous[key as keyof Settings] === next[key as keyof Settings])) return;
+    if (Object.keys(patch).every(key => previous[key as keyof Settings] === next[key as keyof Settings])
+      && (patch.shortcut === undefined || patch.shortcut === activeShortcut)) {
+      if (patch.shortcut !== undefined && shortcutDraft === next.shortcut) shortcutDraft = null;
+      return;
+    }
     try {
       if (patch.rememberPosition && !previous.rememberPosition) {
         const position = await panel.outerPosition();
@@ -591,10 +607,16 @@ function saveSetting(patch: Partial<Settings>, reposition = false) {
       if (patch.shortcut !== undefined) await registerShortcut(next.shortcut);
       await call("save_settings", { value: next });
       state.settings = next;
+      if (patch.shortcut !== undefined) {
+        if (shortcutDraft === next.shortcut) shortcutDraft = null;
+        shortcutError = null;
+        renderSettings();
+      }
     } catch (error) {
       if (patch.shortcut !== undefined) await registerShortcut(previous.shortcut).catch(() => {});
+      if (patch.shortcut !== undefined && shortcutDraft === next.shortcut) shortcutError = shortcutFailure(next.shortcut, error);
       renderSettings();
-      toast(String(error));
+      toast(shortcutError ?? String(error));
       return;
     }
     if (reposition) await placePanel().catch(error => toast(String(error)));
@@ -976,12 +998,21 @@ root.addEventListener("keydown", event => {
   if (element.id === "shortcut") {
     event.preventDefault();
     if (event.key === "Backspace" || event.key === "Delete") {
+      shortcutDraft = "";
+      shortcutError = null;
       (element as HTMLInputElement).value = "";
+      element.closest("label")?.querySelector(".shortcut-error")?.remove();
       saveSetting({ shortcut: "" });
       return;
     }
     const shortcut = shortcutFromKey(event);
-    if (shortcut) { (element as HTMLInputElement).value = shortcut; saveSetting({ shortcut }); }
+    if (shortcut) {
+      shortcutDraft = shortcut;
+      shortcutError = null;
+      (element as HTMLInputElement).value = displayShortcut(shortcut);
+      element.closest("label")?.querySelector(".shortcut-error")?.remove();
+      saveSetting({ shortcut });
+    }
   }
 });
 
@@ -1176,7 +1207,9 @@ async function start() {
     });
     await emitTo("preview", "preview-ping");
     await emitTo("large-preview", "large-preview-ping");
-    await refresh(); await placePanel(); await registerShortcut(state.settings.shortcut);
+    await refresh(); await placePanel();
+    try { await registerShortcut(state.settings.shortcut); }
+    catch (error) { shortcutError = shortcutFailure(state.settings.shortcut, error); toast(shortcutError); }
     await listen("history-changed", () => { void refresh(); });
     await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });
     await panel.onMoved(() => { closePreview(); scheduleGeometrySave(); });
