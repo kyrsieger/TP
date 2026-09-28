@@ -111,6 +111,7 @@ struct Record {
     pinned_at: Option<i64>,
     group_id: Option<i64>,
     used_at: i64,
+    created_at: Option<i64>,
     expires_at: Option<i64>,
     storage_mode: String,
     status: String,
@@ -156,7 +157,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
             id TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
             body TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
             favorite INTEGER NOT NULL DEFAULT 0, pinned_at INTEGER, group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-            used_at INTEGER NOT NULL, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
+            used_at INTEGER NOT NULL, created_at INTEGER, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'ready', preview INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS records_used ON records(used_at DESC);
@@ -170,6 +171,17 @@ fn initialize(dir: PathBuf) -> Result<Store> {
         .map_err(err)?;
     if !has_pinned_at {
         conn.execute("ALTER TABLE records ADD COLUMN pinned_at INTEGER", [])
+            .map_err(err)?;
+    }
+    let has_created_at: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='created_at')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(err)?;
+    if !has_created_at {
+        conn.execute("ALTER TABLE records ADD COLUMN created_at INTEGER", [])
             .map_err(err)?;
     }
     conn.execute(
@@ -207,7 +219,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
 
 fn snapshot(store: &Store) -> Result<Snapshot> {
     let conn = store.db.lock().map_err(err)?;
-    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,expires_at,storage_mode,status,preview FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
+    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,created_at,expires_at,storage_mode,status,preview FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
     let mut records = stmt
         .query_map([], |r| {
             let files: String = r.get(3)?;
@@ -220,10 +232,11 @@ fn snapshot(store: &Store) -> Result<Snapshot> {
                 pinned_at: r.get(5)?,
                 group_id: r.get(6)?,
                 used_at: r.get(7)?,
-                expires_at: r.get(8)?,
-                storage_mode: r.get(9)?,
-                status: r.get(10)?,
-                preview: r.get::<_, i64>(11)? != 0,
+                created_at: r.get(8)?,
+                expires_at: r.get(9)?,
+                storage_mode: r.get(10)?,
+                status: r.get(11)?,
+                preview: r.get::<_, i64>(12)? != 0,
             })
         })
         .map_err(err)?
@@ -542,15 +555,21 @@ fn delete_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) 
 }
 
 #[tauri::command]
-fn preview_data(store: tauri::State<Store>, id: String) -> Result<String> {
-    let conn = store.db.lock().map_err(err)?;
-    let kind: String = conn
-        .query_row("SELECT kind FROM records WHERE id=?1", [&id], |r| r.get(0))
-        .map_err(err)?;
+fn preview_data(store: tauri::State<Store>, id: String, full: Option<bool>) -> Result<String> {
+    let kind: String = {
+        let conn = store.db.lock().map_err(err)?;
+        conn.query_row("SELECT kind FROM records WHERE id=?1", [&id], |r| r.get(0))
+            .map_err(err)?
+    };
     if kind != "image" && kind != "video" {
         return Err("此记录没有图片预览".into());
     }
-    let path = store.dir.join("assets").join(id).join("preview.png");
+    let file = if kind == "image" && full == Some(true) {
+        "image.png"
+    } else {
+        "preview.png"
+    };
+    let path = store.dir.join("assets").join(id).join(file);
     Ok(format!(
         "data:image/png;base64,{}",
         STANDARD.encode(fs::read(path).map_err(err)?)
@@ -576,9 +595,46 @@ fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
 
 #[tauri::command]
 fn hide_panel(app: tauri::AppHandle) -> Result<()> {
+    if let Some(preview) = app.get_webview_window("preview") {
+        preview.hide().map_err(err)?;
+    }
     app.get_webview_window("main")
         .ok_or("面板窗口不存在")?
         .hide()
+        .map_err(err)
+}
+
+#[tauri::command]
+fn show_preview(app: tauri::AppHandle, x: i32, y: i32, width: u32, height: u32) -> Result<()> {
+    let preview = app.get_webview_window("preview").ok_or("预览窗口不存在")?;
+    preview
+        .set_size(tauri::PhysicalSize::new(width, height))
+        .map_err(err)?;
+    preview
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(err)?;
+    preview.show().map_err(err)
+}
+
+#[tauri::command]
+fn hide_preview(app: tauri::AppHandle) -> Result<()> {
+    let preview = app.get_webview_window("preview").ok_or("预览窗口不存在")?;
+    let focused = preview.is_focused().map_err(err)?;
+    preview.hide().map_err(err)?;
+    if focused {
+        app.get_webview_window("main")
+            .ok_or("面板窗口不存在")?
+            .set_focus()
+            .map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn preview_focused(app: tauri::AppHandle) -> Result<bool> {
+    app.get_webview_window("preview")
+        .ok_or("预览窗口不存在")?
+        .is_focused()
         .map_err(err)
 }
 
@@ -641,6 +697,9 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
             settings(&conn)?.always_on_top
         };
         if !pinned {
+            let _ = app
+                .get_webview_window("preview")
+                .map(|window| window.hide());
             let _ = app.get_webview_window("main").map(|window| window.hide());
         }
         if platform::paste_to_target(target) {
@@ -859,8 +918,9 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
             changed(app);
             return Ok(());
         }
-        conn.execute("INSERT INTO records(id,digest,kind,body,files,used_at,expires_at,storage_mode,status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-            params![id, digest, kind, body, serde_json::to_string(&file_items).map_err(err)?, now(), expires,
+        let created_at = now();
+        conn.execute("INSERT INTO records(id,digest,kind,body,files,used_at,created_at,expires_at,storage_mode,status) VALUES(?1,?2,?3,?4,?5,?6,?6,?7,?8,?9)",
+            params![id, digest, kind, body, serde_json::to_string(&file_items).map_err(err)?, created_at, expires,
                 if file_items.is_empty() { "" } else { "reference" },
                 if file_items.is_empty() { "ready" } else { "pending" }]).map_err(err)?;
     }
@@ -989,6 +1049,12 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                if window.label() == "main" {
+                    let _ = window
+                        .app_handle()
+                        .get_webview_window("preview")
+                        .map(|preview| preview.hide());
+                }
                 let _ = window.hide();
             }
         })
@@ -1009,6 +1075,9 @@ pub fn run() {
             remember_paste_target,
             show_panel,
             hide_panel,
+            show_preview,
+            hide_preview,
+            preview_focused,
             apply_record
         ])
         .run(tauri::generate_context!())
@@ -1074,6 +1143,35 @@ mod tests {
         value.as_object_mut().unwrap().remove("alwaysOnTop");
         let restored: Settings = serde_json::from_value(value).unwrap();
         assert!(!restored.always_on_top);
+    }
+
+    #[test]
+    fn old_records_keep_creation_time_empty_after_migration() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let conn = Connection::open(dir.join("history.sqlite3")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE records (
+            id TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
+            favorite INTEGER NOT NULL DEFAULT 0, pinned_at INTEGER, group_id INTEGER,
+            used_at INTEGER NOT NULL, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'ready', preview INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO records(id,digest,kind,used_at) VALUES('old','old','text',1000);",
+        )
+        .unwrap();
+        drop(conn);
+        let store = initialize(dir.clone()).unwrap();
+        let records = snapshot(&store).unwrap().records;
+        assert_eq!(records[0].created_at, None);
+        store.db.lock().unwrap().execute(
+            "INSERT INTO records(id,digest,kind,used_at,created_at) VALUES('new','new','text',2000,2000)",
+            [],
+        ).unwrap();
+        assert_eq!(snapshot(&store).unwrap().records[0].created_at, Some(2000));
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     fn test_store() -> Store {

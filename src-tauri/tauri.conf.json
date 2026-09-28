@@ -20,6 +20,19 @@
         "decorations": false,
         "visible": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "preview",
+        "title": "TP 预览",
+        "url": "preview.html",
+        "width": 420,
+        "height": 200,
+        "decorations": false,
+        "resizable": false,
+        "visible": false,
+        "focus": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {

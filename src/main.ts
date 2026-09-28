@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitorFromPoint, PhysicalPosition } from "@tauri-apps/api/window";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import "./styles.css";
@@ -9,7 +9,7 @@ type FileItem = { original: string; stored: string | null };
 type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
   pinnedAt: number | null;
-  groupId: number | null; usedAt: number; expiresAt: number | null;
+  groupId: number | null; usedAt: number; createdAt: number | null; expiresAt: number | null;
   storageMode: string; status: string; preview: boolean;
 };
 type Group = { id: number; name: string };
@@ -44,6 +44,15 @@ const numberSaveTimers = new Map<string, number>();
 let settingsSave: Promise<void> = Promise.resolve();
 let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
+let hoveredId: string | null = null;
+let previewId: string | null = null;
+let previewHovered = false;
+let previewReady = false;
+let hoverTimer: number | undefined;
+let hoverStartedAt = 0;
+let previewCloseTimer: number | undefined;
+let previewGeneration = 0;
+let previewPlacement: { x: number; rowY: number; width: number; scale: number; top: number; bottom: number } | null = null;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -211,7 +220,69 @@ function recordListText(record: RecordItem): string {
   return record.body.split("\n")[0] || "空文本";
 }
 
+function closePreview() {
+  window.clearTimeout(hoverTimer);
+  window.clearTimeout(previewCloseTimer);
+  hoveredId = null;
+  previewId = null;
+  previewHovered = false;
+  previewPlacement = null;
+  previewGeneration++;
+  void call("hide_preview").catch(() => {});
+}
+
+function schedulePreviewClose() {
+  window.clearTimeout(previewCloseTimer);
+  previewCloseTimer = window.setTimeout(() => {
+    if (!hoveredId && !previewHovered) closePreview();
+  }, 220);
+}
+
+async function preparePreview(id: string) {
+  if (!previewReady || hoveredId !== id) return;
+  const token = ++previewGeneration;
+  const row = [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id);
+  const record = state.records.find(item => item.id === id);
+  if (!row || !record) return;
+  try {
+    const [position, size, scale] = await Promise.all([panel.outerPosition(), panel.outerSize(), panel.scaleFactor()]);
+    const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
+    if (!monitor || token !== previewGeneration || hoveredId !== id) return;
+    const area = monitor.workArea;
+    const margin = Math.round(12 * scale);
+    const gap = Math.round(10 * scale);
+    const right = area.position.x + area.size.width - margin;
+    const left = area.position.x + margin;
+    const desired = Math.round(420 * scale);
+    const minimum = Math.round(260 * scale);
+    const rightSpace = right - position.x - size.width - gap;
+    const leftSpace = position.x - gap - left;
+    const useRight = rightSpace >= desired || (leftSpace < desired && rightSpace >= leftSpace);
+    const available = useRight ? rightSpace : leftSpace;
+    const width = Math.max(1, Math.min(desired, available >= minimum ? available : right - left));
+    const anchorX = useRight ? position.x + size.width + gap : position.x - gap - width;
+    const x = Math.max(left, Math.min(anchorX, right - width));
+    const rowY = position.y + Math.round(row.getBoundingClientRect().top * scale);
+    previewId = id;
+    previewPlacement = { x, rowY, width, scale, top: area.position.y, bottom: area.position.y + area.size.height };
+    await emitTo("preview", "preview-content", {
+      id, kind: record.kind, body: record.body, files: record.files,
+      createdAt: record.createdAt, groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
+      preview: record.preview, status: record.status, storageMode: record.storageMode, width: width / scale,
+    });
+  } catch (error) { if (token === previewGeneration) toast(`预览失败：${String(error)}`); }
+}
+
+function hoverRecord(id: string) {
+  if (hoveredId === id) return;
+  closePreview();
+  hoveredId = id;
+  hoverStartedAt = performance.now();
+  hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 300);
+}
+
 function renderList() {
+  closePreview();
   closeMoveGroupMenu();
   const list = document.querySelector<HTMLElement>("#list")!;
   const scrollTop = list.scrollTop;
@@ -792,18 +863,70 @@ document.addEventListener("keyup", event => {
   void apply(id);
 });
 
-window.addEventListener("blur", () => { pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu(); });
+window.addEventListener("blur", () => {
+  pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu();
+  window.setTimeout(async () => {
+    if (!await call<boolean>("preview_focused").catch(() => false)) closePreview();
+  }, 120);
+});
 
-document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); });
-window.addEventListener("resize", closeMoveGroupMenu);
+document.querySelector<HTMLElement>("#list")!.addEventListener("pointerover", event => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
+  if (row?.dataset.id) hoverRecord(row.dataset.id);
+});
+document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", event => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
+  if (!row || row.contains(event.relatedTarget as Node)) return;
+  if (hoveredId === row.dataset.id) {
+    hoveredId = null;
+    window.clearTimeout(hoverTimer);
+    schedulePreviewClose();
+  }
+});
+document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); closePreview(); });
+window.addEventListener("resize", () => { closeMoveGroupMenu(); closePreview(); });
 
 async function start() {
   try {
+    await listen("preview-ready", () => {
+      previewReady = true;
+      if (hoveredId) {
+        const id = hoveredId;
+        window.clearTimeout(hoverTimer);
+        hoverTimer = window.setTimeout(() => { void preparePreview(id); }, Math.max(0, 300 - (performance.now() - hoverStartedAt)));
+      }
+    });
+    await listen<{ id: string; height: number }>("preview-measured", event => {
+      const { id, height: measured } = event.payload;
+      const placement = previewPlacement;
+      if (id !== previewId || !placement || (!hoveredId && !previewHovered)) return;
+      const margin = Math.round(12 * placement.scale);
+      const height = Math.max(1, Math.min(Math.ceil(measured * placement.scale), placement.bottom - placement.top - 2 * margin));
+      const y = Math.max(placement.top + margin, Math.min(placement.rowY, placement.bottom - margin - height));
+      const token = previewGeneration;
+      void call("show_preview", { x: placement.x, y, width: placement.width, height }).then(() => {
+        if (token !== previewGeneration) void call("hide_preview").catch(() => {});
+      }).catch(error => toast(`预览失败：${String(error)}`));
+    });
+    await listen<string>("preview-enter", event => {
+      if (event.payload !== previewId) return;
+      previewHovered = true;
+      window.clearTimeout(previewCloseTimer);
+    });
+    await listen<string>("preview-leave", event => {
+      if (event.payload !== previewId) return;
+      previewHovered = false;
+      schedulePreviewClose();
+    });
+    await listen<string>("preview-blur", event => {
+      if (event.payload === previewId) closePreview();
+    });
+    await emitTo("preview", "preview-ping");
     await refresh(); await placePanel(); await registerShortcut(state.settings.shortcut);
     await listen("history-changed", () => { void refresh(); });
     await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });
-    await panel.onMoved(() => scheduleGeometrySave());
-    await panel.onResized(() => scheduleGeometrySave());
+    await panel.onMoved(() => { closePreview(); scheduleGeometrySave(); });
+    await panel.onResized(() => { closePreview(); scheduleGeometrySave(); });
   } catch (error) { toast(`启动失败：${String(error)}`); }
 }
 
