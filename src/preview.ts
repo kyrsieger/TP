@@ -9,7 +9,7 @@ type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type PreviewPayload = {
   id: string; kind: Kind; body: string; files: { original: string }[];
   createdAt: number | null; groupName: string | null; preview: boolean;
-  status: string; width: number; generation: number;
+  status: string; width: number; maxHeight: number; generation: number;
 };
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
@@ -40,7 +40,8 @@ function render(payload: PreviewPayload) {
     ? `<div class="media multi"><div class="media-stage"></div>${indicatorHtml(payload.files.length)}</div>`
     : `<div class="media"><img id="large-preview" alt="${labels[payload.kind]}预览" hidden><p id="media-error" class="unavailable" hidden></p></div>`;
   const media = payload.kind === "image" || payload.kind === "video";
-  root.innerHTML = `<div class="card" style="width:${payload.width}px">${media ? content + details : details + content}${paths}</div>`;
+  const text = payload.kind === "text";
+  root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${media ? content + details : details + content}${paths}</div>`;
 }
 
 async function measure(payload: PreviewPayload, token: number) {

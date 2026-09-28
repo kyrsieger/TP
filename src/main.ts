@@ -291,6 +291,7 @@ async function preparePreview(id: string) {
       id, kind: record.kind, body: record.body, files: record.files,
       createdAt: record.createdAt, groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
       preview: record.preview, status: record.status, width: width / scale,
+      maxHeight: (area.size.height - 2 * margin) / scale,
       generation: token,
     });
   } catch (error) { if (token === previewGeneration) toast(`预览失败：${String(error)}`); }
