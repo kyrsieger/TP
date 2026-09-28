@@ -33,6 +33,8 @@ let selectedId: string | null = null;
 let pendingShortcutId: string | null = null;
 let settingsOpen = false;
 let clearingCache = false;
+let cacheSizeText = "计算中…";
+let cacheSizeRequest = 0;
 let groupEdit: { mode: "create" | "rename"; id: number | null } | null = null;
 let groupSaving = false;
 let contextGroupId: number | null = null;
@@ -387,6 +389,28 @@ function updateOrdinals() {
   visibleRecords().slice(0, 9).forEach((row, index) => row.querySelector<HTMLElement>(".ordinal")!.textContent = String(index + 1));
 }
 
+function formatCacheSize(bytes: number) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+  return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
+}
+
+async function refreshCacheSize() {
+  const request = ++cacheSizeRequest;
+  try {
+    const bytes = await call<number>("get_cache_size");
+    if (request !== cacheSizeRequest || !settingsOpen) return;
+    cacheSizeText = formatCacheSize(bytes);
+  } catch {
+    if (request !== cacheSizeRequest || !settingsOpen) return;
+    cacheSizeText = "无法获取";
+  }
+  const size = document.querySelector<HTMLElement>("#cache-size");
+  if (size) size.textContent = cacheSizeText;
+}
+
 function renderSettings() {
   const settings = document.querySelector<HTMLElement>("#settings")!;
   settings.hidden = !settingsOpen;
@@ -410,7 +434,7 @@ function renderSettings() {
     </div></div>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
-    <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。</p>
+    <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span></p>
     <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
 }
 
@@ -421,7 +445,7 @@ function render() {
   pin.title = state.settings.alwaysOnTop ? "取消置顶" : "置顶";
   pin.setAttribute("aria-label", pin.title);
 }
-async function refresh() { state = await call<Snapshot>("get_state"); render(); }
+async function refresh() { state = await call<Snapshot>("get_state"); render(); if (settingsOpen) void refreshCacheSize(); }
 
 async function apply(id: string) {
   try { toast(await call<string>("apply_record", { id })); await refresh(); }
@@ -786,7 +810,9 @@ root.addEventListener("click", async event => {
   }
   if (element.closest("#settings-button")) {
     settingsOpen = !settingsOpen;
+    if (settingsOpen) cacheSizeText = "计算中…";
     renderSettings();
+    if (settingsOpen) void refreshCacheSize();
     if (settingsOpen && !autostartSaving) {
       try { autostartEnabled = await call<boolean>("autostart_enabled"); }
       catch (error) { autostartEnabled = null; toast(String(error)); }

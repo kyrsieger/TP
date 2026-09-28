@@ -325,9 +325,7 @@ fn clean(store: &Store) -> Result<bool> {
     Ok(!ids.is_empty())
 }
 
-fn clear_cache_data(store: &Store) -> Result<usize> {
-    let conn = store.db.lock().map_err(err)?;
-    let assets = store.dir.join("assets");
+fn protected_assets(conn: &Connection, assets: &Path) -> Result<HashSet<OsString>> {
     let mut protected = HashSet::<OsString>::new();
     let mut stmt = conn
         .prepare("SELECT id,files FROM records WHERE favorite != 0 OR group_id IS NOT NULL")
@@ -352,6 +350,27 @@ fn clear_cache_data(store: &Store) -> Result<usize> {
             }
         }
     }
+    Ok(protected)
+}
+
+fn cache_size_data(store: &Store) -> Result<u64> {
+    let conn = store.db.lock().map_err(err)?;
+    let assets = store.dir.join("assets");
+    let protected = protected_assets(&conn, &assets)?;
+    let mut size = 0u64;
+    for entry in fs::read_dir(assets).map_err(err)? {
+        let entry = entry.map_err(err)?;
+        if !protected.contains(&entry.file_name()) {
+            size = size.saturating_add(file_size(&entry.path()).map_err(err)?);
+        }
+    }
+    Ok(size)
+}
+
+fn clear_cache_data(store: &Store) -> Result<usize> {
+    let conn = store.db.lock().map_err(err)?;
+    let assets = store.dir.join("assets");
+    let protected = protected_assets(&conn, &assets)?;
     let mut stmt = conn
         .prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL")
         .map_err(err)?;
@@ -388,6 +407,11 @@ fn clear_cache(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<usiz
     let result = clear_cache_data(&store);
     changed(&app);
     result
+}
+
+#[tauri::command]
+fn get_cache_size(store: tauri::State<Store>) -> Result<u64> {
+    cache_size_data(&store)
 }
 
 #[tauri::command]
@@ -1309,6 +1333,7 @@ pub fn run() {
             move_group,
             delete_record,
             clear_cache,
+            get_cache_size,
             preview_data,
             remember_paste_target,
             show_panel,
@@ -1733,7 +1758,9 @@ mod tests {
                     params![id, kind, files, now(), favorite, group_id]).unwrap();
             }
         }
+        assert_eq!(cache_size_data(&store).unwrap(), 26);
         assert_eq!(clear_cache_data(&store).unwrap(), 5);
+        assert_eq!(cache_size_data(&store).unwrap(), 0);
         let mut remaining: Vec<String> = snapshot(&store)
             .unwrap()
             .records
@@ -1759,7 +1786,9 @@ mod tests {
             300
         );
         fs::write(assets.join("late-orphan.bin"), b"orphan").unwrap();
+        assert_eq!(cache_size_data(&store).unwrap(), 6);
         assert_eq!(clear_cache_data(&store).unwrap(), 0);
+        assert_eq!(cache_size_data(&store).unwrap(), 0);
         assert!(!assets.join("late-orphan.bin").exists());
         let dir = store.dir.clone();
         drop(store);
