@@ -660,6 +660,7 @@ fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
     remember_paste_target(store)?;
     let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
     window.show().map_err(err)?;
+    window.unminimize().map_err(err)?;
     window.set_focus().map_err(err)?;
     Ok(())
 }
@@ -1139,7 +1140,7 @@ pub fn run() {
             });
             use tauri::{
                 menu::{Menu, MenuItem},
-                tray::TrayIconBuilder,
+                tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
             };
             let open = MenuItem::with_id(app, "open", "打开剪贴板", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -1147,6 +1148,19 @@ pub fn run() {
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(
+                        event,
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                    ) {
+                        let _ = tray.app_handle().emit("open-requested", ());
+                    }
+                })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open" => {
                         let _ = app.emit("open-requested", ());
