@@ -59,6 +59,8 @@ let previewCloseTimer: number | undefined;
 let previewGeneration = 0;
 let previewPlacement: { x: number; rowY: number; width: number; scale: number; top: number; bottom: number } | null = null;
 let thumbnailObserver: IntersectionObserver;
+let backToTopTarget: HTMLElement | null = null;
+let backToTopFrame = 0;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -92,7 +94,7 @@ function renderGroups() {
   if (!groupEdit) {
     const groups = [{ id: "default", name: "默认" }, { id: "favorite", name: "收藏" },
       ...state.groups.map(group => ({ id: `group:${group.id}`, name: group.name }))];
-    tabs.innerHTML = groups.map(group => `<button class="group ${view === group.id ? "active" : ""}" data-view="${group.id}">${escapeHtml(group.name)}</button>`).join("")
+    tabs.innerHTML = groups.map(group => `<button class="group ${view === group.id ? "active" : ""}" data-view="${group.id}" data-label="${escapeHtml(group.name)}">${escapeHtml(group.name)}</button>`).join("")
       + `<button class="add-group" title="添加分组" aria-label="添加分组" id="add-group">${icon("plus", 14)}</button>`;
   }
   if (view !== "default") setFilterMenuOpen(false);
@@ -138,6 +140,7 @@ function cancelGroupEdit() {
   if (!groupEdit || groupSaving) return;
   groupEdit = null;
   renderGroups();
+  updateBackToTopButton();
 }
 
 async function commitGroupEdit() {
@@ -303,6 +306,8 @@ function hoverRecord(id: string) {
 }
 
 function renderList() {
+  window.cancelAnimationFrame(backToTopFrame);
+  backToTopFrame = 0;
   closePreview();
   closeMoveGroupMenu();
   closeRecordMenu();
@@ -347,6 +352,7 @@ function renderList() {
   list.replaceChildren(nextList.content);
   list.scrollTop = scrollTop;
   updateOrdinals();
+  updateBackToTopTarget();
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
@@ -361,6 +367,22 @@ function renderList() {
   list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(image => {
     if (!image.hasAttribute("src") && !image.dataset.loading) observer.observe(image);
   });
+}
+
+function updateBackToTopTarget() {
+  const list = document.querySelector<HTMLElement>("#list")!;
+  const rows = [...list.querySelectorAll<HTMLElement>(".record")];
+  const style = getComputedStyle(list);
+  const availableHeight = list.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  let capacity = 0;
+  let height = 0;
+  for (const row of rows) {
+    if (height + row.offsetHeight > availableHeight) break;
+    height += row.offsetHeight;
+    capacity++;
+  }
+  backToTopTarget = rows[capacity + 9] ?? null;
+  updateBackToTopButton();
 }
 
 async function openLargePreview(id: string) {
@@ -388,6 +410,51 @@ function updateOrdinals() {
   const list = document.querySelector<HTMLElement>("#list")!;
   list.querySelectorAll<HTMLElement>(".ordinal").forEach(el => el.textContent = "");
   visibleRecords().slice(0, 9).forEach((row, index) => row.querySelector<HTMLElement>(".ordinal")!.textContent = String(index + 1));
+}
+
+function updateBackToTopButton() {
+  const active = document.querySelector<HTMLButtonElement>("#groups .group.active");
+  const previous = document.querySelector<HTMLButtonElement>("#groups .group.back-to-top");
+  if (previous && previous !== active) {
+    previous.classList.remove("back-to-top");
+    previous.textContent = previous.dataset.label!;
+    previous.style.removeProperty("width");
+    previous.removeAttribute("title");
+    previous.removeAttribute("aria-label");
+  }
+  if (!active) return;
+  const list = document.querySelector<HTMLElement>("#list")!;
+  const show = backToTopTarget !== null && backToTopTarget.getBoundingClientRect().top < list.getBoundingClientRect().bottom;
+  if (active.classList.contains("back-to-top") === show) return;
+  if (show) active.style.width = `${active.getBoundingClientRect().width}px`;
+  active.classList.toggle("back-to-top", show);
+  active.innerHTML = show ? icon("arrow-up-to-line", 15) : escapeHtml(active.dataset.label!);
+  if (show) {
+    active.title = "返回顶部";
+    active.setAttribute("aria-label", "返回顶部");
+  } else {
+    active.style.removeProperty("width");
+    active.removeAttribute("title");
+    active.removeAttribute("aria-label");
+  }
+}
+
+function scrollBackToTop() {
+  const list = document.querySelector<HTMLElement>("#list")!;
+  window.cancelAnimationFrame(backToTopFrame);
+  backToTopFrame = 0;
+  const start = list.scrollTop;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { list.scrollTop = 0; return; }
+  const duration = Math.min(700, 320 + Math.sqrt(start) * 12);
+  const startedAt = performance.now();
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const eased = progress < .5 ? 2 * progress * progress : 1 - 2 * (1 - progress) * (1 - progress);
+    list.scrollTop = start * (1 - eased);
+    if (progress < 1) backToTopFrame = window.requestAnimationFrame(step);
+    else backToTopFrame = 0;
+  };
+  backToTopFrame = window.requestAnimationFrame(step);
 }
 
 function formatCacheSize(bytes: number) {
@@ -460,6 +527,8 @@ function cycleGroup(direction: number) {
 }
 
 function moveSelection(direction: number) {
+  window.cancelAnimationFrame(backToTopFrame);
+  backToTopFrame = 0;
   const records = filtered();
   if (!records.length) return;
   const index = records.findIndex(record => record.id === selectedId);
@@ -561,6 +630,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
     <symbol id="lu-pin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4a1 1 0 0 1 1 1z"/></symbol>
     <symbol id="lu-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0a2.34 2.34 0 0 0 3.319 1.915a2.34 2.34 0 0 1 2.33 4.033a2.34 2.34 0 0 0 0 3.831a2.34 2.34 0 0 1-2.33 4.033a2.34 2.34 0 0 0-3.319 1.915a2.34 2.34 0 0 1-4.659 0a2.34 2.34 0 0 0-3.32-1.915a2.34 2.34 0 0 1-2.33-4.033a2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></g></symbol>
     <symbol id="lu-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M5 12h14m-7-7v14"/></symbol>
+    <symbol id="lu-arrow-up-to-line" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 19V7m-5 5 5-5 5 5M4 3h16"/></symbol>
     <symbol id="lu-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M18 6L6 18M6 6l12 12"/></symbol>
     <symbol id="lu-minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M5 12h14"/></symbol>
     <symbol id="lu-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
@@ -796,6 +866,7 @@ root.addEventListener("click", async event => {
     if (open) openMoveGroupMenu(moveTrigger);
     return;
   }
+  if (element.closest("#groups .group.back-to-top")) { scrollBackToTop(); return; }
   const group = element.closest<HTMLElement>("[data-view]");
   if (group) { selectGroup(group.dataset.view!); return; }
   const recordPin = element.closest<HTMLElement>("[data-record-pin]");
@@ -844,7 +915,7 @@ root.addEventListener("click", async event => {
 
 root.addEventListener("dblclick", event => {
   const group = (event.target as HTMLElement).closest<HTMLElement>("#groups .group[data-view^='group:']");
-  if (group) { startGroupEdit("rename", Number(group.dataset.view!.slice(6))); return; }
+  if (group && !group.classList.contains("back-to-top")) { startGroupEdit("rename", Number(group.dataset.view!.slice(6))); return; }
   const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
   if (row && !(event.target as HTMLElement).closest("button")) void apply(row.dataset.id!);
 });
@@ -1024,8 +1095,10 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", eve
     schedulePreviewClose();
   }
 });
-document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
-window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
+document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); updateBackToTopButton(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
+document.querySelector<HTMLElement>("#list")!.addEventListener("wheel", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
+document.querySelector<HTMLElement>("#list")!.addEventListener("pointerdown", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
+window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); updateBackToTopTarget(); });
 
 async function start() {
   try {
