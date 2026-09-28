@@ -1091,7 +1091,7 @@ document.addEventListener("keydown", event => {
   }
   if (event.shiftKey && event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.focus(); return; }
   const shortcutDigit = /^Digit([1-9])$/.exec(event.code)?.[1];
-  if (event.ctrlKey && shortcutDigit) {
+  if (event.ctrlKey && !event.getModifierState("AltGraph") && shortcutDigit) {
     event.preventDefault();
     pendingShortcutId = visibleRecords()[Number(shortcutDigit) - 1]?.dataset.id ?? null;
     return;
@@ -1112,7 +1112,30 @@ document.addEventListener("keydown", event => {
     }
   }
   if (event.key === "Enter" && selectedId) { event.preventDefault(); void apply(selectedId); return; }
-  if (event.key === "Escape") { largePreviewId = null; void action("hide_panel"); }
+  if (event.key === "Escape") { largePreviewId = null; void action("hide_panel"); return; }
+  if ((event.target as HTMLElement).closest("input, textarea, [contenteditable='true']") ||
+      event.ctrlKey && !event.getModifierState("AltGraph") || event.metaKey) return;
+  const input = document.querySelector<HTMLInputElement>("#search")!;
+  if (event.isComposing || event.key === "Process" || event.key === "Dead" || event.keyCode === 229) {
+    input.focus();
+    return;
+  }
+  if (event.key === "Backspace" || event.key === "Delete") {
+    event.preventDefault();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    if (event.key === "Backspace" && input.value) {
+      const last = Array.from(input.value).pop()!;
+      input.setRangeText("", input.value.length - last.length, input.value.length, "end");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return;
+  }
+  if (Array.from(event.key).length !== 1) return;
+  event.preventDefault();
+  input.focus();
+  input.setRangeText(event.key, input.value.length, input.value.length, "end");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 });
 
 document.addEventListener("keyup", event => {
