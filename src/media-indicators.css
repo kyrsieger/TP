@@ -1,0 +1,8 @@
+.page-indicators{position:absolute;bottom:12px;left:50%;z-index:2;display:flex;align-items:center;flex:none;width:max-content;max-width:calc(100% - 16px);height:22px;padding:1px 3px;border:1px solid rgba(100,116,139,.1);border-radius:999px;background:rgba(255,255,255,.78);box-shadow:0 1px 5px rgba(15,23,42,.08);backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:none;transform:translateX(-50%);transition:bottom .24s ease,max-width .24s ease;cursor:default}
+.page-indicators::-webkit-scrollbar{display:none}
+.page-indicator{display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;cursor:pointer}
+.page-indicator::before{content:"";width:5px;height:5px;border-radius:999px;background:#b0bac7;transition:width .16s ease,background .16s ease}
+.page-indicator.active::before{width:13px;background:#8f9bab}
+.page-indicator:hover::before{background:#7e8b9b}
+.page-indicator:focus-visible{outline:2px solid #8f9bab;outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){.page-indicators,.page-indicator::before{transition:none}}

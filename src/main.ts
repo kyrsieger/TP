@@ -52,6 +52,7 @@ let previewHovered = false;
 let previewReady = false;
 let largePreviewReady = false;
 let largePreviewId: string | null = null;
+let largePreviewSizeRequest = 0;
 let hoverTimer: number | undefined;
 let hoverStartedAt = 0;
 let previewCloseTimer: number | undefined;
@@ -366,11 +367,11 @@ async function openLargePreview(id: string) {
   if (largePreviewId) return;
   const record = state.records.find(item => item.id === id);
   if (!record || (record.kind !== "image" && record.kind !== "video")) return;
-  if (record.kind === "video" && !record.preview) { toast("首帧预览不可用"); return; }
+  if (record.kind === "video" && !record.preview && record.files.length < 2) { toast("首帧预览不可用"); return; }
   if (!largePreviewReady) { toast("大图预览尚未就绪"); return; }
   closePreview();
   largePreviewId = id;
-  try { await emitTo("large-preview", "large-preview-content", { id, kind: record.kind }); }
+  try { await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length) }); }
   catch (error) { largePreviewId = null; toast(`预览失败：${String(error)}`); }
 }
 
@@ -1029,8 +1030,9 @@ window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(
 async function start() {
   try {
     await listen("large-preview-ready", () => { largePreviewReady = true; });
-    await listen<{ id: string; width: number; height: number }>("large-preview-loaded", async event => {
-      const { id, width: imageWidth, height: imageHeight } = event.payload;
+    await listen<{ id: string; fixed: boolean; width: number; height: number }>("large-preview-loaded", async event => {
+      const request = ++largePreviewSizeRequest;
+      const { id, fixed, width: imageWidth, height: imageHeight } = event.payload;
       if (largePreviewId !== id) return;
       if (selectedId !== id) {
         largePreviewId = null;
@@ -1040,19 +1042,21 @@ async function start() {
       try {
         const [position, size, scale] = await Promise.all([panel.outerPosition(), panel.outerSize(), panel.scaleFactor()]);
         const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
-        if (largePreviewId !== id) return;
+        if (largePreviewId !== id || request !== largePreviewSizeRequest) return;
         if (!monitor) throw new Error("无法确定当前屏幕");
         const area = monitor.workArea;
         const maxWidth = Math.max(1, Math.round(Math.min(area.size.width * .9, 1600 * scale)));
         const maxHeight = Math.max(1, Math.round(Math.min(area.size.height * .9, 1000 * scale)));
-        const imageScale = Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
-        const width = Math.max(1, Math.round(imageWidth * scale * imageScale));
-        const height = Math.max(1, Math.round(imageHeight * scale * imageScale));
+        const imageScale = fixed ? 1 : Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
+        const width = fixed ? maxWidth : Math.max(1, Math.round(imageWidth * scale * imageScale));
+        const height = fixed ? maxHeight : Math.max(1, Math.round(imageHeight * scale * imageScale));
         const x = Math.round(area.position.x + (area.size.width - width) / 2);
         const y = Math.round(area.position.y + (area.size.height - height) / 2);
+        if (request !== largePreviewSizeRequest) return;
         await call("show_large_preview", { x, y, width, height });
         if (largePreviewId !== id) await call("hide_large_preview");
       } catch (error) {
+        if (request !== largePreviewSizeRequest) return;
         largePreviewId = null;
         void emitTo("large-preview", "large-preview-clear");
         toast(`预览失败：${String(error)}`);

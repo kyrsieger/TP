@@ -640,7 +640,7 @@ fn save_list_thumbnail(source: &Path, output: &Path) -> Result<()> {
     list_thumbnail(&image).save(output).map_err(err)
 }
 
-fn save_image_file_preview(source: &Path, dir: &Path) -> Result<()> {
+fn save_indexed_image_file_preview(source: &Path, dir: &Path, index: usize) -> Result<PathBuf> {
     let image = image::ImageReader::open(source)
         .map_err(err)?
         .with_guessed_format()
@@ -648,14 +648,31 @@ fn save_image_file_preview(source: &Path, dir: &Path) -> Result<()> {
         .decode()
         .map_err(err)?;
     fs::create_dir_all(dir).map_err(err)?;
-    image.save(dir.join("image.png")).map_err(err)?;
-    list_thumbnail(&image)
-        .save(dir.join("thumbnail.png"))
-        .map_err(err)
+    let output = if index == 0 {
+        dir.join("image.png")
+    } else {
+        dir.join(format!("image-{index}.png"))
+    };
+    image.save(&output).map_err(err)?;
+    if index == 0 {
+        list_thumbnail(&image)
+            .save(dir.join("thumbnail.png"))
+            .map_err(err)?;
+    }
+    Ok(output)
+}
+
+fn save_image_file_preview(source: &Path, dir: &Path) -> Result<()> {
+    save_indexed_image_file_preview(source, dir, 0).map(|_| ())
 }
 
 #[tauri::command]
-fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) -> Result<String> {
+fn preview_data(
+    store: tauri::State<Store>,
+    id: String,
+    role: Option<String>,
+    index: Option<usize>,
+) -> Result<String> {
     let (kind, files): (String, String) = {
         let conn = store.db.lock().map_err(err)?;
         conn.query_row("SELECT kind,files FROM records WHERE id=?1", [&id], |r| {
@@ -670,23 +687,34 @@ fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) ->
     if !matches!(role, "thumbnail" | "preview" | "full") {
         return Err("无效的预览类型".into());
     }
+    let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
+    let index = index.unwrap_or(0);
+    if (files.is_empty() && index != 0) || (!files.is_empty() && index >= files.len()) {
+        return Err("无效的预览序号".into());
+    }
+    if role == "thumbnail" && index != 0 {
+        return Err("缩略图只用于首个文件".into());
+    }
     let path = {
         let _media = store.media_lock.lock().map_err(err)?;
         let dir = store.dir.join("assets").join(id);
         let thumbnail = dir.join("thumbnail.png");
         let legacy = dir.join("preview.png");
-        let frame = dir.join("frame.png");
+        let source = files.get(index).map(|file| {
+            file.stored
+                .as_deref()
+                .filter(|path| Path::new(path).exists())
+                .unwrap_or(&file.original)
+        });
         if kind == "image" {
-            let original = dir.join("image.png");
+            let original = if index == 0 {
+                dir.join("image.png")
+            } else {
+                dir.join(format!("image-{index}.png"))
+            };
             if !original.exists() {
-                let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
-                if let Some(file) = files.first() {
-                    let source = file
-                        .stored
-                        .as_deref()
-                        .filter(|path| Path::new(path).exists())
-                        .unwrap_or(&file.original);
-                    save_image_file_preview(Path::new(source), &dir)?;
+                if let Some(source) = source {
+                    save_indexed_image_file_preview(Path::new(source), &dir, index)?;
                 }
             }
             if role == "thumbnail" && !thumbnail.exists() {
@@ -699,23 +727,24 @@ fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) ->
                 original
             }
         } else {
-            if !thumbnail.exists() {
-                let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
-                if let Some(file) = files.first() {
-                    let source = file
-                        .stored
-                        .as_deref()
-                        .filter(|path| Path::new(path).exists())
-                        .unwrap_or(&file.original);
-                    if !frame.exists() && Path::new(source).exists() {
-                        let _ = platform::video_preview(Path::new(source), &frame);
-                    }
+            let frame = if index == 0 {
+                dir.join("frame.png")
+            } else {
+                dir.join(format!("frame-{index}.png"))
+            };
+            if !frame.exists() {
+                if let Some(source) = source.filter(|path| Path::new(path).exists()) {
+                    let _ = platform::video_preview(Path::new(source), &frame);
                 }
-                let source = if frame.exists() { &frame } else { &legacy };
-                if source.exists() {
-                    save_list_thumbnail(source, &thumbnail)?;
-                    if frame.exists() {
-                        let _ = fs::remove_file(&legacy);
+            }
+            if !thumbnail.exists() {
+                if index == 0 {
+                    let source = if frame.exists() { &frame } else { &legacy };
+                    if source.exists() {
+                        save_list_thumbnail(source, &thumbnail)?;
+                        if frame.exists() {
+                            let _ = fs::remove_file(&legacy);
+                        }
                     }
                 }
             }
@@ -723,8 +752,10 @@ fn preview_data(store: tauri::State<Store>, id: String, role: Option<String>) ->
                 thumbnail
             } else if frame.exists() {
                 frame
-            } else {
+            } else if index == 0 {
                 legacy
+            } else {
+                frame
             }
         }
     };
@@ -1397,16 +1428,21 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let png = dir.join("one.PNG");
         let jpeg = dir.join("two.jpg");
+        let video = dir.join("clip.mp4");
         let text = dir.join("notes.txt");
         DynamicImage::new_rgb8(12, 8).save(&png).unwrap();
         DynamicImage::new_rgb8(12, 8).save(&jpeg).unwrap();
+        fs::write(&video, b"video").unwrap();
         fs::write(&text, b"text").unwrap();
         let png = png.to_string_lossy().into_owned();
         let jpeg = jpeg.to_string_lossy().into_owned();
+        let video = video.to_string_lossy().into_owned();
         let text = text.to_string_lossy().into_owned();
 
         assert_eq!(file_kind(&[png.clone()]), "image");
         assert_eq!(file_kind(&[png.clone(), jpeg]), "image");
+        assert_eq!(file_kind(&[video.clone(), video.clone()]), "video");
+        assert_eq!(file_kind(&[png.clone(), video]), "file");
         assert_eq!(file_kind(&[png, text]), "file");
         fs::remove_dir_all(dir).unwrap();
     }
@@ -1451,6 +1487,35 @@ mod tests {
                 .dimensions(),
             (12, 8)
         );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn image_file_previews_keep_each_file_in_its_own_slot() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("first.png");
+        let second = dir.join("second.png");
+        DynamicImage::new_rgb8(12, 8).save(&first).unwrap();
+        DynamicImage::new_rgb8(8, 12).save(&second).unwrap();
+        let previews = dir.join("previews");
+
+        save_indexed_image_file_preview(&first, &previews, 0).unwrap();
+        save_indexed_image_file_preview(&second, &previews, 1).unwrap();
+
+        assert_eq!(
+            image::open(previews.join("image.png"))
+                .unwrap()
+                .dimensions(),
+            (12, 8)
+        );
+        assert_eq!(
+            image::open(previews.join("image-1.png"))
+                .unwrap()
+                .dimensions(),
+            (8, 12)
+        );
+        assert!(previews.join("thumbnail.png").exists());
         fs::remove_dir_all(dir).unwrap();
     }
 
