@@ -10,7 +10,7 @@ type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
   pinnedAt: number | null;
   groupId: number | null; usedAt: number; createdAt: number | null; expiresAt: number | null;
-  storageMode: string; status: string; preview: boolean;
+  status: string; preview: boolean;
 };
 type Group = { id: number; name: string };
 type Settings = {
@@ -271,7 +271,7 @@ async function preparePreview(id: string) {
     await emitTo("preview", "preview-content", {
       id, kind: record.kind, body: record.body, files: record.files,
       createdAt: record.createdAt, groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
-      preview: record.preview, status: record.status, storageMode: record.storageMode, width: width / scale,
+      preview: record.preview, status: record.status, width: width / scale,
       generation: token,
     });
   } catch (error) { if (token === previewGeneration) toast(`预览失败：${String(error)}`); }
@@ -299,7 +299,7 @@ function renderList() {
     void call("hide_large_preview").catch(() => {});
   }
   list.innerHTML = records.length ? records.map(record => {
-    const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本失败，路径引用" : record.storageMode === "reference" ? "路径引用" : "";
+    const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     const media = record.kind === "image" || record.kind === "video";
     const text = media ? "" : recordListText(record);

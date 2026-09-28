@@ -6,7 +6,7 @@ type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type PreviewPayload = {
   id: string; kind: Kind; body: string; files: { original: string }[];
   createdAt: number | null; groupName: string | null; preview: boolean;
-  status: string; storageMode: string; width: number; generation: number;
+  status: string; width: number; generation: number;
 };
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
@@ -21,8 +21,9 @@ function fileName(path: string) { return path.split(/[\\/]/).pop() || path; }
 
 function render(payload: PreviewPayload) {
   const created = payload.createdAt === null ? "" : `<div><dt>创建时间</dt><dd>${escapeHtml(new Date(payload.createdAt).toLocaleString("zh-CN", { hour12: false }))}</dd></div>`;
-  const status = payload.status === "pending" ? "保存副本中" : payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本失败，路径引用" : payload.storageMode === "reference" ? "路径引用" : "";
-  const details = `<dl class="details"><div><dt>类型</dt><dd>${labels[payload.kind]}</dd></div><div><dt>分组</dt><dd>${escapeHtml(payload.groupName ?? "未分组")}</dd></div>${created}${status ? `<div><dt>状态</dt><dd>${status}</dd></div>` : ""}</dl>`;
+  const group = payload.groupName === null ? "" : `<div><dt>分组</dt><dd>${escapeHtml(payload.groupName)}</dd></div>`;
+  const status = payload.status === "pending" ? "保存副本中" : payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
+  const details = `<dl class="details"><div><dt>类型</dt><dd>${labels[payload.kind]}</dd></div>${group}${created}${status ? `<div><dt>状态</dt><dd>${status}</dd></div>` : ""}</dl>`;
   const paths = payload.files.length ? `<div class="files">${payload.files.map(file => `<div class="file"><strong>${escapeHtml(fileName(file.original))}</strong><div class="path">${escapeHtml(file.original)}</div></div>`).join("")}</div>` : "";
   let content = "";
   if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${escapeHtml(payload.body)}</pre>`;
@@ -31,7 +32,8 @@ function render(payload: PreviewPayload) {
     content = `<div class="color-content"><span class="color-disc" style="background:${color}"></span><span>${escapeHtml(payload.body)}</span></div>`;
   }
   if (payload.kind === "image" || payload.kind === "video") content = payload.kind === "image" || payload.preview ? `<div class="media"><img id="large-preview" alt="${labels[payload.kind]}预览"></div>` : `<p class="unavailable">首帧预览不可用</p>`;
-  root.innerHTML = `<div class="card" style="width:${payload.width}px">${details}${content}${paths}</div>`;
+  const media = payload.kind === "image" || payload.kind === "video";
+  root.innerHTML = `<div class="card" style="width:${payload.width}px">${media ? content + details : details + content}${paths}</div>`;
 }
 
 async function showContent(payload: PreviewPayload) {
