@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitorFromPoint, PhysicalPosition } from "@tauri-apps/api/window";
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import "./styles.css";
 
 type Kind = "text" | "link" | "image" | "file" | "video" | "color";
@@ -348,7 +348,7 @@ function renderList() {
       ${record.groupId !== null ? `<span class="record-indicator group-indicator" aria-label="已分组" title="已分组">${icon("group", 13)}</span>` : ""}</span>
       <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
       <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
-      <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("group", 13)}</button>
+      <button class="move-group ${record.groupId !== null ? "on" : ""}" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("group", 13)}</button>
       <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
   }).join("") : `<div class="empty">这里还没有记录</div>`;
   nextList.content.querySelectorAll<HTMLImageElement>(".preview[data-preview]").forEach(image => {
@@ -574,6 +574,7 @@ async function placePanel() {
 
 async function registerShortcut(shortcut: string) {
   if (shortcut === activeShortcut) return;
+  if (shortcut && await isRegistered(shortcut)) await unregister(shortcut);
   if (shortcut) await register(shortcut, event => {
     if (event.state !== "Pressed") return;
     if (settingsOpen) { settingsOpen = false; renderSettings(); }
@@ -673,7 +674,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
   <header class="titlebar"><svg class="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="#4f46e5" stroke-width="2"/><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="#4f46e5"/></svg><span class="appname">TP</span>
     <div class="winbtns"><button id="minimize" class="winbtn" title="最小化" aria-label="最小化">${icon("minus", 13)}</button><button id="maximize" class="winbtn" title="最大化或还原" aria-label="最大化或还原">${icon("square", 11)}</button><button id="close" class="winbtn close" title="隐藏面板" aria-label="隐藏面板">${icon("x", 13)}</button></div>
   </header>
-  <div class="toolbar"><label class="search-box">${icon("search", 13)}<input id="search" placeholder="搜索 · Shift+Esc" aria-label="搜索当前分组"></label>
+  <div class="toolbar"><div class="search-box"><label class="search-field" for="search">${icon("search", 13)}<input id="search" placeholder="搜索 · Shift+Esc" aria-label="搜索当前分组" autocomplete="off"></label><button id="clear-search" type="button" title="清空搜索" aria-label="清空搜索" hidden>${icon("x", 13)}</button></div>
     <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
       <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
     <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
@@ -849,6 +850,15 @@ root.addEventListener("click", async event => {
   if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
   if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
   if (element.closest("#close")) { largePreviewId = null; await action("hide_panel"); return; }
+  if (element.closest("#clear-search")) {
+    const input = document.querySelector<HTMLInputElement>("#search")!;
+    input.value = "";
+    search = "";
+    document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = true;
+    renderList();
+    input.focus();
+    return;
+  }
   if (element.closest("#kind-filter")) {
     setFilterMenuOpen(filterMenu.hidden === true);
     return;
@@ -978,7 +988,11 @@ root.addEventListener("change", event => {
 
 root.addEventListener("input", event => {
   const element = event.target as HTMLInputElement;
-  if (element.id === "search") { search = element.value; renderList(); }
+  if (element.id === "search") {
+    search = element.value;
+    document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = !search;
+    renderList();
+  }
   if (element.id === "max-ordinary" || element.id === "sensitive") {
     window.clearTimeout(numberSaveTimers.get(element.id));
     numberSaveTimers.set(element.id, window.setTimeout(() => {
