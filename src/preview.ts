@@ -8,7 +8,7 @@ import "./media-indicators.css";
 type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type PreviewPayload = {
   id: string; kind: Kind; body: string; files: { original: string }[];
-  createdAt: number | null; groupName: string | null; preview: boolean;
+  groupName: string | null; preview: boolean;
   status: string; width: number; maxHeight: number; generation: number;
 };
 
@@ -25,10 +25,10 @@ let lastWheelAt = 0;
 function fileName(path: string) { return path.split(/[\\/]/).pop() || path; }
 
 function render(payload: PreviewPayload) {
-  const created = payload.createdAt === null ? "" : `<div><dt>创建时间</dt><dd>${escapeHtml(new Date(payload.createdAt).toLocaleString("zh-CN", { hour12: false }))}</dd></div>`;
   const group = payload.groupName === null ? "" : `<div><dt>分组</dt><dd>${escapeHtml(payload.groupName)}</dd></div>`;
-  const status = payload.status === "pending" ? "保存副本中" : payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
-  const details = `<dl class="details"><div><dt>类型</dt><dd>${labels[payload.kind]}</dd></div>${group}${created}${status ? `<div><dt>状态</dt><dd>${status}</dd></div>` : ""}</dl>`;
+  const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
+  const details = group ? `<dl class="details">${group}</dl>` : "";
+  const statusNote = status ? `<div class="status-note">${status}</div>` : "";
   const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><strong>${escapeHtml(fileName(file.original))}</strong><div class="path">${escapeHtml(file.original)}</div></li>`).join("")}</ul>` : "";
   let content = "";
   if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${escapeHtml(payload.body)}</pre>`;
@@ -41,7 +41,7 @@ function render(payload: PreviewPayload) {
     : `<div class="media"><img id="large-preview" alt="${labels[payload.kind]}预览" hidden><p id="media-error" class="unavailable" hidden></p></div>`;
   const media = payload.kind === "image" || payload.kind === "video";
   const text = payload.kind === "text";
-  root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${media ? content + details : details + content}${paths}</div>`;
+  root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${media ? content + details : details + content}${paths}${statusNote}</div>`;
 }
 
 async function measure(payload: PreviewPayload, token: number) {

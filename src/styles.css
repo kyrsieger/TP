@@ -90,6 +90,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .media-record .record-indicators{position:absolute;top:8px;right:8px;z-index:1;border-radius:6px;background:rgba(255,255,255,.9)}
 .pin-indicator{color:var(--accent)}
 .favorite-indicator{color:var(--star)}
+.group-indicator{color:var(--accent)}
 .record:hover .record-indicator,.record:focus-within .record-indicator{display:none}
 .record-actions{display:none;flex:0 0 auto;align-items:center;gap:2px;margin-left:4px;padding:2px;border-radius:8px;background:#fff}
 .media-record .record-actions{position:absolute;top:8px;right:8px;z-index:2;margin:0}

@@ -9,6 +9,7 @@ body{overflow:hidden}
 .details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:12px;line-height:18px}
 .details dt{color:#8a93a3}
 .details dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.status-note{margin-top:12px;color:#a16207;font-size:12px;line-height:18px}
 .text-content{margin:0;padding:12px;border-radius:7px;background:#f6f7fb;font-family:inherit;font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
 .text-card{display:flex;flex-direction:column}
 .text-card .details{flex:none}

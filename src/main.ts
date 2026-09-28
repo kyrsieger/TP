@@ -293,7 +293,7 @@ async function preparePreview(id: string) {
     previewPlacement = { x, rowY, width, scale, top: area.position.y, bottom: area.position.y + area.size.height };
     await emitTo("preview", "preview-content", {
       id, kind: record.kind, body: record.body, files: record.files,
-      createdAt: record.createdAt, groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
+      groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
       preview: record.preview, status: record.status, width: width / scale,
       maxHeight: (area.size.height - 2 * margin) / scale,
       generation: token,
@@ -344,7 +344,8 @@ function renderList() {
       ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
         : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
       <span class="record-indicators">${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
-      ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}</span>
+      ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}
+      ${record.groupId !== null ? `<span class="record-indicator group-indicator" aria-label="已分组" title="已分组">${icon("group", 13)}</span>` : ""}</span>
       <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
       <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
       <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("group", 13)}</button>
