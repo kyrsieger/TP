@@ -110,6 +110,10 @@ function closeGroupMenu() {
   contextGroupId = null;
 }
 
+function closeRecordMenu() {
+  document.querySelector<HTMLElement>("#record-menu")!.hidden = true;
+}
+
 function startGroupEdit(mode: "create" | "rename", id: number | null = null) {
   if (groupEdit) return;
   const target = mode === "create" ? document.querySelector<HTMLElement>("#add-group")
@@ -298,8 +302,11 @@ function hoverRecord(id: string) {
 function renderList() {
   closePreview();
   closeMoveGroupMenu();
+  closeRecordMenu();
   const list = document.querySelector<HTMLElement>("#list")!;
   thumbnailObserver?.disconnect();
+  const previousImages = new Map([...list.querySelectorAll<HTMLImageElement>(".preview[data-preview]")]
+    .map(image => [image.dataset.preview!, image]));
   const scrollTop = list.scrollTop;
   const records = filtered();
   if (selectedId && !records.some(record => record.id === selectedId)) selectedId = null;
@@ -307,7 +314,8 @@ function renderList() {
     largePreviewId = null;
     void call("hide_large_preview").catch(() => {});
   }
-  list.innerHTML = records.length ? records.map(record => {
+  const nextList = document.createElement("template");
+  nextList.innerHTML = records.length ? records.map(record => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     const media = record.kind === "image" || record.kind === "video";
@@ -326,9 +334,14 @@ function renderList() {
       ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}</span>
       <div class="record-actions" role="group" aria-label="记录操作"><button class="record-pin ${record.pinnedAt !== null ? "on" : ""}" data-record-pin="${record.id}" title="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-label="${record.pinnedAt !== null ? "取消置顶记录" : "置顶记录"}" aria-pressed="${record.pinnedAt !== null}">${icon("pin", 13)}</button>
       <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
-      <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("folder", 13)}</button>
+      <button class="move-group" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("group", 13)}</button>
       <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
   }).join("") : `<div class="empty">这里还没有记录</div>`;
+  nextList.content.querySelectorAll<HTMLImageElement>(".preview[data-preview]").forEach(image => {
+    const previous = previousImages.get(image.dataset.preview!);
+    if (previous) image.replaceWith(previous);
+  });
+  list.replaceChildren(nextList.content);
   list.scrollTop = scrollTop;
   updateOrdinals();
   const observer = new IntersectionObserver(entries => {
@@ -336,12 +349,15 @@ function renderList() {
       if (!entry.isIntersecting) continue;
       const image = entry.target as HTMLImageElement;
       observer.unobserve(image);
-      void call<string>("preview_data", { id: image.dataset.preview, role: "thumbnail" }).then(src => { image.src = src; })
+      image.dataset.loading = "true";
+      void call<string>("preview_data", { id: image.dataset.preview, role: "thumbnail" }).then(src => { image.src = src; delete image.dataset.loading; })
         .catch(() => { image.closest(".preview-wrap")?.replaceChildren(Object.assign(document.createElement("span"), { className: "preview-unavailable", textContent: "预览图不可用" })); });
     }
   }, { root: list, rootMargin: "180px 0px" });
   thumbnailObserver = observer;
-  list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(image => observer.observe(image));
+  list.querySelectorAll<HTMLImageElement>("[data-preview]").forEach(image => {
+    if (!image.hasAttribute("src") && !image.dataset.loading) observer.observe(image);
+  });
 }
 
 async function openLargePreview(id: string) {
@@ -529,7 +545,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
     <symbol id="lu-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></g></symbol>
     <symbol id="lu-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></g></symbol>
     <symbol id="lu-video" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></g></symbol>
-    <symbol id="lu-folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="lu-group" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"><rect x="3" y="3" width="13" height="13" rx="2"/><rect x="8" y="8" width="13" height="13" rx="2"/></g></symbol>
     <symbol id="lu-filter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M22 3H2l8 9.46V19l4 2v-8.54Z"/></symbol>
     <symbol id="lu-text" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M4 6h16M12 6v13M8 19h8"/></symbol>
     <symbol id="lu-color" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></symbol>
@@ -541,7 +557,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
     <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
       <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
     <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
-  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><div id="move-group-menu" role="menu" aria-label="移动到分组" hidden></div><section id="settings" hidden></section>
+  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><div id="record-menu" role="menu" aria-label="记录操作" hidden><button type="button" data-record-action="open-directory" role="menuitem">打开所在目录</button></div><div id="move-group-menu" role="menu" aria-label="移动到分组" hidden></div><section id="settings" hidden></section>
   <div id="toast" role="status"></div></div>`;
 
 document.querySelector<HTMLElement>(".titlebar")!.addEventListener("pointerdown", event => {
@@ -636,6 +652,7 @@ document.querySelector<HTMLElement>("#groups")!.addEventListener("contextmenu", 
   if (target.closest(".group-input")) return;
   event.preventDefault();
   closeGroupMenu();
+  closeRecordMenu();
   const group = target.closest<HTMLElement>(".group[data-view^='group:']");
   if (!group) return;
   if (groupSaving) return;
@@ -650,6 +667,26 @@ document.querySelector<HTMLElement>("#groups")!.addEventListener("contextmenu", 
   menu.style.top = `${Math.max(8, Math.min(event.clientY - bounds.top, shell.clientHeight - menu.offsetHeight - 8))}px`;
 });
 
+document.querySelector<HTMLElement>("#list")!.addEventListener("contextmenu", event => {
+  closeRecordMenu();
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
+  if (!row || !state) return;
+  const record = state.records.find(item => item.id === row.dataset.id);
+  if (!record || !["file", "image", "video"].includes(record.kind) || !record.files[0]?.original) return;
+  event.preventDefault();
+  closeGroupMenu();
+  closeMoveGroupMenu();
+  closePreview();
+  const menu = document.querySelector<HTMLElement>("#record-menu")!;
+  const shell = document.querySelector<HTMLElement>(".shell")!;
+  const bounds = shell.getBoundingClientRect();
+  menu.dataset.recordId = record.id;
+  menu.hidden = false;
+  menu.style.left = `${Math.max(8, Math.min(event.clientX - bounds.left, shell.clientWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY - bounds.top, shell.clientHeight - menu.offsetHeight - 8))}px`;
+  menu.querySelector<HTMLButtonElement>("button")!.focus();
+});
+
 root.addEventListener("focusout", event => {
   const input = (event.target as HTMLElement).closest<HTMLInputElement>("#groups .group-input");
   if (!input) return;
@@ -658,6 +695,15 @@ root.addEventListener("focusout", event => {
 
 root.addEventListener("click", async event => {
   const element = event.target as HTMLElement;
+  const recordAction = element.closest<HTMLElement>("[data-record-action]");
+  if (recordAction) {
+    const id = document.querySelector<HTMLElement>("#record-menu")!.dataset.recordId!;
+    closeRecordMenu();
+    try { await call("open_record_directory", { id }); }
+    catch (error) { toast(String(error)); }
+    return;
+  }
+  if (!element.closest("#record-menu")) closeRecordMenu();
   const groupAction = element.closest<HTMLElement>("[data-group-action]");
   if (groupAction && contextGroupId !== null) {
     const id = contextGroupId;
@@ -841,6 +887,22 @@ root.addEventListener("keydown", event => {
 
 document.addEventListener("keydown", event => {
   if (!state || (event.target as HTMLElement).id === "shortcut") return;
+  const recordMenu = document.querySelector<HTMLElement>("#record-menu")!;
+  if (!recordMenu.hidden && recordMenu.contains(event.target as Node)) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      const row = document.querySelector<HTMLElement>(`.record[data-id="${recordMenu.dataset.recordId}"]`);
+      closeRecordMenu();
+      row?.focus();
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      (event.target as HTMLButtonElement).click();
+      return;
+    }
+    closeRecordMenu();
+  }
   if ((event.target as HTMLElement).matches("[data-move-group-trigger]") && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     (event.target as HTMLButtonElement).click();
@@ -916,7 +978,7 @@ document.addEventListener("keyup", event => {
 });
 
 window.addEventListener("blur", () => {
-  pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu();
+  pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu(); closeRecordMenu();
   window.setTimeout(async () => {
     if (!await call<boolean>("preview_focused").catch(() => false)) closePreview();
   }, 120);
@@ -935,8 +997,8 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", eve
     schedulePreviewClose();
   }
 });
-document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); closePreview(); });
-window.addEventListener("resize", () => { closeMoveGroupMenu(); closePreview(); });
+document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
+window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
 
 async function start() {
   try {

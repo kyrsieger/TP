@@ -1,7 +1,83 @@
-use std::{path::Path, process::Command, thread, time::Duration};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    process::Command,
+    thread,
+    time::Duration,
+};
 
 use active_win_pos_rs::get_active_window;
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+#[cfg(windows)]
+pub fn reveal_files(groups: &BTreeMap<PathBuf, Vec<PathBuf>>) -> std::io::Result<()> {
+    use std::{io, os::windows::ffi::OsStrExt};
+    use windows::{
+        core::PCWSTR,
+        Win32::{
+            Foundation::RPC_E_CHANGED_MODE,
+            System::Com::{CoInitializeEx, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED},
+            UI::Shell::{
+                Common::ITEMIDLIST, ILFindLastID, ILFree, SHOpenFolderAndSelectItems,
+                SHParseDisplayName,
+            },
+        },
+    };
+
+    struct Pidl(*mut ITEMIDLIST);
+    impl Drop for Pidl {
+        fn drop(&mut self) {
+            unsafe { ILFree(Some(self.0)) };
+        }
+    }
+    fn parse(path: &Path) -> io::Result<Pidl> {
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut pidl = std::ptr::null_mut();
+        unsafe { SHParseDisplayName(PCWSTR(wide.as_ptr()), None::<&IBindCtx>, &mut pidl, 0, None) }
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        Ok(Pidl(pidl))
+    }
+
+    let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if com.is_err() && com != RPC_E_CHANGED_MODE {
+        return Err(io::Error::other(format!("COM 初始化失败：{com:?}")));
+    }
+    let result = (|| {
+        for (directory, files) in groups {
+            let folder = parse(directory)?;
+            let items = files
+                .iter()
+                .map(|path| parse(path))
+                .collect::<io::Result<Vec<_>>>()?;
+            let children: Vec<*const ITEMIDLIST> = items
+                .iter()
+                .map(|item| unsafe { ILFindLastID(item.0) as *const ITEMIDLIST })
+                .collect();
+            unsafe { SHOpenFolderAndSelectItems(folder.0, Some(&children), 0) }
+                .map_err(|error| io::Error::other(error.to_string()))?;
+        }
+        Ok(())
+    })();
+    if com.is_ok() {
+        unsafe { CoUninitialize() };
+    }
+    result
+}
+
+#[cfg(target_os = "macos")]
+pub fn reveal_files(groups: &BTreeMap<PathBuf, Vec<PathBuf>>) -> std::io::Result<()> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::{NSArray, NSString, NSURL};
+
+    let urls: Vec<_> = groups
+        .values()
+        .flatten()
+        .map(|path| NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy())))
+        .collect();
+    NSWorkspace::sharedWorkspace()
+        .activateFileViewerSelectingURLs(&NSArray::from_retained_slice(&urls));
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct PasteTarget {

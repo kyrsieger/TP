@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     ffi::OsString,
     fs,
     path::{Component, Path, PathBuf},
@@ -393,6 +393,44 @@ fn clear_cache(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<usiz
 #[tauri::command]
 fn get_state(store: tauri::State<Store>) -> Result<Snapshot> {
     snapshot(&store)
+}
+
+fn original_paths_by_directory(files: &[FileItem]) -> Result<BTreeMap<PathBuf, Vec<PathBuf>>> {
+    if files.is_empty() {
+        return Err("原始文件路径不可用".into());
+    }
+    let mut directories = BTreeMap::<PathBuf, Vec<PathBuf>>::new();
+    for file in files {
+        let original = PathBuf::from(&file.original);
+        if !original.is_absolute() || !original.exists() {
+            return Err(format!("原始文件已不存在，无法选中：{}", file.original));
+        }
+        let directory = original.parent().ok_or("原始文件路径不可用")?;
+        directories
+            .entry(directory.to_path_buf())
+            .or_default()
+            .push(original);
+    }
+    Ok(directories)
+}
+
+#[tauri::command]
+fn open_record_directory(store: tauri::State<Store>, id: String) -> Result<()> {
+    let (kind, files_json): (String, String) = store
+        .db
+        .lock()
+        .map_err(err)?
+        .query_row("SELECT kind,files FROM records WHERE id=?1", [id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .optional()
+        .map_err(err)?
+        .ok_or("记录不存在")?;
+    if !matches!(kind.as_str(), "file" | "image" | "video") {
+        return Err("该记录没有原始文件路径".into());
+    }
+    let files: Vec<FileItem> = serde_json::from_str(&files_json).map_err(err)?;
+    platform::reveal_files(&original_paths_by_directory(&files)?).map_err(err)
 }
 
 #[tauri::command]
@@ -1259,6 +1297,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
+            open_record_directory,
             autostart_enabled,
             set_autostart,
             save_settings,
@@ -1288,6 +1327,44 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn record_directory_selects_all_originals_by_folder() {
+        let root = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let first_dir = root.join("first");
+        let second_dir = root.join("second");
+        let copy_dir = root.join("copy");
+        fs::create_dir_all(&first_dir).unwrap();
+        fs::create_dir_all(&second_dir).unwrap();
+        fs::create_dir_all(&copy_dir).unwrap();
+        let first = first_dir.join("first.txt");
+        let another = first_dir.join("another.txt");
+        let second = second_dir.join("second.txt");
+        for path in [&first, &another, &second] {
+            fs::write(path, b"original").unwrap();
+        }
+        let files = [
+            FileItem {
+                original: first.to_string_lossy().into_owned(),
+                stored: Some(copy_dir.join("first.txt").to_string_lossy().into_owned()),
+            },
+            FileItem {
+                original: another.to_string_lossy().into_owned(),
+                stored: None,
+            },
+            FileItem {
+                original: second.to_string_lossy().into_owned(),
+                stored: None,
+            },
+        ];
+        let grouped = original_paths_by_directory(&files).unwrap();
+        assert_eq!(grouped.get(&first_dir), Some(&vec![first, another]));
+        assert_eq!(grouped.get(&second_dir), Some(&vec![second.clone()]));
+        assert!(original_paths_by_directory(&[]).is_err());
+        fs::remove_file(second).unwrap();
+        assert!(original_paths_by_directory(&files).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn image_files_use_image_kind_without_changing_mixed_file_groups() {
