@@ -5,7 +5,7 @@ import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import "./styles.css";
 
 type Kind = "text" | "link" | "image" | "file" | "video" | "color";
-type FileItem = { original: string; stored: string | null };
+type FileItem = { original: string; stored: string | null; isDirectory: boolean };
 type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
   pinnedAt: number | null;
@@ -234,6 +234,7 @@ function recordListText(record: RecordItem): string {
 
 function fileTagText(files: FileItem[]): string {
   const extensions = files.map(file => {
+    if (file.isDirectory) return "目录";
     const name = file.original.split(/[\\/]/).pop() || "";
     const dot = name.lastIndexOf(".");
     return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : "文件";

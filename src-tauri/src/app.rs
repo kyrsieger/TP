@@ -99,6 +99,8 @@ impl Settings {
 struct FileItem {
     original: String,
     stored: Option<String>,
+    #[serde(default)]
+    is_directory: bool,
 }
 
 #[derive(Serialize)]
@@ -246,6 +248,15 @@ fn snapshot(store: &Store) -> Result<Snapshot> {
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(err)?;
     for record in &mut records {
+        for file in &mut record.files {
+            if !file.is_directory {
+                file.is_directory = Path::new(&file.original).is_dir()
+                    || file
+                        .stored
+                        .as_ref()
+                        .is_some_and(|path| Path::new(path).is_dir());
+            }
+        }
         if record.status != "pending" && !record.files.is_empty() {
             let available = record.files.iter().all(|file| {
                 let path = if record.storage_mode == "copy" {
@@ -940,10 +951,9 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
 }
 
 fn video(path: &str) -> bool {
-    Path::new(path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .is_some_and(|s| {
+    let path = Path::new(path);
+    path.is_file()
+        && path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
             matches!(
                 s.to_ascii_lowercase().as_str(),
                 "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv"
@@ -1114,6 +1124,7 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
             files
                 .into_iter()
                 .map(|original| FileItem {
+                    is_directory: Path::new(&original).is_dir(),
                     original,
                     stored: None,
                 })
@@ -1403,14 +1414,17 @@ mod tests {
             FileItem {
                 original: first.to_string_lossy().into_owned(),
                 stored: Some(copy_dir.join("first.txt").to_string_lossy().into_owned()),
+                is_directory: false,
             },
             FileItem {
                 original: another.to_string_lossy().into_owned(),
                 stored: None,
+                is_directory: false,
             },
             FileItem {
                 original: second.to_string_lossy().into_owned(),
                 stored: None,
+                is_directory: false,
             },
         ];
         let grouped = original_paths_by_directory(&files).unwrap();
@@ -1445,6 +1459,54 @@ mod tests {
         assert_eq!(file_kind(&[png.clone(), video]), "file");
         assert_eq!(file_kind(&[png, text]), "file");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn directory_named_like_video_stays_file_kind() {
+        let dir = std::env::temp_dir().join(format!("tp-clipboard-test-{}", Uuid::new_v4()));
+        let folder = dir.join("archive.mp4");
+        fs::create_dir_all(&folder).unwrap();
+        assert_eq!(file_kind(&[folder.to_string_lossy().into_owned()]), "file");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn snapshot_identifies_existing_directories_and_preserves_captured_type() {
+        let store = test_store();
+        let dir = store.dir.join("archive.txt");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.to_string_lossy().into_owned();
+        let legacy = serde_json::json!([{ "original": path, "stored": null }]).to_string();
+        let captured = serde_json::to_string(&vec![FileItem {
+            original: path,
+            stored: None,
+            is_directory: true,
+        }])
+        .unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            for (id, files) in [("legacy", legacy), ("captured", captured)] {
+                conn.execute(
+                    "INSERT INTO records(id,digest,kind,files,used_at) VALUES(?1,?1,'file',?2,1)",
+                    params![id, files],
+                )
+                .unwrap();
+            }
+        }
+        let records = snapshot(&store).unwrap().records;
+        assert!(records.iter().all(|record| record.files[0].is_directory));
+        fs::remove_dir_all(&dir).unwrap();
+        let records = snapshot(&store).unwrap().records;
+        assert!(
+            records
+                .iter()
+                .find(|record| record.id == "captured")
+                .unwrap()
+                .files[0]
+                .is_directory
+        );
+        drop(store);
+        fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
     #[test]
@@ -1815,6 +1877,7 @@ mod tests {
                                     .to_string_lossy()
                                     .into_owned(),
                             ),
+                            is_directory: false,
                         }])
                         .unwrap()
                     },
