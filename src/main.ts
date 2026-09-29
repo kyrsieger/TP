@@ -22,6 +22,7 @@ type Settings = {
   alwaysOnTop: boolean;
 };
 type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
+type FocusTarget = { kind: "id" | "record" | "view"; value: string };
 
 const panel = getCurrentWindow();
 const isMacOS = navigator.userAgent.includes("Macintosh");
@@ -36,6 +37,7 @@ let selectionAnchorId: string | null = null;
 let moveGroupIds: string[] = [];
 let pendingShortcutId: string | null = null;
 let settingsOpen = false;
+let settingsReturnFocus: FocusTarget | null = null;
 let clearingCache = false;
 let cacheSizeText = "计算中…";
 let cacheSizeRequest = 0;
@@ -574,6 +576,41 @@ function renderSettings() {
       <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button></section>`;
 }
 
+// 记下当前被选中的对象，用于离开设置后原样还回去。列表会重绘，所以只记“身份”而不是元素本身。
+function focusTargetOf(element: Element | null): FocusTarget | null {
+  const el = element as HTMLElement | null;
+  if (!el || el === document.body || el === document.documentElement) return null;
+  if (el.closest("#settings-button")) return null;
+  const record = el.closest<HTMLElement>(".record[data-id]");
+  if (record?.dataset.id) return { kind: "record", value: record.dataset.id };
+  const view = el.closest<HTMLElement>("#groups [data-view]");
+  if (view?.dataset.view) return { kind: "view", value: view.dataset.view };
+  if (el.id) return { kind: "id", value: el.id };
+  return null;
+}
+
+function resolveFocusTarget(target: FocusTarget | null): HTMLElement | null {
+  if (!target) return null;
+  if (target.kind === "id") return document.getElementById(target.value);
+  if (target.kind === "record") return document.querySelector<HTMLElement>(`.record[data-id="${CSS.escape(target.value)}"]`);
+  return document.querySelector<HTMLElement>(`#groups [data-view="${CSS.escape(target.value)}"]`);
+}
+
+// 关闭设置：先还原进入设置前的选中对象；对象已不存在时退回搜索框；本来就无所指则移走选中，避免按钮留框。
+function closeSettings() {
+  settingsOpen = false;
+  renderSettings();
+  const previous = settingsReturnFocus;
+  settingsReturnFocus = null;
+  const target = resolveFocusTarget(previous) ?? (previous ? document.querySelector<HTMLInputElement>("#search") : null);
+  if (target) {
+    target.focus({ preventScroll: true });
+    if (target.classList.contains("record")) target.scrollIntoView({ block: "nearest" });
+  } else if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+}
+
 function render() {
   renderGroups(); renderList(); renderSettings();
   const pin = document.querySelector<HTMLButtonElement>("#pin")!;
@@ -641,7 +678,7 @@ async function registerShortcut(shortcut: string) {
   if (shortcut && await isRegistered(shortcut)) await unregister(shortcut);
   if (shortcut) await register(shortcut, event => {
     if (event.state !== "Pressed") return;
-    if (settingsOpen) { settingsOpen = false; renderSettings(); }
+    if (settingsOpen) closeSettings();
     void openPanel().catch(error => toast(String(error)));
   });
   if (activeShortcut) await unregister(activeShortcut);
@@ -890,6 +927,11 @@ root.addEventListener("focusout", event => {
   window.setTimeout(() => { if (document.activeElement !== input) cancelGroupEdit(); }, 0);
 });
 
+// 鼠标按下设置按钮时，浏览器还没把选中位置挪到按钮上，此刻记下原来的选中对象。
+root.addEventListener("pointerdown", event => {
+  if (!settingsOpen && (event.target as HTMLElement).closest("#settings-button")) settingsReturnFocus = focusTargetOf(document.activeElement);
+});
+
 root.addEventListener("click", async event => {
   const element = event.target as HTMLElement;
   const recordAction = element.closest<HTMLElement>("[data-record-action]");
@@ -992,11 +1034,12 @@ root.addEventListener("click", async event => {
     selectRecord(row.dataset.id!, event.shiftKey); row.focus({ preventScroll: true }); return;
   }
   if (element.closest("#settings-button")) {
-    settingsOpen = !settingsOpen;
-    if (settingsOpen) cacheSizeText = "计算中…";
+    if (settingsOpen) { closeSettings(); return; }
+    settingsOpen = true;
+    cacheSizeText = "计算中…";
     renderSettings();
-    if (settingsOpen) void refreshCacheSize();
-    if (settingsOpen && !autostartSaving) {
+    void refreshCacheSize();
+    if (!autostartSaving) {
       try { autostartEnabled = await call<boolean>("autostart_enabled"); }
       catch (error) { autostartEnabled = null; toast(String(error)); }
       renderSettings();
@@ -1168,7 +1211,7 @@ document.addEventListener("keydown", event => {
       const fixedPositionMenu = document.querySelector<HTMLElement>("#fixed-position-menu");
       if (retentionMenu && !retentionMenu.hidden) setRetentionMenuOpen(false);
       else if (fixedPositionMenu && !fixedPositionMenu.hidden) setFixedPositionMenuOpen(false);
-      else { settingsOpen = false; renderSettings(); }
+      else closeSettings();
     }
     return;
   }
