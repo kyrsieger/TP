@@ -69,6 +69,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #list::-webkit-scrollbar{width:7px}
 #list::-webkit-scrollbar-thumb{border-radius:4px;background:#d4d9e4}
 .record{position:relative;display:flex;align-items:center;width:100%;height:48px;padding:0 6px 0 4px;overflow:hidden;border-radius:8px;cursor:default;transition:background .12s}
+.record:not(:last-child):not(.selected):not(.before-selected)::after{content:"";position:absolute;right:6px;bottom:0;left:28px;height:1px;background:rgba(23,28,40,.05);pointer-events:none}
 .record:focus{outline:none}
 .record:hover,.record:focus-within{background:var(--hover)}
 .record.selected,.record.selected:hover,.record.selected:focus-within{background:var(--accent-soft)}

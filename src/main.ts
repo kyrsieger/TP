@@ -311,6 +311,14 @@ function hoverRecord(id: string) {
   hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 300);
 }
 
+function markSelectedRow(row: HTMLElement) {
+  const list = row.parentElement!;
+  list.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
+  list.querySelector<HTMLElement>(".record.before-selected")?.classList.remove("before-selected");
+  row.classList.add("selected");
+  row.previousElementSibling?.classList.add("before-selected");
+}
+
 function renderList() {
   window.cancelAnimationFrame(backToTopFrame);
   backToTopFrame = 0;
@@ -357,6 +365,8 @@ function renderList() {
     if (previous) image.replaceWith(previous);
   });
   list.replaceChildren(nextList.content);
+  const selectedRow = list.querySelector<HTMLElement>(".record.selected");
+  if (selectedRow) markSelectedRow(selectedRow);
   list.scrollTop = scrollTop;
   updateOrdinals();
   updateBackToTopTarget();
@@ -560,9 +570,8 @@ function moveSelection(direction: number) {
   const index = records.findIndex(record => record.id === selectedId);
   selectedId = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
   const list = document.querySelector<HTMLElement>("#list")!;
-  list.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
   const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === selectedId);
-  row?.classList.add("selected");
+  if (row) markSelectedRow(row);
   row?.scrollIntoView({ block: "nearest" });
   row?.focus({ preventScroll: true });
   updateOrdinals();
@@ -943,8 +952,7 @@ root.addEventListener("click", async event => {
   if (deleteButton) { await action("delete_record", { id: deleteButton.dataset.delete }); return; }
   const row = element.closest<HTMLElement>(".record");
   if (row) {
-    document.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
-    selectedId = row.dataset.id!; row.classList.add("selected"); row.focus({ preventScroll: true }); return;
+    selectedId = row.dataset.id!; markSelectedRow(row); row.focus({ preventScroll: true }); return;
   }
   if (element.closest("#settings-button")) {
     settingsOpen = !settingsOpen;
