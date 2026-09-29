@@ -9,7 +9,7 @@
 ## 文档入口
 
 - [产品设计](docs/DESIGN.md)：记录、文件、清理、分组、面板和操作规则。
-- [技术结构](docs/TECHNICAL-ARCHITECTURE.md)：架构、平台适配与验证顺序。系统能力仍需实测。
+- [系统架构](docs/SYSTEM-ARCHITECTURE.md)：系统边界、模块协作、数据与关键流程、平台适配及验证状态。
 - [术语表](docs/GLOSSARY.md)：统一术语；发现歧义时先查阅此文档。
 
 ## 文档同步

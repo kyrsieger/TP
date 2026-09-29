@@ -1,6 +1,6 @@
 # 产品设计
 
-本文收束记录、文件和面板交互的产品规则。术语以[术语表](GLOSSARY.md)为准；平台实现与验证边界见[技术结构](TECHNICAL-ARCHITECTURE.md)。
+本文收束记录、文件和面板交互的产品规则。术语以[术语表](GLOSSARY.md)为准；系统组成、实现与验证边界见[系统架构](SYSTEM-ARCHITECTURE.md)。
 
 ## 记录模型
 

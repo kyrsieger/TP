@@ -6,6 +6,12 @@
 
 应用、主程序和安装包的名称为 TP；npm 与 Rust 包名使用小写 `tp`。Tauri 应用标识保留为 `com.tp.clipboard`，以沿用现有安装身份与本地数据目录。
 
+## 项目文档
+
+- [产品设计](docs/DESIGN.md)：功能与交互规则。
+- [系统架构](docs/SYSTEM-ARCHITECTURE.md)：系统边界、模块协作、数据与关键流程、平台差异及当前限制。
+- [术语表](docs/GLOSSARY.md)：统一产品与实现术语。
+
 ## 本地运行
 
 需要 Node.js、Rust 和 Tauri 2 对应的平台构建工具。在项目根目录运行：
