@@ -19,6 +19,7 @@
         "minWidth": 340,
         "minHeight": 400,
         "decorations": false,
+        "devtools": false,
         "visible": false,
         "skipTaskbar": true
       },
@@ -29,6 +30,7 @@
         "width": 420,
         "height": 200,
         "decorations": false,
+        "devtools": false,
         "resizable": false,
         "visible": false,
         "focus": false,
@@ -42,6 +44,7 @@
         "width": 900,
         "height": 650,
         "decorations": false,
+        "devtools": false,
         "resizable": false,
         "visible": false,
         "skipTaskbar": true,

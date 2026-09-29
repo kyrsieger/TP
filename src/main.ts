@@ -197,7 +197,7 @@ function closeMoveGroupMenu() {
   document.querySelector<HTMLElement>("[data-move-group-trigger][aria-expanded='true']")?.setAttribute("aria-expanded", "false");
 }
 
-function openMoveGroupMenu(trigger: HTMLElement) {
+function openMoveGroupMenu(trigger: HTMLElement, anchor = trigger) {
   const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
   const record = state.records.find(record => record.id === trigger.dataset.moveGroupTrigger)!;
   menu.dataset.recordId = record.id;
@@ -207,7 +207,7 @@ function openMoveGroupMenu(trigger: HTMLElement) {
   trigger.setAttribute("aria-expanded", "true");
   const shell = document.querySelector<HTMLElement>(".shell")!;
   const bounds = shell.getBoundingClientRect();
-  const button = trigger.getBoundingClientRect();
+  const button = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(button.right - bounds.left - menu.offsetWidth, shell.clientWidth - menu.offsetWidth - 8))}px`;
   const below = button.bottom - bounds.top + 4;
   const above = button.top - bounds.top - menu.offsetHeight - 4;
@@ -510,7 +510,24 @@ function renderSettings() {
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span></p>
-    <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>`;
+    <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>
+    <h3>快捷键</h3><table class="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>
+      <tr><td>${s.shortcut ? escapeHtml(displayShortcut(s.shortcut)) : "未设置"}</td><td>唤出面板（全局快捷键）</td></tr>
+      <tr><td>直接输入</td><td>在主页搜索当前分组</td></tr>
+      <tr><td>Shift+Esc</td><td>聚焦搜索框</td></tr>
+      <tr><td>Backspace / Delete</td><td>搜索框聚焦时编辑搜索词；未聚焦时 Backspace 也可编辑搜索词</td></tr>
+      <tr><td>Tab / Shift+Tab</td><td>切换到下一个 / 上一个分组</td></tr>
+      <tr><td>← / →</td><td>切换分组</td></tr>
+      <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录；分组菜单中切换选项</td></tr>
+      <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
+      <tr><td>Space</td><td>打开或关闭大图预览；分组菜单中确认选择</td></tr>
+      <tr><td>Ctrl+1～9</td><td>应用当前可见序号对应的记录</td></tr>
+      <tr><td>Ctrl+D / Delete</td><td>删除选中记录（搜索框聚焦时仅 Ctrl+D）</td></tr>
+      <tr><td>Ctrl+F</td><td>收藏或取消收藏选中记录</td></tr>
+      <tr><td>Ctrl+G</td><td>打开选中记录的分组菜单</td></tr>
+      <tr><td>Ctrl+P</td><td>置顶或取消置顶选中记录</td></tr>
+      <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；主页中隐藏面板；编辑分组名时取消</td></tr>
+    </tbody></table>`;
 }
 
 function render() {
@@ -530,7 +547,9 @@ async function apply(id: string) {
 function cycleGroup(direction: number) {
   const views = ["default", "favorite", ...state.groups.map(group => `group:${group.id}`)];
   selectGroup(views[(views.indexOf(view) + direction + views.length) % views.length]);
-  document.querySelector<HTMLElement>("#groups .group.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const active = document.querySelector<HTMLElement>("#groups .group.active");
+  active?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  active?.focus({ preventScroll: true });
 }
 
 function moveSelection(direction: number) {
@@ -545,6 +564,7 @@ function moveSelection(direction: number) {
   const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === selectedId);
   row?.classList.add("selected");
   row?.scrollIntoView({ block: "nearest" });
+  row?.focus({ preventScroll: true });
   updateOrdinals();
 }
 
@@ -797,7 +817,14 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("contextmenu", ev
   const row = (event.target as HTMLElement).closest<HTMLElement>(".record");
   if (!row || !state) return;
   const record = state.records.find(item => item.id === row.dataset.id);
-  if (!record || !["file", "image", "video"].includes(record.kind) || !record.files[0]?.original) return;
+  if (!record) return;
+  if (["text", "link", "color"].includes(record.kind)) {
+    event.preventDefault();
+    closeGroupMenu();
+    closeMoveGroupMenu();
+    return;
+  }
+  if (!record.files[0]?.original) return;
   event.preventDefault();
   closeGroupMenu();
   closeMoveGroupMenu();
@@ -1094,17 +1121,38 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (event.shiftKey && event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.focus(); return; }
+  if (event.isComposing || event.keyCode === 229) {
+    document.querySelector<HTMLInputElement>("#search")!.focus();
+    return;
+  }
   const shortcutDigit = /^Digit([1-9])$/.exec(event.code)?.[1];
   if (event.ctrlKey && !event.getModifierState("AltGraph") && shortcutDigit) {
     event.preventDefault();
     pendingShortcutId = visibleRecords()[Number(shortcutDigit) - 1]?.dataset.id ?? null;
     return;
   }
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
+      ["KeyD", "KeyF", "KeyG", "KeyP"].includes(event.code)) {
+    event.preventDefault();
+    if (event.repeat || !selectedId) return;
+    const record = state.records.find(item => item.id === selectedId);
+    if (!record) return;
+    if (event.code === "KeyD") void action("delete_record", { id: record.id });
+    if (event.code === "KeyF") void action("set_favorite", { id: record.id, favorite: !record.favorite });
+    if (event.code === "KeyP") void action("set_record_pinned", { id: record.id, pinned: record.pinnedAt === null });
+    if (event.code === "KeyG") {
+      const row = document.querySelector<HTMLElement>("#list .record.selected");
+      const trigger = row?.querySelector<HTMLElement>("[data-move-group-trigger]");
+      if (row && trigger) openMoveGroupMenu(trigger, row);
+    }
+    return;
+  }
   if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault(); cycleGroup(event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey) ? -1 : 1); return;
   }
   if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-    event.preventDefault(); moveSelection(event.key === "ArrowUp" ? -1 : 1); return;
+    event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.blur();
+    moveSelection(event.key === "ArrowUp" ? -1 : 1); return;
   }
   if (event.code === "Space" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
       !(event.target as HTMLElement).closest("input, textarea, button, [contenteditable='true']") && selectedId) {
@@ -1117,18 +1165,24 @@ document.addEventListener("keydown", event => {
   }
   if (event.key === "Enter" && selectedId) { event.preventDefault(); void apply(selectedId); return; }
   if (event.key === "Escape") { largePreviewId = null; void action("hide_panel"); return; }
+  if (event.key === "Delete" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
+      !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
+    event.preventDefault();
+    if (!event.repeat && selectedId) void action("delete_record", { id: selectedId });
+    return;
+  }
   if ((event.target as HTMLElement).closest("input, textarea, [contenteditable='true']") ||
       event.ctrlKey && !event.getModifierState("AltGraph") || event.metaKey) return;
   const input = document.querySelector<HTMLInputElement>("#search")!;
-  if (event.isComposing || event.key === "Process" || event.key === "Dead" || event.keyCode === 229) {
+  if (event.key === "Process" || event.key === "Dead") {
     input.focus();
     return;
   }
-  if (event.key === "Backspace" || event.key === "Delete") {
+  if (event.key === "Backspace") {
     event.preventDefault();
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
-    if (event.key === "Backspace" && input.value) {
+    if (input.value) {
       const last = Array.from(input.value).pop()!;
       input.setRangeText("", input.value.length - last.length, input.value.length, "end");
       input.dispatchEvent(new Event("input", { bubbles: true }));

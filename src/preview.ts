@@ -123,6 +123,9 @@ async function showContent(payload: PreviewPayload) {
 document.body.addEventListener("pointerenter", () => { if (currentId) void emitTo("main", "preview-enter", currentId); });
 document.body.addEventListener("pointerleave", () => { if (currentId) void emitTo("main", "preview-leave", currentId); });
 window.addEventListener("blur", () => { if (currentId) void emitTo("main", "preview-blur", currentId); });
+document.addEventListener("contextmenu", event => {
+  if (currentKind === "text" || currentKind === "link" || currentKind === "color") event.preventDefault();
+});
 document.addEventListener("keydown", event => {
   if (event.code === "Space" && currentId && (currentKind === "image" || currentKind === "video")) {
     event.preventDefault();

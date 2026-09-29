@@ -134,6 +134,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #settings :disabled{opacity:.55;cursor:not-allowed}
 .hint{margin:7px 0 13px;color:var(--text-3);font-size:11px;line-height:1.5}
 .shortcut-error{color:#b42318;font-size:11px;line-height:1.4}
+#settings h3{margin:24px 0 8px;font-size:13px;font-weight:600;color:var(--text-1)}
+.shortcut-table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.45;color:var(--text-2)}
+.shortcut-table th,.shortcut-table td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.shortcut-table th{font-weight:600;color:var(--text-1)}
+.shortcut-table th:first-child,.shortcut-table td:first-child{width:42%;overflow-wrap:anywhere;color:var(--text-1)}
 .primary{width:100%;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:13px}
 .primary:hover{background:#4338ca}
 .primary:disabled{opacity:.5;cursor:not-allowed}
