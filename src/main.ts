@@ -30,6 +30,9 @@ let view = "default";
 let kindFilter = "all";
 let search = "";
 let selectedId: string | null = null;
+let selectedIds = new Set<string>();
+let selectionAnchorId: string | null = null;
+let moveGroupIds: string[] = [];
 let pendingShortcutId: string | null = null;
 let settingsOpen = false;
 let clearingCache = false;
@@ -107,6 +110,8 @@ function renderGroups() {
 function selectGroup(nextView: string) {
   view = nextView;
   selectedId = null;
+  selectedIds.clear();
+  selectionAnchorId = null;
   document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
   document.querySelectorAll<HTMLElement>("#groups [data-view]").forEach(group => group.classList.toggle("active", group.dataset.view === view));
   if (view !== "default") setFilterMenuOpen(false);
@@ -195,14 +200,15 @@ function setFixedPositionMenuOpen(open: boolean) {
 function closeMoveGroupMenu() {
   document.querySelector<HTMLElement>("#move-group-menu")!.hidden = true;
   document.querySelector<HTMLElement>("[data-move-group-trigger][aria-expanded='true']")?.setAttribute("aria-expanded", "false");
+  moveGroupIds = [];
 }
 
-function openMoveGroupMenu(trigger: HTMLElement, anchor = trigger) {
+function openMoveGroupMenu(trigger: HTMLElement, anchor = trigger, records = [state.records.find(record => record.id === trigger.dataset.moveGroupTrigger)!]) {
   const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
-  const record = state.records.find(record => record.id === trigger.dataset.moveGroupTrigger)!;
-  menu.dataset.recordId = record.id;
+  menu.dataset.recordId = trigger.dataset.moveGroupTrigger!;
+  moveGroupIds = records.map(record => record.id);
   menu.innerHTML = [{ id: null, name: "未分组" }, ...state.groups].map(group =>
-    `<button type="button" role="menuitemradio" data-move-group="${group.id ?? ""}" aria-checked="${record.groupId === group.id}">${escapeHtml(group.name)}</button>`).join("");
+    `<button type="button" role="menuitemradio" data-move-group="${group.id ?? ""}" aria-checked="${records.every(record => record.groupId === group.id)}">${escapeHtml(group.name)}</button>`).join("");
   menu.hidden = false;
   trigger.setAttribute("aria-expanded", "true");
   const shell = document.querySelector<HTMLElement>(".shell")!;
@@ -212,7 +218,7 @@ function openMoveGroupMenu(trigger: HTMLElement, anchor = trigger) {
   const below = button.bottom - bounds.top + 4;
   const above = button.top - bounds.top - menu.offsetHeight - 4;
   menu.style.top = `${below + menu.offsetHeight <= shell.clientHeight - 8 ? below : Math.max(8, above)}px`;
-  menu.querySelector<HTMLButtonElement>("[aria-checked='true']")?.focus();
+  (menu.querySelector<HTMLButtonElement>("[aria-checked='true']") ?? menu.querySelector<HTMLButtonElement>("button"))?.focus();
 }
 
 function renderFilter() {
@@ -311,12 +317,25 @@ function hoverRecord(id: string) {
   hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 300);
 }
 
-function markSelectedRow(row: HTMLElement) {
-  const list = row.parentElement!;
-  list.querySelector<HTMLElement>(".record.selected")?.classList.remove("selected");
-  list.querySelector<HTMLElement>(".record.before-selected")?.classList.remove("before-selected");
-  row.classList.add("selected");
-  row.previousElementSibling?.classList.add("before-selected");
+function markSelectedRows() {
+  const rows = document.querySelectorAll<HTMLElement>("#list .record");
+  rows.forEach(row => {
+    const selected = selectedIds.has(row.dataset.id!);
+    row.classList.toggle("selected", selected);
+    row.classList.toggle("before-selected", selectedIds.has((row.nextElementSibling as HTMLElement | null)?.dataset.id ?? ""));
+  });
+}
+
+function selectRecord(id: string, extend = false) {
+  const records = filtered();
+  const anchor = extend ? records.findIndex(record => record.id === selectionAnchorId) : -1;
+  const target = records.findIndex(record => record.id === id);
+  if (target < 0) return;
+  selectedIds = anchor < 0 ? new Set([id])
+    : new Set(records.slice(Math.min(anchor, target), Math.max(anchor, target) + 1).map(record => record.id));
+  selectedId = id;
+  if (anchor < 0) selectionAnchorId = id;
+  markSelectedRows();
 }
 
 function renderList() {
@@ -331,7 +350,11 @@ function renderList() {
     .map(image => [image.dataset.preview!, image]));
   const scrollTop = list.scrollTop;
   const records = filtered();
-  if (!selectedId || !records.some(record => record.id === selectedId)) selectedId = records[0]?.id ?? null;
+  const visibleIds = new Set(records.map(record => record.id));
+  selectedIds = new Set([...selectedIds].filter(id => visibleIds.has(id)));
+  if (!selectedId || !visibleIds.has(selectedId)) selectedId = records.find(record => selectedIds.has(record.id))?.id ?? records[0]?.id ?? null;
+  if (selectedId && !selectedIds.has(selectedId)) selectedIds = new Set([selectedId]);
+  if (!selectionAnchorId || !visibleIds.has(selectionAnchorId)) selectionAnchorId = selectedId;
   if (largePreviewId && !records.some(record => record.id === largePreviewId)) {
     largePreviewId = null;
     void call("hide_large_preview").catch(() => {});
@@ -348,7 +371,7 @@ function renderList() {
       : record.kind === "text" ? "" : record.kind === "file" ? `<span class="file-tag" title="${fileTag}">${fileTag}</span>`
       : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
-    return `<article class="record ${selectedId === record.id ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
+    return `<article class="record ${selectedIds.has(record.id) ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
       ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
         : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
@@ -365,8 +388,7 @@ function renderList() {
     if (previous) image.replaceWith(previous);
   });
   list.replaceChildren(nextList.content);
-  const selectedRow = list.querySelector<HTMLElement>(".record.selected");
-  if (selectedRow) markSelectedRow(selectedRow);
+  markSelectedRows();
   list.scrollTop = scrollTop;
   updateOrdinals();
   updateBackToTopTarget();
@@ -519,8 +541,6 @@ function renderSettings() {
     </div></div>
     <label class="inline"><input id="remember" type="checkbox" ${s.rememberPosition ? "checked" : ""} ${s.positionMode === "cursor" ? "disabled" : ""}>记忆拖拽位置</label>
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
-    <p class="hint">清理缓存会删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span></p>
-    <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button>
     <h3>快捷键</h3><table class="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>
       <tr><td>${s.shortcut ? escapeHtml(displayShortcut(s.shortcut)) : "未设置"}</td><td>唤出面板（全局快捷键）</td></tr>
       <tr><td>直接输入</td><td>在主页搜索当前分组</td></tr>
@@ -529,15 +549,19 @@ function renderSettings() {
       <tr><td>Tab / Shift+Tab</td><td>切换到下一个 / 上一个分组</td></tr>
       <tr><td>← / →</td><td>切换分组</td></tr>
       <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录；分组菜单中切换选项</td></tr>
+      <tr><td>Shift+↑ / Shift+↓、Shift+点击</td><td>按当前列表顺序连续选择多条记录</td></tr>
       <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
       <tr><td>Space</td><td>打开或关闭大图预览；分组菜单中确认选择</td></tr>
       <tr><td>Ctrl+1～9</td><td>应用当前可见序号对应的记录</td></tr>
-      <tr><td>Ctrl+D / Delete</td><td>删除选中记录（搜索框聚焦时仅 Ctrl+D）</td></tr>
-      <tr><td>Ctrl+F</td><td>收藏或取消收藏选中记录</td></tr>
-      <tr><td>Ctrl+G</td><td>打开选中记录的分组菜单</td></tr>
-      <tr><td>Ctrl+P</td><td>置顶或取消置顶选中记录</td></tr>
+      <tr><td>Ctrl+D / Delete</td><td>删除所有选中记录（搜索框聚焦时仅 Ctrl+D）</td></tr>
+      <tr><td>Ctrl+F</td><td>收藏或取消收藏所有选中记录</td></tr>
+      <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
+      <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
       <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；主页中隐藏面板；编辑分组名时取消</td></tr>
-    </tbody></table>`;
+    </tbody></table>
+    <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
+      <p class="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span>。此操作无法撤销。</p></div>
+      <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button></section>`;
 }
 
 function render() {
@@ -562,16 +586,16 @@ function cycleGroup(direction: number) {
   active?.focus({ preventScroll: true });
 }
 
-function moveSelection(direction: number) {
+function moveSelection(direction: number, extend = false) {
   window.cancelAnimationFrame(backToTopFrame);
   backToTopFrame = 0;
   const records = filtered();
   if (!records.length) return;
   const index = records.findIndex(record => record.id === selectedId);
-  selectedId = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
+  const id = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
+  selectRecord(id, extend);
   const list = document.querySelector<HTMLElement>("#list")!;
-  const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === selectedId);
-  if (row) markSelectedRow(row);
+  const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === id);
   row?.scrollIntoView({ block: "nearest" });
   row?.focus({ preventScroll: true });
   updateOrdinals();
@@ -668,6 +692,8 @@ function saveNumberSetting(element: HTMLInputElement, restoreInvalid = false) {
 async function openPanel() {
   await call("remember_paste_target");
   selectedId = null;
+  selectedIds.clear();
+  selectionAnchorId = null;
   document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
   renderList();
   await placePanel();
@@ -926,11 +952,12 @@ root.addEventListener("click", async event => {
   }
   const moveOption = element.closest<HTMLElement>("[data-move-group]");
   if (moveOption) {
-    const menu = document.querySelector<HTMLElement>("#move-group-menu")!;
-    const id = menu.dataset.recordId!;
+    const ids = moveGroupIds;
     const groupId = moveOption.dataset.moveGroup ? Number(moveOption.dataset.moveGroup) : null;
     closeMoveGroupMenu();
-    if (state.records.find(record => record.id === id)?.groupId !== groupId) await action("move_group", { id, groupId });
+    if (ids.some(id => state.records.find(record => record.id === id)?.groupId !== groupId)) {
+      await action("batch_records", { ids, operation: { kind: "move_group", groupId } });
+    }
     return;
   }
   const moveTrigger = element.closest<HTMLElement>("[data-move-group-trigger]");
@@ -952,7 +979,7 @@ root.addEventListener("click", async event => {
   if (deleteButton) { await action("delete_record", { id: deleteButton.dataset.delete }); return; }
   const row = element.closest<HTMLElement>(".record");
   if (row) {
-    selectedId = row.dataset.id!; markSelectedRow(row); row.focus({ preventScroll: true }); return;
+    selectRecord(row.dataset.id!, event.shiftKey); row.focus({ preventScroll: true }); return;
   }
   if (element.closest("#settings-button")) {
     settingsOpen = !settingsOpen;
@@ -1143,15 +1170,16 @@ document.addEventListener("keydown", event => {
       ["KeyD", "KeyF", "KeyG", "KeyP"].includes(event.code)) {
     event.preventDefault();
     if (event.repeat || !selectedId) return;
-    const record = state.records.find(item => item.id === selectedId);
-    if (!record) return;
-    if (event.code === "KeyD") void action("delete_record", { id: record.id });
-    if (event.code === "KeyF") void action("set_favorite", { id: record.id, favorite: !record.favorite });
-    if (event.code === "KeyP") void action("set_record_pinned", { id: record.id, pinned: record.pinnedAt === null });
+    const records = filtered().filter(record => selectedIds.has(record.id));
+    if (!records.length) return;
+    const ids = records.map(record => record.id);
+    if (event.code === "KeyD") void action("batch_records", { ids, operation: { kind: "delete" } });
+    if (event.code === "KeyF") void action("batch_records", { ids, operation: { kind: "set_favorite", favorite: !records.every(record => record.favorite) } });
+    if (event.code === "KeyP") void action("batch_records", { ids, operation: { kind: "set_pinned", pinned: !records.every(record => record.pinnedAt !== null) } });
     if (event.code === "KeyG") {
-      const row = document.querySelector<HTMLElement>("#list .record.selected");
+      const row = [...document.querySelectorAll<HTMLElement>("#list .record")].find(row => row.dataset.id === selectedId);
       const trigger = row?.querySelector<HTMLElement>("[data-move-group-trigger]");
-      if (row && trigger) openMoveGroupMenu(trigger, row);
+      if (row && trigger) openMoveGroupMenu(trigger, row, records);
     }
     return;
   }
@@ -1160,7 +1188,7 @@ document.addEventListener("keydown", event => {
   }
   if (event.key === "ArrowUp" || event.key === "ArrowDown") {
     event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.blur();
-    moveSelection(event.key === "ArrowUp" ? -1 : 1); return;
+    moveSelection(event.key === "ArrowUp" ? -1 : 1, event.shiftKey); return;
   }
   if (event.code === "Space" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
       !(event.target as HTMLElement).closest("input, textarea, button, [contenteditable='true']") && selectedId) {
@@ -1176,7 +1204,7 @@ document.addEventListener("keydown", event => {
   if (event.key === "Delete" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
       !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
     event.preventDefault();
-    if (!event.repeat && selectedId) void action("delete_record", { id: selectedId });
+    if (!event.repeat && selectedIds.size) void action("batch_records", { ids: [...selectedIds], operation: { kind: "delete" } });
     return;
   }
   if ((event.target as HTMLElement).closest("input, textarea, [contenteditable='true']") ||
@@ -1235,6 +1263,9 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", eve
 document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); updateBackToTopButton(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
 document.querySelector<HTMLElement>("#list")!.addEventListener("wheel", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
 document.querySelector<HTMLElement>("#list")!.addEventListener("pointerdown", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
+document.querySelector<HTMLElement>("#list")!.addEventListener("mousedown", event => {
+  if (event.button === 0 && event.shiftKey && (event.target as HTMLElement).closest(".record") && !(event.target as HTMLElement).closest("button")) event.preventDefault();
+});
 window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); updateBackToTopTarget(); });
 
 async function start() {

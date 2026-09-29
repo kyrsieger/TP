@@ -134,6 +134,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #settings input[type=radio],#settings input[type=checkbox]{margin:0;accent-color:var(--accent)}
 #settings :disabled{opacity:.55;cursor:not-allowed}
 .hint{margin:7px 0 13px;color:var(--text-3);font-size:11px;line-height:1.5}
+.cache-cleanup{display:flex;align-items:center;gap:12px;margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.cache-cleanup-copy{flex:1 1 auto;min-width:0}
+#settings .cache-cleanup h3{margin:0 0 6px}
+.cache-cleanup .hint{margin:0;color:var(--text-2)}
+.cache-cleanup .primary{flex:0 0 auto;width:auto;padding:10px 14px;background:#c73737}
+.cache-cleanup .primary:hover{background:#ad2727}
 .shortcut-error{color:#b42318;font-size:11px;line-height:1.4}
 #settings h3{margin:24px 0 8px;font-size:13px;font-weight:600;color:var(--text-1)}
 .shortcut-table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.45;color:var(--text-2)}

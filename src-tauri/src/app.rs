@@ -630,6 +630,77 @@ fn delete_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) 
     Ok(())
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum BatchOperation {
+    Delete,
+    SetFavorite {
+        favorite: bool,
+    },
+    SetPinned {
+        pinned: bool,
+    },
+    MoveGroup {
+        #[serde(rename = "groupId")]
+        group_id: Option<i64>,
+    },
+}
+
+fn apply_batch(
+    conn: &Connection,
+    dir: &Path,
+    ids: &[String],
+    operation: &BatchOperation,
+) -> Result<()> {
+    for id in ids {
+        match operation {
+            BatchOperation::Delete => remove_record(conn, dir, id)?,
+            BatchOperation::SetFavorite { favorite } => {
+                conn.execute(
+                    "UPDATE records SET favorite=?1 WHERE id=?2",
+                    params![favorite, id],
+                )
+                .map_err(err)?;
+            }
+            BatchOperation::SetPinned { pinned } => set_pinned(conn, id, *pinned)?,
+            BatchOperation::MoveGroup { group_id } => {
+                conn.execute(
+                    "UPDATE records SET group_id=?1 WHERE id=?2",
+                    params![group_id, id],
+                )
+                .map_err(err)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn batch_records(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    ids: Vec<String>,
+    operation: BatchOperation,
+) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let conn = store.db.lock().map_err(err)?;
+    let result = apply_batch(&conn, &store.dir, &ids, &operation);
+    drop(conn);
+    let result = result.and_then(|_| {
+        if matches!(
+            operation,
+            BatchOperation::SetFavorite { .. } | BatchOperation::MoveGroup { .. }
+        ) {
+            clean(&store)?;
+        }
+        Ok(())
+    });
+    changed(&app);
+    result
+}
+
 fn list_thumbnail(image: &DynamicImage) -> DynamicImage {
     let (width, height) = image.dimensions();
     if u64::from(width) * 5 <= u64::from(height) * 2 {
@@ -1581,6 +1652,7 @@ pub fn run() {
             set_record_pinned,
             move_group,
             delete_record,
+            batch_records,
             clear_cache,
             get_cache_size,
             preview_data,
@@ -1978,6 +2050,91 @@ mod tests {
     fn test_store() -> Store {
         let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         initialize(dir).unwrap()
+    }
+
+    #[test]
+    fn batch_actions_change_only_selected_records_and_protect_them_before_cleanup() {
+        let store = test_store();
+        let ids = vec!["a".to_string(), "b".to_string()];
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute("INSERT INTO groups(id,name) VALUES(1,'项目')", [])
+                .unwrap();
+            for id in ["a", "b", "c"] {
+                conn.execute(
+                    "INSERT INTO records(id,digest,kind,used_at) VALUES(?1,?1,'text',?2)",
+                    params![
+                        id,
+                        if id == "c" {
+                            now()
+                        } else {
+                            now() - 8 * 86_400_000
+                        }
+                    ],
+                )
+                .unwrap();
+            }
+            apply_batch(
+                &conn,
+                &store.dir,
+                &ids,
+                &BatchOperation::SetFavorite { favorite: true },
+            )
+            .unwrap();
+        }
+        clean(&store).unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            apply_batch(
+                &conn,
+                &store.dir,
+                &ids,
+                &BatchOperation::SetPinned { pinned: true },
+            )
+            .unwrap();
+            let move_group = serde_json::from_value::<BatchOperation>(
+                serde_json::json!({ "kind": "move_group", "groupId": 1 }),
+            )
+            .unwrap();
+            apply_batch(&conn, &store.dir, &ids, &move_group).unwrap();
+            let rows = conn
+                .prepare(
+                    "SELECT id,favorite,pinned_at IS NOT NULL,group_id FROM records ORDER BY id",
+                )
+                .unwrap()
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, bool>(1)?,
+                        row.get::<_, bool>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap();
+            assert_eq!(
+                rows,
+                vec![
+                    ("a".into(), true, true, Some(1)),
+                    ("b".into(), true, true, Some(1)),
+                    ("c".into(), false, false, None)
+                ]
+            );
+            apply_batch(&conn, &store.dir, &ids, &BatchOperation::Delete).unwrap();
+        }
+        assert_eq!(
+            snapshot(&store)
+                .unwrap()
+                .records
+                .iter()
+                .map(|record| record.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["c"]
+        );
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
