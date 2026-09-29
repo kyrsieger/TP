@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { indicatorHtml } from "./media-indicators";
 import { createMediaCarousel } from "./media-carousel";
+import { highlightSearch } from "./search-highlight";
 import "./preview.css";
 import "./media-indicators.css";
 
@@ -9,7 +10,7 @@ type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 type PreviewPayload = {
   id: string; kind: Kind; body: string; files: { original: string }[];
   groupName: string | null; preview: boolean;
-  status: string; width: number; maxHeight: number; generation: number;
+  status: string; width: number; maxHeight: number; generation: number; search: string;
 };
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
@@ -29,12 +30,12 @@ function render(payload: PreviewPayload) {
   const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   const details = group ? `<dl class="details">${group}</dl>` : "";
   const statusNote = status ? `<div class="status-note">${status}</div>` : "";
-  const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><strong>${escapeHtml(fileName(file.original))}</strong><div class="path">${escapeHtml(file.original)}</div></li>`).join("")}</ul>` : "";
+  const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><strong>${highlightSearch(fileName(file.original), payload.search)}</strong><div class="path">${highlightSearch(file.original, payload.search)}</div></li>`).join("")}</ul>` : "";
   let content = "";
-  if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${escapeHtml(payload.body)}</pre>`;
+  if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${highlightSearch(payload.body, payload.search)}</pre>`;
   if (payload.kind === "color") {
     const color = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(payload.body.trim()) ? payload.body.trim() : "";
-    content = `<div class="color-content"><span class="color-disc" style="background:${color}"></span><span>${escapeHtml(payload.body)}</span></div>`;
+    content = `<div class="color-content"><span class="color-disc" style="background:${color}"></span><span>${highlightSearch(payload.body, payload.search)}</span></div>`;
   }
   if (payload.kind === "image" || payload.kind === "video") content = payload.files.length > 1
     ? `<div class="media multi"><div class="media-stage"></div>${indicatorHtml(payload.files.length)}</div>`
@@ -42,6 +43,9 @@ function render(payload: PreviewPayload) {
   const media = payload.kind === "image" || payload.kind === "video";
   const text = payload.kind === "text";
   root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${media ? content + details : details + content}${paths}${statusNote}</div>`;
+  const textArea = root.querySelector<HTMLElement>(".text-content");
+  const match = textArea?.querySelector<HTMLElement>(".search-hit");
+  if (textArea && match) textArea.scrollTop = match.getBoundingClientRect().top - textArea.getBoundingClientRect().top - textArea.clientHeight / 2;
 }
 
 async function measure(payload: PreviewPayload, token: number) {
@@ -127,6 +131,10 @@ document.addEventListener("contextmenu", event => {
   if (currentKind === "text" || currentKind === "link" || currentKind === "color") event.preventDefault();
 });
 document.addEventListener("keydown", event => {
+  if (event.ctrlKey && event.key.toLowerCase() === "a" && !event.altKey && !event.metaKey && !event.shiftKey) {
+    event.preventDefault();
+    return;
+  }
   if (event.code === "Space" && currentId && (currentKind === "image" || currentKind === "video")) {
     event.preventDefault();
     if (!event.repeat) void emitTo("main", "preview-space", currentId);

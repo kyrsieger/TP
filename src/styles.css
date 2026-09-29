@@ -82,9 +82,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .preview-unavailable{color:var(--text-3);font-size:12px}
 .play{position:absolute;top:50%;left:50%;display:grid;place-items:center;width:20px;height:20px;transform:translate(-50%,-50%);border-radius:50%;background:rgba(23,28,40,.75);color:#fff;font-size:9px}
 .media-note{position:absolute;bottom:9px;left:28px;padding:3px 5px;border-radius:4px;background:rgba(255,255,255,.9);color:var(--text-2);font-size:10px}
+.media-search-match{position:absolute;right:28px;left:28px;overflow:hidden;padding:3px 5px;border-radius:4px;background:rgba(255,255,255,.9);color:var(--text-1);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .record-main{display:flex;flex:1 1 auto;flex-direction:column;justify-content:center;min-width:0;height:100%}
 .record-content{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text-1)}
 .record-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;line-height:17px}
+.search-hit{background:var(--accent);color:#fff}
 .record-note{flex:0 0 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3);font-size:10px;font-weight:400}
 .kind-icon{display:flex;flex:0 0 auto;color:var(--text-3)}
 .kind-icon.link{color:#059669}

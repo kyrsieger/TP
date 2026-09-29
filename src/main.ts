@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitorFromPoint, PhysicalPosition } from "@tauri-apps/api/window";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { highlightSearch } from "./search-highlight";
 import "./styles.css";
 
 type Kind = "text" | "link" | "image" | "file" | "video" | "color";
@@ -237,9 +238,17 @@ function renderFilter() {
 }
 
 function recordListText(record: RecordItem): string {
-  if (record.files.length > 1) return `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`;
-  if (record.files.length === 1) return record.files[0].original.split(/[\\/]/).pop() || "文件";
-  return record.body.split("\n")[0] || "空文本";
+  const usual = record.files.length > 1 ? `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`
+    : record.files.length === 1 ? record.files[0].original.split(/[\\/]/).pop() || "文件"
+    : record.body.split("\n")[0] || "空文本";
+  if (!search) return usual;
+  const needle = search.toLocaleLowerCase();
+  const source = [record.body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
+    ?? `${record.body} ${record.files.map(file => file.original).join(" ")}`;
+  const index = source.toLocaleLowerCase().indexOf(needle);
+  const start = Math.max(0, index - 6);
+  const end = Math.min(source.length, index + search.length + 48);
+  return `${start ? "…" : ""}${source.slice(start, end)}${end < source.length ? "…" : ""}`;
 }
 
 function fileTagText(files: FileItem[]): string {
@@ -301,7 +310,7 @@ async function preparePreview(id: string) {
     await emitTo("preview", "preview-content", {
       id, kind: record.kind, body: record.body, files: record.files,
       groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
-      preview: record.preview, status: record.status, width: width / scale,
+      preview: record.preview, status: record.status, search, width: width / scale,
       maxHeight: (area.size.height - 2 * margin) / scale,
       generation: token,
     });
@@ -365,7 +374,7 @@ function renderList() {
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     const media = record.kind === "image" || record.kind === "video";
     const hasPreview = record.preview || (record.kind === "image" && record.files.length > 0 && record.status !== "pending");
-    const text = media ? "" : recordListText(record);
+    const text = media && !search ? "" : recordListText(record);
     const fileTag = record.kind === "file" ? escapeHtml(fileTagText(record.files)) : "";
     const kindIcon = media ? "" : swatch ? `<span class="swatch" style="background-color:${record.body.trim()}" title="颜色"></span>`
       : record.kind === "text" ? "" : record.kind === "file" ? `<span class="file-tag" title="${fileTag}">${fileTag}</span>`
@@ -373,8 +382,8 @@ function renderList() {
     const note = status || (record.expiresAt ? "敏感记录" : "");
     return `<article class="record ${selectedIds.has(record.id) ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
       <span class="ordinal"></span>
-      ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${note ? `<span class="media-note">${note}</span>` : ""}`
-        : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${escapeHtml(text)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
+      ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${search ? `<span class="media-search-match" style="bottom:${note ? 32 : 9}px">${highlightSearch(text, search)}</span>` : ""}${note ? `<span class="media-note">${note}</span>` : ""}`
+        : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${highlightSearch(text, search)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
       <span class="record-indicators">${record.pinnedAt !== null ? `<span class="record-indicator pin-indicator" aria-label="已置顶" title="已置顶">${icon("pin", 13)}</span>` : ""}
       ${record.favorite ? `<span class="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏">${icon("star-fill", 13)}</span>` : ""}
       ${record.groupId !== null ? `<span class="record-indicator group-indicator" aria-label="已分组" title="已分组">${icon("group", 13)}</span>` : ""}</span>
@@ -557,6 +566,7 @@ function renderSettings() {
       <tr><td>Ctrl+F</td><td>收藏或取消收藏所有选中记录</td></tr>
       <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
       <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
+      <tr><td>Ctrl+A</td><td>已禁用全选（包括输入框）</td></tr>
       <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；主页中隐藏面板；编辑分组名时取消</td></tr>
     </tbody></table>
     <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
@@ -1067,6 +1077,13 @@ root.addEventListener("input", event => {
     }, 300));
   }
 });
+
+document.addEventListener("keydown", event => {
+  if (event.ctrlKey && event.key.toLowerCase() === "a" && !event.altKey && !event.metaKey && !event.shiftKey) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
 
 root.addEventListener("keydown", event => {
   const element = event.target as HTMLElement;

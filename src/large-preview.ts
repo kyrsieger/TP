@@ -79,6 +79,10 @@ async function show(payload: Payload) {
 }
 
 document.addEventListener("keydown", event => {
+  if (event.ctrlKey && event.key.toLowerCase() === "a" && !event.altKey && !event.metaKey && !event.shiftKey) {
+    event.preventDefault();
+    return;
+  }
   if (event.key === "Escape" || event.key === " ") {
     event.preventDefault();
     void close();

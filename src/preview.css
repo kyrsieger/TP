@@ -1,4 +1,4 @@
-:root{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:#171c28;background:#fff;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+:root{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:#171c28;background:#fff;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;--accent:#4f46e5}
 *{box-sizing:border-box}
 html,body,#app{width:100%;height:100%;margin:0}
 body{overflow:hidden}
@@ -11,6 +11,7 @@ body{overflow:hidden}
 .details dd{min-width:0;margin:0;overflow-wrap:anywhere}
 .status-note{margin-top:12px;color:#a16207;font-size:12px;line-height:18px}
 .text-content{margin:0;padding:12px;border-radius:7px;background:#f6f7fb;font-family:inherit;font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.search-hit{background:var(--accent);color:#fff}
 .text-card{display:flex;flex-direction:column}
 .text-card .details{flex:none}
 .text-card .text-content{min-height:0;max-height:320px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c4cad6 transparent}
