@@ -55,6 +55,7 @@ let settingsSave: Promise<void> = Promise.resolve();
 let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 let hoveredId: string | null = null;
+let previewFromKeyboard = false;
 let previewId: string | null = null;
 let previewHovered = false;
 let previewReady = false;
@@ -268,6 +269,7 @@ function closePreview() {
   window.clearTimeout(hoverTimer);
   window.clearTimeout(previewCloseTimer);
   hoveredId = null;
+  previewFromKeyboard = false;
   previewId = null;
   previewHovered = false;
   previewPlacement = null;
@@ -282,10 +284,14 @@ function schedulePreviewClose() {
   }, 220);
 }
 
+function recordRow(id: string): HTMLElement | null {
+  return [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id) ?? null;
+}
+
 async function preparePreview(id: string) {
   if (!previewReady || hoveredId !== id) return;
   const token = ++previewGeneration;
-  const row = [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id);
+  const row = recordRow(id);
   const record = state.records.find(item => item.id === id);
   if (!row || !record) return;
   try {
@@ -326,6 +332,25 @@ function hoverRecord(id: string) {
   hoveredId = id;
   hoverStartedAt = performance.now();
   hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 300);
+}
+
+// 键盘触发悬浮预览：与鼠标悬停共用定位与显示流程，但不等待 300 毫秒。
+// 选中记录滚出可视区时先滚入列表，再等一帧启动，避免 #list 的滚动监听把刚打开的预览关掉。
+function showHoverPreview(id: string) {
+  if (largePreviewId || !state || hoveredId === id) return;
+  const row = recordRow(id);
+  if (!row) return;
+  row.scrollIntoView({ block: "nearest" });
+  window.requestAnimationFrame(() => {
+    if (largePreviewId || hoveredId === id) return;
+    if (!recordRow(id) || !state.records.some(item => item.id === id)) return;
+    closePreview();
+    hoveredId = id;
+    hoverStartedAt = performance.now();
+    previewFromKeyboard = true;
+    window.clearTimeout(hoverTimer);
+    hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 0);
+  });
 }
 
 function markSelectedRows() {
@@ -558,7 +583,8 @@ function renderSettings() {
       <tr><td>Shift+Esc</td><td>聚焦搜索框</td></tr>
       <tr><td>Backspace / Delete</td><td>搜索框聚焦时编辑搜索词；未聚焦时 Backspace 也可编辑搜索词</td></tr>
       <tr><td>Tab / Shift+Tab</td><td>切换到下一个 / 上一个分组</td></tr>
-      <tr><td>← / →</td><td>切换分组</td></tr>
+      <tr><td>←</td><td>选中图片或视频记录时打开大图预览</td></tr>
+      <tr><td>→</td><td>显示当前选中记录的悬浮预览</td></tr>
       <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录；分组菜单中切换选项</td></tr>
       <tr><td>Shift+↑ / Shift+↓、Shift+点击</td><td>按当前列表顺序连续选择多条记录</td></tr>
       <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
@@ -641,8 +667,9 @@ function moveSelection(direction: number, extend = false) {
   const index = records.findIndex(record => record.id === selectedId);
   const id = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
   selectRecord(id, extend);
-  const list = document.querySelector<HTMLElement>("#list")!;
-  const row = [...list.querySelectorAll<HTMLElement>(".record")].find(row => row.dataset.id === id);
+  // 键盘触发的悬浮预览跟随选中记录：选中变化时关闭，鼠标悬停触发的预览不受影响。
+  if (previewFromKeyboard) closePreview();
+  const row = recordRow(id);
   row?.scrollIntoView({ block: "nearest" });
   row?.focus({ preventScroll: true });
   updateOrdinals();
@@ -1195,10 +1222,10 @@ document.addEventListener("keydown", event => {
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       (event.target as HTMLButtonElement).click();
-    } else if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    } else if (event.key === "Tab") {
       event.preventDefault();
       closeMoveGroupMenu();
-      cycleGroup(event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey) ? -1 : 1);
+      cycleGroup(event.shiftKey ? -1 : 1);
     }
     return;
   }
@@ -1243,12 +1270,21 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
-    event.preventDefault(); cycleGroup(event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey) ? -1 : 1); return;
-  }
+  if (event.key === "Tab") { event.preventDefault(); cycleGroup(event.shiftKey ? -1 : 1); return; }
   if (event.key === "ArrowUp" || event.key === "ArrowDown") {
     event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.blur();
     moveSelection(event.key === "ArrowUp" ? -1 : 1, event.shiftKey); return;
+  }
+  // 左右方向键不再切换分组：左键打开大图预览，右键显示悬浮预览。输入类元素内保留原生按键行为。
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    if ((event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) return;
+    event.preventDefault();
+    if (!selectedId || event.repeat) return;
+    const record = state.records.find(item => item.id === selectedId);
+    if (event.key === "ArrowLeft") {
+      if (record?.kind === "image" || record?.kind === "video") void openLargePreview(selectedId);
+    } else if (record) showHoverPreview(selectedId);
+    return;
   }
   if (event.code === "Space" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
       !(event.target as HTMLElement).closest("input, textarea, button, [contenteditable='true']") && selectedId) {
