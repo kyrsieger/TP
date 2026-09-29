@@ -1349,7 +1349,11 @@ async function start() {
     await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });
     await panel.onMoved(() => { closePreview(); scheduleGeometrySave(); });
     await panel.onResized(() => { closePreview(); scheduleGeometrySave(); });
-  } catch (error) { toast(`启动失败：${String(error)}`); }
+    await call("show_panel_on_launch");
+  } catch (error) {
+    toast(`启动失败：${String(error)}`);
+    await call("show_panel_on_launch").catch(() => {});
+  }
 }
 
 function scheduleGeometrySave() {

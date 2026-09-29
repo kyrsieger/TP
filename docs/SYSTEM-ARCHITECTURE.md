@@ -77,9 +77,9 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。前端持�
 ### 3.1 启动、常驻与退出
 
 1. Rust 入口启动 Tauri，在 `store` 插件初始化阶段创建应用数据目录、打开数据库、补充兼容字段，并注册 `Store`；此步骤先于 WebView 窗口创建。
-2. 注册全局快捷键和登录启动插件。窗口按配置隐藏创建，Rust 恢复面板置顶设置；普通启动显示主面板，带 `--autostart` 参数的登录启动保持隐藏。
+2. 注册全局快捷键和登录启动插件。窗口按配置隐藏创建，Rust 恢复面板置顶设置；此时主面板仍保持隐藏。
 3. 启动剪贴板监听、自动清理和粘贴目标捕获线程，创建托盘或菜单栏入口。
-4. 主页面建立预览窗口事件通信，调用 `get_state`，恢复面板位置与尺寸，注册已保存的唤出快捷键并监听后续变化。预览页面通过 ready/ping 事件确认就绪。
+4. 主页面建立预览窗口事件通信，调用 `get_state`，恢复面板位置与尺寸，注册已保存的唤出快捷键并监听后续变化，再通过 `show_panel_on_launch` 仅在普通启动时首次显示面板；带 `--autostart` 参数的登录启动保持隐藏。预览页面通过 ready/ping 事件确认就绪。
 5. 关闭主面板或按 `Esc` 隐藏窗口，后台任务继续运行；托盘菜单中的“退出”结束应用。悬停预览和大图预览随主面板的主动隐藏关闭。
 
 主窗口 `main`、悬停预览 `preview` 和大图预览 `large-preview` 均无系统装饰；设置是主页面内的覆盖层。三个窗口均关闭 WebView 开发者工具；Windows 通过 WebView2 的 `ContextMenuRequested` 事件从原生右键菜单移除“更多工具”和“检查”及多余分隔线。托盘点击由 Rust 直接显示并聚焦主窗口，再发出 `open-requested` 让前端完成定位。快捷键没有默认值；页面重新加载时会检查并替换当前应用遗留的快捷键绑定。
@@ -104,7 +104,7 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。前端持�
 | 页面 → Rust | `apply_record`、`set_favorite`、`set_record_pinned`、`move_group`、`delete_record`、`batch_records` | 执行单条或批量记录操作，返回结果或错误 |
 | 页面 → Rust | `save_settings`、分组命令、缓存命令、`set_autostart` | 保存配置、整理记录或调用系统配置 |
 | 页面 → Rust | `preview_data`、`file_text_preview`、`open_record_directory` | 根据记录 ID 和文件序号读取资源或定位原文件 |
-| 页面 → Rust | `show_panel`、`hide_panel`、预览窗口命令 | 控制原生窗口的显示、尺寸和焦点 |
+| 页面 → Rust | `show_panel_on_launch`、`show_panel`、`hide_panel`、预览窗口命令 | 定位完成后首次显示主面板，控制原生窗口的显示、尺寸和焦点 |
 | Rust → 主页面 | `history-changed` | 通知历史数据变化；主页面重新读取完整快照，不接收记录增量 |
 | Rust → 主页面 | `open-requested` | 通知托盘唤出；前端执行面板定位等操作 |
 | 主页面 ↔ 预览页面 | `preview-*`、`large-preview-*` | 传递预览内容、就绪与尺寸信息、关闭和鼠标交互事件 |

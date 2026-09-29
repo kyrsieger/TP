@@ -3,7 +3,10 @@ use std::{
     ffi::OsString,
     fs,
     path::{Component, Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -140,6 +143,7 @@ struct Store {
     media_lock: Mutex<()>,
     paste_target: Mutex<Option<platform::PasteTarget>>,
     suppressed_digest: Mutex<Option<String>>,
+    show_on_launch: AtomicBool,
 }
 
 fn settings(conn: &Connection) -> Result<Settings> {
@@ -219,6 +223,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
         media_lock: Mutex::new(()),
         paste_target: Mutex::new(None),
         suppressed_digest: Mutex::new(None),
+        show_on_launch: AtomicBool::new(!std::env::args().any(|arg| arg == "--autostart")),
     })
 }
 
@@ -952,6 +957,14 @@ fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
     Ok(())
 }
 
+#[tauri::command]
+fn show_panel_on_launch(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
+    if store.show_on_launch.swap(false, Ordering::Relaxed) {
+        show_panel(app, store)?;
+    }
+    Ok(())
+}
+
 fn open_panel_from_tray(app: &tauri::AppHandle) {
     if let Err(error) = show_panel(app.clone(), app.state::<Store>()) {
         eprintln!("Failed to open panel from tray: {error}");
@@ -1540,9 +1553,6 @@ pub fn run() {
                 }
             }
             window.set_always_on_top(pinned)?;
-            if !std::env::args().any(|arg| arg == "--autostart") {
-                window.show()?;
-            }
             #[cfg(windows)]
             platform::install_panel_resize_double_click(window.hwnd()?)?;
             #[cfg(target_os = "macos")]
@@ -1659,6 +1669,7 @@ pub fn run() {
             file_text_preview,
             remember_paste_target,
             show_panel,
+            show_panel_on_launch,
             hide_panel,
             show_preview,
             hide_preview,
