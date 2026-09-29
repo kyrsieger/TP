@@ -107,6 +107,7 @@ function renderGroups() {
 function selectGroup(nextView: string) {
   view = nextView;
   selectedId = null;
+  document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
   document.querySelectorAll<HTMLElement>("#groups [data-view]").forEach(group => group.classList.toggle("active", group.dataset.view === view));
   if (view !== "default") setFilterMenuOpen(false);
   renderFilter();
@@ -322,7 +323,7 @@ function renderList() {
     .map(image => [image.dataset.preview!, image]));
   const scrollTop = list.scrollTop;
   const records = filtered();
-  if (selectedId && !records.some(record => record.id === selectedId)) selectedId = null;
+  if (!selectedId || !records.some(record => record.id === selectedId)) selectedId = records[0]?.id ?? null;
   if (largePreviewId && !records.some(record => record.id === largePreviewId)) {
     largePreviewId = null;
     void call("hide_large_preview").catch(() => {});
@@ -637,6 +638,9 @@ function saveNumberSetting(element: HTMLInputElement, restoreInvalid = false) {
 
 async function openPanel() {
   await call("remember_paste_target");
+  selectedId = null;
+  document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
+  renderList();
   await placePanel();
   await call("show_panel");
 }
