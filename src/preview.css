@@ -3,7 +3,8 @@
 html,body,#app{width:100%;height:100%;margin:0}
 body{overflow:hidden}
 #app{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#d4d9e4 transparent}
-.card{padding:18px;border:1px solid #e7eaf1;border-radius:10px;background:#fff;box-shadow:0 8px 26px rgba(23,28,40,.12)}
+/* 卡片与预览窗口四边贴合，圆角取系统窗口半径，避免与系统圆角形成两条弧线。 */
+.card{padding:18px;border:1px solid #e7eaf1;border-radius:8px;background:#fff;box-shadow:0 8px 26px rgba(23,28,40,.12)}
 .details{display:grid;gap:8px;margin:0 0 14px}
 .details:last-child{margin-bottom:0}
 .details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:12px;line-height:18px}

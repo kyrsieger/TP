@@ -11,7 +11,8 @@ button{cursor:pointer}
 [hidden]{display:none!important}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .svg-defs{position:absolute;width:0;height:0;overflow:hidden}
-.shell{position:relative;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;background:#fff;border-radius:12px;outline:1px solid rgba(23,28,40,.08)}
+/* 窗口圆角、边框和阴影由系统绘制（Windows 11 约 8 像素圆角、1 像素边框），贴边内容按同一半径取值，页面不再自绘窗口边缘。 */
+.shell{position:relative;display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;background:#fff;border-radius:8px}
 
 .titlebar{flex:0 0 30px;display:flex;align-items:center;padding-left:12px;user-select:none}
 .logo{width:13px;height:13px;flex:0 0 13px}
