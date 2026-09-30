@@ -1076,10 +1076,17 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
             ctx.set_text(body).map_err(err)?;
         }
         "image" if files.is_empty() => {
-            let path = store.dir.join("assets").join(&id).join("image.png");
-            *store.suppressed_digest.lock().map_err(err)? = Some(digest.clone());
-            ctx.set_image(RustImageData::from_path(&path.to_string_lossy()).map_err(err)?)
-                .map_err(err)?;
+            let path = store
+                .dir
+                .join("assets")
+                .join(&id)
+                .join("image.png")
+                .to_string_lossy()
+                .into_owned();
+            // 写回后剪贴板带文件路径，监听器按文件路径计算摘要，因此按该路径重新计算。
+            *store.suppressed_digest.lock().map_err(err)? =
+                Some(file_digest(&[path.clone()], "image")?);
+            platform::set_clipboard_image_with_file(Path::new(&path)).map_err(err)?;
         }
         "image" | "file" | "video" => {
             let paths: Vec<String> = files
@@ -1293,6 +1300,15 @@ fn file_digest(paths: &[String], kind: &str) -> Result<String> {
 fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     let store = app.state::<Store>();
     let files = ctx.get_files().unwrap_or_default();
+    // 写回图片记录时会把本工具保存的图片文件放上剪贴板，且一次写回可能触发多次更新通知；
+    // 这类自有文件不再记入历史，避免重复记录。
+    if !files.is_empty()
+        && files
+            .iter()
+            .all(|path| Path::new(path).starts_with(store.dir.join("assets")))
+    {
+        return Ok(());
+    }
     let (kind, body, file_items, image_bytes, digest) = if !files.is_empty() {
         let kind = file_kind(&files);
         let digest = file_digest(&files, kind)?;

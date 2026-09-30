@@ -79,6 +79,70 @@ pub fn reveal_files(groups: &BTreeMap<PathBuf, Vec<PathBuf>>) -> std::io::Result
     Ok(())
 }
 
+/// 写回图片记录：一次提供图片数据、文件路径和纯文本路径。
+///
+/// - 图片数据（`CF_DIB` / `PNG`）供聊天框按图片粘贴；
+/// - 文件（`CF_HDROP`）供 conhost、Windows Terminal、VS Code 等按文件粘贴路径；
+/// - 纯文本（`CF_UNICODETEXT`）供 Zed 等只读文本的编辑器/终端粘贴路径。
+///
+/// 三种表示同时写入，行为与从资源管理器复制图片文件一致。
+#[cfg(windows)]
+pub fn set_clipboard_image_with_file(path: &Path) -> std::io::Result<()> {
+    use clipboard_rs::{common::RustImage, RustImageData};
+    use clipboard_win::{formats, options, raw, register_format, Clipboard as WindowsClipboard};
+
+    let io_err = |error: String| std::io::Error::other(error);
+    let path = path.to_string_lossy().into_owned();
+    let text = quote_path(&path);
+    let image = RustImageData::from_path(&path).map_err(|e| io_err(e.to_string()))?;
+    let png = image.to_png().map_err(|e| io_err(e.to_string()))?;
+    let bitmap = image.to_bitmap().map_err(|e| io_err(e.to_string()))?;
+    // CF_DIB 是 BMP 文件去掉 14 字节 BITMAPFILEHEADER 后的内容。
+    let dib = bitmap
+        .get_bytes()
+        .get(14..)
+        .ok_or_else(|| io_err("图片位图数据不完整".into()))?;
+    let png_format = register_format("PNG")
+        .ok_or_else(|| io_err("注册 PNG 剪贴板格式失败".into()))?
+        .get();
+    // clipboard-rs 的多格式写入会在图片分支提前关闭剪贴板，导致文件写入失败；
+    // Windows 的 OpenClipboard 不是引用计数，因此这里在同一会话内自己按顺序写入。
+    let clipboard = WindowsClipboard::new_attempts(20).map_err(|e| io_err(e.to_string()))?;
+    raw::empty().map_err(|e| io_err(e.to_string()))?;
+    raw::set_string_with(&text, options::NoClear).map_err(|e| io_err(e.to_string()))?;
+    raw::set_without_clear(png_format, png.get_bytes()).map_err(|e| io_err(e.to_string()))?;
+    raw::set_without_clear(formats::CF_DIB, dib).map_err(|e| io_err(e.to_string()))?;
+    raw::set_file_list_with(&[path], options::NoClear).map_err(|e| io_err(e.to_string()))?;
+    drop(clipboard);
+    Ok(())
+}
+
+/// 路径含空格时加双引号，和终端按文件粘贴时的行为保持一致。
+fn quote_path(path: &str) -> String {
+    if path.contains(' ') {
+        format!("\"{path}\"")
+    } else {
+        path.to_string()
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn set_clipboard_image_with_file(path: &Path) -> std::io::Result<()> {
+    use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext, RustImageData};
+
+    let io_err = |error: String| std::io::Error::other(error);
+    let path = path.to_string_lossy().into_owned();
+    let text = quote_path(&path);
+    let image = RustImageData::from_path(&path).map_err(|e| io_err(e.to_string()))?;
+    let ctx = ClipboardContext::new().map_err(|e| io_err(e.to_string()))?;
+    ctx.set(vec![
+        ClipboardContent::Text(text),
+        ClipboardContent::Image(image),
+        ClipboardContent::Files(vec![path]),
+    ])
+    .map_err(|e| io_err(e.to_string()))
+}
+
 #[derive(Clone)]
 pub struct PasteTarget {
     #[cfg(windows)]

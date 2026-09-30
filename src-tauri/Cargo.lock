@@ -4452,6 +4452,7 @@ dependencies = [
  "base64 0.22.1",
  "block2",
  "clipboard-rs",
+ "clipboard-win",
  "enigo",
  "image",
  "objc2-app-kit",
