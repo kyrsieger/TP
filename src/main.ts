@@ -284,6 +284,18 @@ function schedulePreviewClose() {
   }, 220);
 }
 
+// 清空搜索词并恢复当前视图的完整列表；Esc 与工具栏的清空按钮共用这一行为。
+// 清空按钮把焦点留在搜索框便于继续输入；Esc 清空后移走搜索框焦点，与“未聚焦时输入即搜索”的规则一致。
+function clearSearch(refocus = true) {
+  const input = document.querySelector<HTMLInputElement>("#search")!;
+  input.value = "";
+  search = "";
+  document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = true;
+  renderList();
+  if (refocus) input.focus({ preventScroll: true });
+  else input.blur();
+}
+
 function recordRow(id: string): HTMLElement | null {
   return [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id) ?? null;
 }
@@ -595,7 +607,7 @@ function renderSettings() {
       <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
       <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
       <tr><td>Ctrl+A</td><td>面板中禁用全选；搜索框聚焦时全选搜索文字</td></tr>
-      <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；主页中隐藏面板；编辑分组名时取消</td></tr>
+      <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；搜索词非空时清除搜索词并移走搜索框焦点，面板保持显示；搜索框为空时在主页隐藏面板；编辑分组名时取消</td></tr>
     </tbody></table>
     <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
       <p class="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span>。此操作无法撤销。</p></div>
@@ -995,15 +1007,7 @@ root.addEventListener("click", async event => {
   if (element.closest("#minimize")) { await panel.minimize().catch(error => toast(String(error))); return; }
   if (element.closest("#maximize")) { await panel.toggleMaximize().catch(error => toast(String(error))); return; }
   if (element.closest("#close")) { largePreviewId = null; await action("hide_panel"); return; }
-  if (element.closest("#clear-search")) {
-    const input = document.querySelector<HTMLInputElement>("#search")!;
-    input.value = "";
-    search = "";
-    document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = true;
-    renderList();
-    input.focus();
-    return;
-  }
+  if (element.closest("#clear-search")) { clearSearch(); return; }
   if (element.closest("#kind-filter")) {
     setFilterMenuOpen(filterMenu.hidden === true);
     return;
@@ -1303,7 +1307,13 @@ document.addEventListener("keydown", event => {
     }
   }
   if (event.key === "Enter" && selectedId) { event.preventDefault(); void apply(selectedId); return; }
-  if (event.key === "Escape") { largePreviewId = null; void action("hide_panel"); return; }
+  if (event.key === "Escape") {
+    // 搜索框有内容时，Esc 先清空搜索词、移走焦点并保留面板；搜索框为空才隐藏面板。
+    if (document.querySelector<HTMLInputElement>("#search")!.value !== "") { event.preventDefault(); clearSearch(false); return; }
+    largePreviewId = null;
+    void action("hide_panel");
+    return;
+  }
   if (event.key === "Delete" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
       !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
     event.preventDefault();
