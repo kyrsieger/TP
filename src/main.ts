@@ -594,7 +594,7 @@ function renderSettings() {
       <tr><td>Ctrl+F</td><td>收藏或取消收藏所有选中记录</td></tr>
       <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
       <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
-      <tr><td>Ctrl+A</td><td>已禁用全选（包括输入框）</td></tr>
+      <tr><td>Ctrl+A</td><td>面板中禁用全选；搜索框聚焦时全选搜索文字</td></tr>
       <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；主页中隐藏面板；编辑分组名时取消</td></tr>
     </tbody></table>
     <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
@@ -1149,10 +1149,17 @@ root.addEventListener("input", event => {
 });
 
 document.addEventListener("keydown", event => {
-  if (event.ctrlKey && event.key.toLowerCase() === "a" && !event.altKey && !event.metaKey && !event.shiftKey) {
+  if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.getModifierState("AltGraph") ||
+      event.key.toLowerCase() !== "a") return;
+  // 面板本身仍然禁用全选；只有搜索框保留全选，且不依赖 WebView2 的浏览器快捷键开关。
+  const target = event.target as HTMLElement;
+  if (target instanceof HTMLInputElement && target.id === "search") {
     event.preventDefault();
-    event.stopImmediatePropagation();
+    target.select();
+    return;
   }
+  event.preventDefault();
+  event.stopImmediatePropagation();
 }, true);
 
 root.addEventListener("keydown", event => {
