@@ -24,13 +24,17 @@ let carousel: ReturnType<typeof createMediaCarousel> | null = null;
 let lastWheelAt = 0;
 
 function fileName(path: string) { return path.split(/[\\/]/).pop() || path; }
+function pathHtml(path: string, query: string) {
+  const name = fileName(path);
+  return `${highlightSearch(path.slice(0, path.length - name.length), query)}<strong>${highlightSearch(name, query)}</strong>`;
+}
 
 function render(payload: PreviewPayload) {
   const group = payload.groupName === null ? "" : `<div><dt>分组</dt><dd>${escapeHtml(payload.groupName)}</dd></div>`;
   const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   const details = group ? `<dl class="details">${group}</dl>` : "";
   const statusNote = status ? `<div class="status-note">${status}</div>` : "";
-  const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><strong>${highlightSearch(fileName(file.original), payload.search)}</strong><div class="path">${highlightSearch(file.original, payload.search)}</div></li>`).join("")}</ul>` : "";
+  const paths = payload.files.length ? `<ul class="files${payload.files.length === 1 ? " single-file" : ""}">${payload.files.map((file, index) => `<li class="file" data-index="${index}"><div class="path">${pathHtml(file.original, payload.search)}</div></li>`).join("")}</ul>` : "";
   let content = "";
   if (payload.kind === "text" || payload.kind === "link") content = `<pre class="text-content">${highlightSearch(payload.body, payload.search)}</pre>`;
   if (payload.kind === "color") {
