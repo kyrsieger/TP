@@ -44,9 +44,9 @@ function render(payload: PreviewPayload) {
   if (payload.kind === "image" || payload.kind === "video") content = payload.files.length > 1
     ? `<div class="media multi"><div class="media-stage"></div>${indicatorHtml(payload.files.length)}</div>`
     : `<div class="media"><img id="large-preview" alt="${labels[payload.kind]}预览" hidden><p id="media-error" class="unavailable" hidden></p></div>`;
-  const media = payload.kind === "image" || payload.kind === "video";
   const text = payload.kind === "text";
-  root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${media ? content + details : details + content}${paths}${statusNote}</div>`;
+  // 正文在最上，其后依次是字段、原始路径，statusNote 固定收尾。
+  root.innerHTML = `<div class="card${text ? " text-card" : ""}" style="width:${payload.width}px;${text ? `max-height:${payload.maxHeight}px` : ""}">${content}${details}${paths}${statusNote}</div>`;
   const textArea = root.querySelector<HTMLElement>(".text-content");
   const match = textArea?.querySelector<HTMLElement>(".search-hit");
   if (textArea && match) textArea.scrollTop = match.getBoundingClientRect().top - textArea.getBoundingClientRect().top - textArea.clientHeight / 2;

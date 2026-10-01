@@ -5,8 +5,7 @@ body{overflow:hidden}
 #app{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#d4d9e4 transparent}
 /* 卡片与预览窗口四边贴合，圆角取系统窗口半径，避免与系统圆角形成两条弧线。 */
 .card{padding:18px;border:1px solid #e7eaf1;border-radius:8px;background:#fff;box-shadow:0 8px 26px rgba(23,28,40,.12)}
-.details{display:grid;gap:8px;margin:0 0 14px}
-.details:last-child{margin-bottom:0}
+.details{display:grid;gap:8px;margin:14px 0 0}
 .details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:12px;line-height:18px}
 .details dt{color:#8a93a3}
 .details dd{min-width:0;margin:0;overflow-wrap:anywhere}
@@ -22,7 +21,7 @@ body{overflow:hidden}
 .media.multi:hover > .page-indicators{visibility:visible}
 .media > img{display:block;max-width:100%;max-height:520px;object-fit:contain}
 .unavailable{margin:0;padding:20px;text-align:center;color:#8a93a3;font-size:12px}
-.unavailable + .details{margin-top:14px}
+.unavailable + .details{margin-top:0}
 .files{margin:0;padding:10px 12px 10px 29px;border-radius:7px;background:#f6f7fb}
 .files.single-file{padding-left:12px;list-style:none}
 .file{padding:0;font-size:12px}
