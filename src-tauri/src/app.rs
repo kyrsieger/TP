@@ -213,6 +213,7 @@ fn initialize(dir: PathBuf) -> Result<Store> {
             .map_err(err)?;
         }
     }
+    migrate_flat_file_copies(&conn, &dir)?;
     Ok(Store {
         db: Mutex::new(conn),
         dir,
@@ -220,6 +221,83 @@ fn initialize(dir: PathBuf) -> Result<Store> {
         paste_target: Mutex::new(None),
         suppressed_digest: Mutex::new(None),
     })
+}
+
+/// 把旧格式的副本 `files/<序号>/<文件名>` 迁移为平铺的 `files/<文件名>`。
+///
+/// 迁移只改写 `stored` 路径，`digest` 由原路径与元数据计算，不受影响。
+fn migrate_flat_file_copies(conn: &Connection, dir: &Path) -> Result<()> {
+    let records: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id,files FROM records WHERE storage_mode='copy' AND status!='pending'")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)?;
+        rows
+    };
+    for (id, files) in records {
+        let mut items: Vec<FileItem> = serde_json::from_str(&files).unwrap_or_default();
+        let files_dir = dir.join("assets").join(&id).join("files");
+        let mut taken = HashSet::<OsString>::new();
+        let mut migrated = false;
+        for file in &mut items {
+            let Some(stored) = file.stored.as_deref() else {
+                continue;
+            };
+            let stored = PathBuf::from(stored);
+            let Ok(relative) = stored.strip_prefix(&files_dir) else {
+                continue;
+            };
+            // 旧格式为 files/<序号>/<文件名>；平铺格式只有一个路径组件，无需迁移。
+            let parts = relative
+                .components()
+                .filter_map(|component| match component {
+                    Component::Normal(name) => Some(name.to_os_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let Some(name) = parts.last().cloned() else {
+                continue;
+            };
+            if parts.len() < 2 {
+                taken.insert(name);
+                continue;
+            }
+            let target = files_dir.join(unique_file_name(&name, &mut taken));
+            if stored != target && stored.is_file() {
+                fs::rename(&stored, &target).map_err(err)?;
+            }
+            if target.is_file() {
+                file.stored = Some(target.to_string_lossy().into_owned());
+                migrated = true;
+            }
+        }
+        if migrated {
+            conn.execute(
+                "UPDATE records SET files=?1 WHERE id=?2",
+                params![serde_json::to_string(&items).unwrap_or_default(), id],
+            )
+            .map_err(err)?;
+            remove_numbered_dirs(&files_dir);
+        }
+    }
+    Ok(())
+}
+
+/// 删除旧格式遗留的 `files/<纯数字>/` 空目录；失败不影响启动。
+fn remove_numbered_dirs(files_dir: &Path) {
+    let Ok(entries) = fs::read_dir(files_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if entry.path().is_dir() && name.to_string_lossy().parse::<u64>().is_ok() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 fn snapshot(store: &Store) -> Result<Snapshot> {
@@ -1236,6 +1314,28 @@ fn file_size(path: &Path) -> std::io::Result<u64> {
     Ok(size)
 }
 
+/// 组内重名时按 `<主名> (n)<扩展名>` 追加序号，返回本次使用的不重名文件名。
+fn unique_file_name(name: &std::ffi::OsStr, taken: &mut HashSet<OsString>) -> OsString {
+    if taken.insert(name.to_os_string()) {
+        return name.to_os_string();
+    }
+    let path = Path::new(name);
+    let stem = path.file_stem().unwrap_or(name);
+    let extension = path.extension();
+    for index in 2.. {
+        let mut candidate = stem.to_os_string();
+        candidate.push(format!(" ({index})"));
+        if let Some(extension) = extension {
+            candidate.push(".");
+            candidate.push(extension);
+        }
+        if taken.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!("序号递增必然产生可用文件名")
+}
+
 fn copy_path(from: &Path, to: &Path) -> std::io::Result<()> {
     if from.is_dir() {
         fs::create_dir_all(to)?;
@@ -1259,16 +1359,18 @@ fn save_files(app: tauri::AppHandle, id: String, kind: String, mut files: Vec<Fi
     let mut mode = "reference";
     let mut status = "ready";
     if total.is_some_and(|size| size <= 100 * 1024 * 1024) {
+        // 整组副本平铺在同一个 files 目录下，使“打开所在目录”只需打开一个窗口即可看到整组文件。
+        // 组内重名时按原文件名追加序号，避免相互覆盖。
         let dir = store.dir.join("assets").join(&id).join("files");
         let result = (|| -> std::io::Result<()> {
             fs::create_dir_all(&dir)?;
-            for (index, file) in files.iter_mut().enumerate() {
+            let mut taken = HashSet::<OsString>::new();
+            for file in files.iter_mut() {
                 let name = Path::new(&file.original)
                     .file_name()
                     .ok_or_else(|| std::io::Error::other("invalid filename"))?;
-                let target_dir = dir.join(index.to_string());
-                fs::create_dir_all(&target_dir)?;
-                let target = target_dir.join(name);
+                let name = unique_file_name(name, &mut taken);
+                let target = dir.join(name);
                 copy_path(Path::new(&file.original), &target)?;
                 file.stored = Some(target.to_string_lossy().into_owned());
             }
@@ -2128,7 +2230,6 @@ mod tests {
             .join("assets")
             .join("image")
             .join("files")
-            .join("0")
             .join("original.png");
         fs::write(&original, b"original").unwrap();
         fs::create_dir_all(stored.parent().unwrap()).unwrap();
@@ -2195,6 +2296,141 @@ mod tests {
         let dir = store.dir.clone();
         drop(store);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn save_files_places_the_whole_group_in_one_directory_without_overwriting() {
+        let store = test_store();
+        let source = store.dir.join("source");
+        let first = source.join("first.txt");
+        let second = source.join("nested").join("first.txt");
+        fs::create_dir_all(second.parent().unwrap()).unwrap();
+        fs::write(&first, b"first").unwrap();
+        fs::write(&second, b"second").unwrap();
+        let files = vec![
+            FileItem {
+                original: first.to_string_lossy().into_owned(),
+                stored: None,
+                is_directory: false,
+            },
+            FileItem {
+                original: second.to_string_lossy().into_owned(),
+                stored: None,
+                is_directory: false,
+            },
+        ];
+        let id = "group";
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,status,used_at) VALUES(?1,?1,'file','pending',1)",
+                [id],
+            )
+            .unwrap();
+        }
+        let dir = store.dir.join("assets").join(id).join("files");
+        // 直接复用 save_files 的落盘逻辑，不启动后台线程。
+        let saved = {
+            let mut files = files.clone();
+            fs::create_dir_all(&dir).unwrap();
+            let mut taken = HashSet::<OsString>::new();
+            for file in files.iter_mut() {
+                let name = Path::new(&file.original).file_name().unwrap();
+                let target = dir.join(unique_file_name(name, &mut taken));
+                copy_path(Path::new(&file.original), &target).unwrap();
+                file.stored = Some(target.to_string_lossy().into_owned());
+            }
+            files
+        };
+        let stored: Vec<PathBuf> = saved
+            .iter()
+            .map(|file| PathBuf::from(file.stored.as_ref().unwrap()))
+            .collect();
+        assert_eq!(
+            stored[0].parent(),
+            stored[1].parent(),
+            "整组副本必须落在同一个目录下"
+        );
+        assert_eq!(stored[0].file_name().unwrap(), "first.txt");
+        assert_eq!(stored[1].file_name().unwrap(), "first (2).txt");
+
+        let store_dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(store_dir).unwrap();
+    }
+
+    #[test]
+    fn migrate_flat_file_copies_flattens_numbered_copy_directories() {
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
+        let store = initialize(dir.clone()).unwrap();
+        let files_dir = store.dir.join("assets").join("legacy").join("files");
+        let old_first = files_dir.join("0").join("first.txt");
+        let old_second = files_dir.join("1").join("first.txt");
+        fs::create_dir_all(old_first.parent().unwrap()).unwrap();
+        fs::create_dir_all(old_second.parent().unwrap()).unwrap();
+        fs::write(&old_first, b"first").unwrap();
+        fs::write(&old_second, b"second").unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,files,storage_mode,used_at) VALUES('legacy','legacy','file',?1,'copy',1)",
+                [serde_json::to_string(&[
+                    FileItem {
+                        original: "C:\\a\\first.txt".into(),
+                        stored: Some(old_first.to_string_lossy().into_owned()),
+                        is_directory: false,
+                    },
+                    FileItem {
+                        original: "C:\\b\\first.txt".into(),
+                        stored: Some(old_second.to_string_lossy().into_owned()),
+                        is_directory: false,
+                    },
+                ])
+                .unwrap()],
+            )
+            .unwrap();
+        }
+        drop(store);
+
+        let store = initialize(dir.clone()).unwrap();
+        let stored = {
+            let conn = store.db.lock().unwrap();
+            let json: String = conn
+                .query_row("SELECT files FROM records WHERE id='legacy'", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            serde_json::from_str::<Vec<FileItem>>(&json)
+                .unwrap()
+                .into_iter()
+                .map(|file| PathBuf::from(file.stored.unwrap()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stored[0], files_dir.join("first.txt"));
+        assert_eq!(stored[1], files_dir.join("first (2).txt"));
+        assert_eq!(stored[0].parent(), stored[1].parent());
+        assert!(stored.iter().all(|path| path.is_file()));
+        // 旧序号目录已清理，重复迁移是幂等的。
+        assert!(!files_dir.join("0").exists());
+        assert!(!files_dir.join("1").exists());
+        drop(store);
+        let store = initialize(dir.clone()).unwrap();
+        let again: Vec<FileItem> = {
+            let conn = store.db.lock().unwrap();
+            let json: String = conn
+                .query_row("SELECT files FROM records WHERE id='legacy'", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            serde_json::from_str(&json).unwrap()
+        };
+        assert_eq!(
+            PathBuf::from(again[0].stored.as_ref().unwrap()),
+            files_dir.join("first.txt")
+        );
+        let store_dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(store_dir).unwrap();
     }
 
     #[test]
