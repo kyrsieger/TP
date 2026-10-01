@@ -437,11 +437,7 @@ function renderList() {
   });
   list.replaceChildren(nextList.content);
   markSelectedRows();
-  // 重绘后清掉残留的行内过渡：滚动期间新出现的行若带着背景过渡，会先闪一下透明再淡入。
-  list.querySelectorAll<HTMLElement>(".record").forEach(row => { row.style.transition = "none"; });
   list.scrollTop = scrollTop;
-  void list.offsetHeight;
-  list.querySelectorAll<HTMLElement>(".record").forEach(row => { row.style.removeProperty("transition"); });
   updateOrdinals();
   updateBackToTopTarget();
   const observer = new IntersectionObserver(entries => {
@@ -682,36 +678,13 @@ function moveSelection(direction: number, extend = false) {
   if (!records.length) return;
   const index = records.findIndex(record => record.id === selectedId);
   const id = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
-  if (id === selectedId) return;
-  moveSelectionTo(id, extend, { reveal: true });
-}
-
-// 把选中项切换到指定记录：更新选中状态、跟随的悬浮预览、滚动条与焦点。滚轮和方向键共用这一入口。
-function moveSelectionTo(id: string, extend: boolean, { reveal }: { reveal: boolean }) {
   selectRecord(id, extend);
-  // 键盘或滚轮触发的悬浮预览跟随选中记录：选中变化时关闭，鼠标悬停触发的预览不受影响。
+  // 键盘触发的悬浮预览跟随选中记录：选中变化时关闭，鼠标悬停触发的预览不受影响。
   if (previewFromKeyboard) closePreview();
-  if (reveal) revealRow(recordRow(id));
+  const row = recordRow(id);
+  row?.scrollIntoView({ block: "nearest" });
+  row?.focus({ preventScroll: true });
   updateOrdinals();
-  recordRow(id)?.focus({ preventScroll: true });
-}
-
-// 把一条记录（或当前选中范围的整体）带回列表可见范围，并留出一点余量，只改列表滚动位置、不改选中项。
-function revealRow(row: HTMLElement | null) {
-  const list = document.querySelector<HTMLElement>("#list")!;
-  if (!row) return;
-  const margin = Math.min(Math.round(list.clientHeight * 0.06), 24);
-  const listRect = list.getBoundingClientRect();
-  const rect = row.getBoundingClientRect();
-  const overTop = rect.top - (listRect.top + margin);
-  const overBottom = rect.bottom - (listRect.bottom - margin);
-  if (overTop >= 0 && overBottom <= 0) return;
-  list.scrollTop += overTop < 0 ? overTop : overBottom;
-}
-
-// Shift 扩展选择时，选中范围的远端可能仍在可见范围外；这里把它一并带回，避免范围末尾停在屏幕外。
-function anchorIdOf(selected: string): string {
-  return selected === selectionAnchorId && selectedIds.size > 1 ? [...selectedIds][selectedIds.size - 1] : selected;
 }
 
 async function placePanel() {
@@ -1402,22 +1375,7 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", eve
   }
 });
 document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); updateBackToTopButton(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
-// 列表中的滚轮只改选中项、不直接滚动列表；选中项移出可见范围时，列表跟随滚动把它带回可见范围内。
-// 悬停预览的“滚动列表即关闭”由此改为“切换选中记录”：选中变化时先关掉，之后按新位置重新计时打开。
-document.querySelector<HTMLElement>("#list")!.addEventListener("wheel", event => {
-  window.cancelAnimationFrame(backToTopFrame);
-  backToTopFrame = 0;
-  const records = filtered();
-  if (!records.length || !event.deltaY) return;
-  const index = Math.max(0, records.findIndex(record => record.id === selectedId));
-  const id = records[Math.min(records.length - 1, index + (event.deltaY > 0 ? 1 : -1))].id;
-  if (id === selectedId) { if (!event.ctrlKey) event.preventDefault(); return; }
-  if (!event.ctrlKey) event.preventDefault();
-  moveSelectionTo(id, false, { reveal: false });
-  revealRow(recordRow(anchorIdOf(id)));
-  const row = recordRow(id);
-  if (row && !row.contains(event.target as Node)) hoverRecord(id);
-}, { passive: false });
+document.querySelector<HTMLElement>("#list")!.addEventListener("wheel", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
 document.querySelector<HTMLElement>("#list")!.addEventListener("pointerdown", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
 document.querySelector<HTMLElement>("#list")!.addEventListener("mousedown", event => {
   if (event.button === 0 && event.shiftKey && (event.target as HTMLElement).closest(".record") && !(event.target as HTMLElement).closest("button")) event.preventDefault();
