@@ -823,7 +823,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
     <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
       <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
     <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
-  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><div id="record-menu" role="menu" aria-label="记录操作" hidden><button type="button" data-record-action="open-directory" role="menuitem">打开所在目录</button></div><div id="move-group-menu" role="menu" aria-label="移动到分组" hidden></div><section id="settings" hidden></section>
+  <nav id="groups" aria-label="分组"></nav><div id="group-menu" role="menu" hidden><button type="button" data-group-action="rename" role="menuitem">重命名</button><button type="button" data-group-action="delete" role="menuitem">删除</button></div><main id="list"></main><div id="record-menu" role="menu" aria-label="记录操作" hidden><button type="button" data-record-action="copy-paths" role="menuitem">复制路径</button><button type="button" data-record-action="open-directory" role="menuitem">打开所在目录</button><button type="button" data-record-action="save-as" role="menuitem">另存为</button></div><div id="move-group-menu" role="menu" aria-label="移动到分组" hidden></div><section id="settings" hidden></section>
   <div id="toast" role="status"></div></div>`;
 
 document.querySelector<HTMLElement>(".titlebar")!.addEventListener("pointerdown", event => {
@@ -939,16 +939,13 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("contextmenu", ev
   if (!row || !state) return;
   const record = state.records.find(item => item.id === row.dataset.id);
   if (!record) return;
-  if (["text", "link", "color"].includes(record.kind)) {
-    event.preventDefault();
-    closeGroupMenu();
-    closeMoveGroupMenu();
-    return;
-  }
-  if (!record.files[0]?.original) return;
   event.preventDefault();
   closeGroupMenu();
   closeMoveGroupMenu();
+  if (["text", "link", "color"].includes(record.kind)) return;
+  const hasFiles = record.files.length > 0 && record.files.every(file => !file.isDirectory);
+  const directImage = record.kind === "image" && record.files.length === 0;
+  if (!directImage && !hasFiles) return;
   closePreview();
   const menu = document.querySelector<HTMLElement>("#record-menu")!;
   const shell = document.querySelector<HTMLElement>(".shell")!;
@@ -977,7 +974,11 @@ root.addEventListener("click", async event => {
   if (recordAction) {
     const id = document.querySelector<HTMLElement>("#record-menu")!.dataset.recordId!;
     closeRecordMenu();
-    try { await call("open_record_directory", { id }); }
+    try {
+      if (recordAction.dataset.recordAction === "copy-paths") await call("copy_record_paths", { id });
+      else if (recordAction.dataset.recordAction === "open-directory") await call("open_record_directory", { id });
+      else if (recordAction.dataset.recordAction === "save-as") await call("save_record_files", { id });
+    }
     catch (error) { toast(String(error)); }
     return;
   }

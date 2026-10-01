@@ -430,27 +430,25 @@ fn get_state(store: tauri::State<Store>) -> Result<Snapshot> {
     snapshot(&store)
 }
 
-fn original_paths_by_directory(files: &[FileItem]) -> Result<BTreeMap<PathBuf, Vec<PathBuf>>> {
-    if files.is_empty() {
-        return Err("原始文件路径不可用".into());
+fn paths_by_directory(paths: &[PathBuf]) -> Result<BTreeMap<PathBuf, Vec<PathBuf>>> {
+    if paths.is_empty() {
+        return Err("文件路径不可用".into());
     }
     let mut directories = BTreeMap::<PathBuf, Vec<PathBuf>>::new();
-    for file in files {
-        let original = PathBuf::from(&file.original);
-        if !original.is_absolute() || !original.exists() {
-            return Err(format!("原始文件已不存在，无法选中：{}", file.original));
+    for path in paths {
+        if !path.is_absolute() || !path.is_file() {
+            return Err(format!("文件已不存在，无法选中：{}", path.display()));
         }
-        let directory = original.parent().ok_or("原始文件路径不可用")?;
+        let directory = path.parent().ok_or("文件路径不可用")?;
         directories
             .entry(directory.to_path_buf())
             .or_default()
-            .push(original);
+            .push(path.clone());
     }
     Ok(directories)
 }
 
-#[tauri::command]
-fn open_record_directory(store: tauri::State<Store>, id: String) -> Result<()> {
+fn record_action_paths(store: &Store, id: &str, stored_only: bool) -> Result<Vec<PathBuf>> {
     let (kind, files_json): (String, String) = store
         .db
         .lock()
@@ -462,10 +460,82 @@ fn open_record_directory(store: tauri::State<Store>, id: String) -> Result<()> {
         .map_err(err)?
         .ok_or("记录不存在")?;
     if !matches!(kind.as_str(), "file" | "image" | "video") {
-        return Err("该记录没有原始文件路径".into());
+        return Err("该记录不支持文件操作".into());
     }
     let files: Vec<FileItem> = serde_json::from_str(&files_json).map_err(err)?;
-    platform::reveal_files(&original_paths_by_directory(&files)?).map_err(err)
+    if kind == "image" && files.is_empty() {
+        let path = store.dir.join("assets").join(id).join("image.png");
+        return path
+            .is_file()
+            .then_some(vec![path])
+            .ok_or("图片副本不可用".into());
+    }
+    if files.is_empty() || files.iter().any(|file| file.is_directory) {
+        return Err("目录记录不支持此操作".into());
+    }
+    files
+        .iter()
+        .map(|file| {
+            let original = PathBuf::from(&file.original);
+            let stored = file.stored.as_deref().map(PathBuf::from);
+            let path = if !stored_only && original.is_file() {
+                original
+            } else if let Some(path) = stored.filter(|path| path.is_file()) {
+                path
+            } else if stored_only {
+                return Err("文件副本不可用".into());
+            } else {
+                return Err(format!("文件不可用：{}", file.original));
+            };
+            Ok(path)
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn copy_record_paths(store: tauri::State<Store>, id: String) -> Result<()> {
+    let paths = record_action_paths(&store, &id, false)?;
+    let text = paths
+        .iter()
+        .map(|path| path.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    *store.suppressed_digest.lock().map_err(err)? = Some(hash("text", text.as_bytes()));
+    ClipboardContext::new()
+        .map_err(err)?
+        .set_text(text)
+        .map_err(err)
+}
+
+#[tauri::command]
+fn open_record_directory(store: tauri::State<Store>, id: String) -> Result<()> {
+    let paths = record_action_paths(&store, &id, false)?;
+    platform::reveal_files(&paths_by_directory(&paths)?).map_err(err)
+}
+
+#[tauri::command]
+fn save_record_files(store: tauri::State<Store>, id: String) -> Result<()> {
+    let files = record_action_paths(&store, &id, true)?;
+    let Some(destination) = rfd::FileDialog::new()
+        .set_title("选择保存目录")
+        .pick_folder()
+    else {
+        return Ok(());
+    };
+    let targets = files
+        .iter()
+        .map(|source| {
+            let name = source.file_name().ok_or("文件名不可用")?;
+            Ok(destination.join(name))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if targets.iter().any(|target| target.exists()) {
+        return Err("目标目录中已有同名文件，未保存任何文件".into());
+    }
+    for (source, target) in files.iter().zip(targets) {
+        fs::copy(source, target).map_err(err)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1654,7 +1724,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
+            copy_record_paths,
             open_record_directory,
+            save_record_files,
             autostart_enabled,
             set_autostart,
             save_settings,
@@ -1759,43 +1831,25 @@ mod tests {
     }
 
     #[test]
-    fn record_directory_selects_all_originals_by_folder() {
+    fn record_directory_selects_all_paths_by_folder() {
         let root = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         let first_dir = root.join("first");
         let second_dir = root.join("second");
-        let copy_dir = root.join("copy");
         fs::create_dir_all(&first_dir).unwrap();
         fs::create_dir_all(&second_dir).unwrap();
-        fs::create_dir_all(&copy_dir).unwrap();
         let first = first_dir.join("first.txt");
         let another = first_dir.join("another.txt");
         let second = second_dir.join("second.txt");
         for path in [&first, &another, &second] {
             fs::write(path, b"original").unwrap();
         }
-        let files = [
-            FileItem {
-                original: first.to_string_lossy().into_owned(),
-                stored: Some(copy_dir.join("first.txt").to_string_lossy().into_owned()),
-                is_directory: false,
-            },
-            FileItem {
-                original: another.to_string_lossy().into_owned(),
-                stored: None,
-                is_directory: false,
-            },
-            FileItem {
-                original: second.to_string_lossy().into_owned(),
-                stored: None,
-                is_directory: false,
-            },
-        ];
-        let grouped = original_paths_by_directory(&files).unwrap();
+        let files = [first.clone(), another.clone(), second.clone()];
+        let grouped = paths_by_directory(&files).unwrap();
         assert_eq!(grouped.get(&first_dir), Some(&vec![first, another]));
         assert_eq!(grouped.get(&second_dir), Some(&vec![second.clone()]));
-        assert!(original_paths_by_directory(&[]).is_err());
+        assert!(paths_by_directory(&[]).is_err());
         fs::remove_file(second).unwrap();
-        assert!(original_paths_by_directory(&files).is_err());
+        assert!(paths_by_directory(&files).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2063,6 +2117,84 @@ mod tests {
     fn test_store() -> Store {
         let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
         initialize(dir).unwrap()
+    }
+
+    #[test]
+    fn record_action_paths_prefer_original_and_fall_back_to_file_copy() {
+        let store = test_store();
+        let original = store.dir.join("original.png");
+        let stored = store
+            .dir
+            .join("assets")
+            .join("image")
+            .join("files")
+            .join("0")
+            .join("original.png");
+        fs::write(&original, b"original").unwrap();
+        fs::create_dir_all(stored.parent().unwrap()).unwrap();
+        fs::write(&stored, b"copy").unwrap();
+        let files = serde_json::to_string(&[FileItem {
+            original: original.to_string_lossy().into_owned(),
+            stored: Some(stored.to_string_lossy().into_owned()),
+            is_directory: false,
+        }])
+        .unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,files,used_at) VALUES('image','image','image',?1,1)",
+                [files],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            record_action_paths(&store, "image", false).unwrap(),
+            vec![original.clone()]
+        );
+        fs::remove_file(&original).unwrap();
+        assert_eq!(
+            record_action_paths(&store, "image", false).unwrap(),
+            vec![stored.clone()]
+        );
+        assert_eq!(
+            record_action_paths(&store, "image", true).unwrap(),
+            vec![stored]
+        );
+
+        let screenshot = store
+            .dir
+            .join("assets")
+            .join("screenshot")
+            .join("image.png");
+        fs::create_dir_all(screenshot.parent().unwrap()).unwrap();
+        fs::write(&screenshot, b"screenshot").unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,used_at) VALUES('screenshot','screenshot','image',1)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,files,used_at) VALUES('directory','directory','file',?1,1)",
+                [serde_json::to_string(&[FileItem {
+                    original: store.dir.join("folder").to_string_lossy().into_owned(),
+                    stored: None,
+                    is_directory: true,
+                }])
+                .unwrap()],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            record_action_paths(&store, "screenshot", false).unwrap(),
+            vec![screenshot]
+        );
+        assert!(record_action_paths(&store, "directory", false).is_err());
+
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
