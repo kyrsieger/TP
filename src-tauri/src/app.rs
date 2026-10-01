@@ -500,7 +500,7 @@ fn copy_record_paths(store: tauri::State<Store>, id: String) -> Result<()> {
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
         .join("\n");
-    *store.suppressed_digest.lock().map_err(err)? = Some(hash("text", text.as_bytes()));
+    // “复制路径”是用户主动发起的复制，不做主动写回抑制：文本路径与其他复制内容一样进入历史记录。
     ClipboardContext::new()
         .map_err(err)?
         .set_text(text)
