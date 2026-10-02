@@ -119,6 +119,8 @@ struct Record {
     storage_mode: String,
     status: String,
     preview: bool,
+    /// 直接复制的图片没有原文件，其“原始路径”使用本工具保存的图片副本路径。
+    asset_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -320,6 +322,7 @@ fn snapshot(store: &Store) -> Result<Snapshot> {
                 storage_mode: r.get(10)?,
                 status: r.get(11)?,
                 preview: r.get::<_, i64>(12)? != 0,
+                asset_path: None,
             })
         })
         .map_err(err)?
@@ -333,6 +336,13 @@ fn snapshot(store: &Store) -> Result<Snapshot> {
                         .stored
                         .as_ref()
                         .is_some_and(|path| Path::new(path).is_dir());
+            }
+        }
+        // 直接复制的图片（截图等只有位图的复制）没有原文件，悬停预览按记录的图片副本显示路径。
+        if record.kind == "image" && record.files.is_empty() {
+            let path = store.dir.join("assets").join(&record.id).join("image.png");
+            if path.is_file() {
+                record.asset_path = Some(path.to_string_lossy().into_owned());
             }
         }
         if record.status != "pending" && !record.files.is_empty() {
@@ -2292,6 +2302,54 @@ mod tests {
             vec![screenshot]
         );
         assert!(record_action_paths(&store, "directory", false).is_err());
+
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn direct_image_records_expose_their_image_copy_path() {
+        let store = test_store();
+        let screenshot = store
+            .dir
+            .join("assets")
+            .join("screenshot")
+            .join("image.png");
+        fs::create_dir_all(screenshot.parent().unwrap()).unwrap();
+        fs::write(&screenshot, b"screenshot").unwrap();
+        let file_items = serde_json::to_string(&[FileItem {
+            original: store
+                .dir
+                .join("original.png")
+                .to_string_lossy()
+                .into_owned(),
+            stored: None,
+            is_directory: false,
+        }])
+        .unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,used_at) VALUES('screenshot','screenshot','image',2)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,files,used_at) VALUES('image','image','image',?1,1)",
+                [file_items],
+            )
+            .unwrap();
+        }
+        let records = snapshot(&store).unwrap().records;
+        let find = |id: &str| records.iter().find(|record| record.id == id).unwrap();
+        // 直接复制的图片没有原文件，悬停预览使用本工具保存的图片副本路径。
+        assert_eq!(
+            find("screenshot").asset_path.as_deref(),
+            Some(screenshot.to_string_lossy().as_ref())
+        );
+        // 有文件项的图片记录仍使用原路径，不额外返回副本路径。
+        assert_eq!(find("image").asset_path, None);
 
         let dir = store.dir.clone();
         drop(store);

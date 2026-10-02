@@ -11,7 +11,7 @@ type RecordItem = {
   id: string; kind: Kind; body: string; files: FileItem[]; favorite: boolean;
   pinnedAt: number | null;
   groupId: number | null; usedAt: number; createdAt: number | null; expiresAt: number | null;
-  status: string; preview: boolean;
+  status: string; preview: boolean; assetPath: string | null;
 };
 type Group = { id: number; name: string };
 type Settings = {
@@ -300,6 +300,13 @@ function recordRow(id: string): HTMLElement | null {
   return [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id) ?? null;
 }
 
+// 悬停预览的路径列表：文件、图片和视频记录使用原路径；
+// 直接复制的图片（截图等只有位图的复制）没有原文件，改用本工具保存的图片副本路径。
+function previewPaths(record: RecordItem): FileItem[] {
+  if (record.files.length || !record.assetPath) return record.files;
+  return [{ original: record.assetPath, stored: null, isDirectory: false }];
+}
+
 async function preparePreview(id: string) {
   if (!previewReady || hoveredId !== id) return;
   const token = ++previewGeneration;
@@ -328,7 +335,7 @@ async function preparePreview(id: string) {
     previewId = id;
     previewPlacement = { x, rowY, width, scale, top: area.position.y, bottom: area.position.y + area.size.height };
     await emitTo("preview", "preview-content", {
-      id, kind: record.kind, body: record.body, files: record.files,
+      id, kind: record.kind, body: record.body, files: previewPaths(record),
       groupName: state.groups.find(group => group.id === record.groupId)?.name ?? null,
       preview: record.preview, status: record.status, search, width: width / scale,
       maxHeight: (area.size.height - 2 * margin) / scale,
