@@ -240,10 +240,20 @@ function renderFilter() {
   document.querySelectorAll<HTMLElement>("[data-kind]").forEach(option => option.classList.toggle("active", option.dataset.kind === kindFilter));
 }
 
+// 列表只显示正文首行。首行之后还有内容时在末尾以空格加省略标记，提示这条记录没有完整显示；其余行只有空白时不加标记。
+// 首行本身为空（正文以换行开头）时省略标记前没有可依附的空格，直接显示省略标记。
+function firstLineText(body: string): string {
+  const lines = body.split(/\r\n|\r|\n/);
+  const first = lines[0];
+  const hasMore = lines.slice(1).some(line => line.trim() !== "");
+  if (!first) return hasMore ? "..." : "空文本";
+  return hasMore ? `${first} ...` : first;
+}
+
 function recordListText(record: RecordItem): string {
   const usual = record.files.length > 1 ? `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`
     : record.files.length === 1 ? record.files[0].original.split(/[\\/]/).pop() || "文件"
-    : record.body.split("\n")[0] || "空文本";
+    : firstLineText(record.body);
   if (!search) return usual;
   const needle = search.toLocaleLowerCase();
   const source = [record.body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
