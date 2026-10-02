@@ -124,7 +124,7 @@ async function showContent(payload: PreviewPayload) {
   } else if (payload.kind === "image" || payload.kind === "video") await loadSingle(payload, token);
   else {
     await measure(payload, token);
-    if (payload.kind === "file") void loadFileText(payload, token);
+    if (payload.kind === "file" && payload.files.length === 1) void loadFileText(payload, token);
   }
 }
 
