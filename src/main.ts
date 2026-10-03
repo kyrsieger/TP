@@ -614,7 +614,7 @@ function renderSettings() {
       <tr><td>Tab / Shift+Tab</td><td>切换到下一个 / 上一个分组</td></tr>
       <tr><td>←</td><td>选中图片或视频记录时打开大图预览</td></tr>
       <tr><td>→</td><td>显示当前选中记录的悬浮预览</td></tr>
-      <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录；分组菜单中切换选项</td></tr>
+      <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录，首尾循环；分组菜单中切换选项</td></tr>
       <tr><td>Shift+↑ / Shift+↓、Shift+点击</td><td>按当前列表顺序连续选择多条记录</td></tr>
       <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
       <tr><td>Space</td><td>打开或关闭大图预览；分组菜单中确认选择</td></tr>
@@ -694,7 +694,10 @@ function moveSelection(direction: number, extend = false) {
   const records = filtered();
   if (!records.length) return;
   const index = records.findIndex(record => record.id === selectedId);
-  const id = records[Math.max(0, Math.min(records.length - 1, index + direction))].id;
+  const nextIndex = index < 0 ? 0 : extend
+    ? Math.max(0, Math.min(records.length - 1, index + direction))
+    : (index + direction + records.length) % records.length;
+  const id = records[nextIndex].id;
   selectRecord(id, extend);
   // 键盘触发的悬浮预览跟随选中记录：选中变化时关闭，鼠标悬停触发的预览不受影响。
   if (previewFromKeyboard) closePreview();
