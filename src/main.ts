@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitorFromPoint, PhysicalPosition } from "@tauri-apps/api/window";
@@ -685,7 +686,11 @@ function renderSettings() {
     </tbody></table>
     <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
       <p class="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">${cacheSizeText}</span>。此操作无法撤销。</p></div>
-      <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button></section>`;
+      <button id="clear-cache" class="primary" ${clearingCache ? "disabled" : ""}>${clearingCache ? "清理中…" : "清理缓存"}</button></section>
+    <p class="app-version">当前版本：<span id="app-version">读取中…</span></p>`;
+  const version = settings.querySelector<HTMLElement>("#app-version")!;
+  void getVersion().then(value => { version.textContent = value; })
+    .catch(() => { version.textContent = "无法获取"; });
 }
 
 // 记下当前被选中的对象，用于离开设置后原样还回去。列表会重绘，所以只记“身份”而不是元素本身。

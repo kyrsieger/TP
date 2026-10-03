@@ -144,6 +144,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .cache-cleanup .hint{margin:0;color:var(--text-2)}
 .cache-cleanup .primary{flex:0 0 auto;width:auto;padding:10px 14px;background:#c73737}
 .cache-cleanup .primary:hover{background:#ad2727}
+.app-version{margin:24px 0 0;color:var(--text-3);font-size:11px;text-align:center}
 .shortcut-error{color:#b42318;font-size:11px;line-height:1.4}
 #settings h3{margin:24px 0 8px;font-size:13px;font-weight:600;color:var(--text-1)}
 .shortcut-table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.45;color:var(--text-2)}
