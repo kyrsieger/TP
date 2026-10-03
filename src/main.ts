@@ -24,6 +24,7 @@ type Settings = {
   alwaysOnTop: boolean;
 };
 type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
+type SettingsSaveResult = { status: "saved" } | { status: "confirmation_required"; count: number };
 type PanelSession = { view: string; kindFilter: string; search: string };
 type FocusTarget = { kind: "id" | "record" | "view"; value: string };
 
@@ -59,6 +60,7 @@ let autostartSaving = false;
 let positionSaveTimer: number | undefined;
 const numberSaveTimers = new Map<string, number>();
 let settingsSave: Promise<void> = Promise.resolve();
+let pendingSettings: Settings | null = null;
 let placing = false;
 let lastResizePress: { edge: string; time: number; x: number; y: number } | null = null;
 let hoveredId: string | null = null;
@@ -756,6 +758,7 @@ function refresh(): Promise<void> {
 
 function releasePanelContent() {
   if (!panelActive) return;
+  document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.close("cancel");
   panelActive = false;
   panelGeneration++;
   refreshAgain = false;
@@ -865,7 +868,31 @@ function shortcutFailure(shortcut: string, error: unknown) {
     : `无法启用 ${displayShortcut(shortcut)}：${detail}`;
 }
 
+function confirmSettingsCleanup(count: number): Promise<boolean> {
+  const dialog = document.createElement("dialog");
+  dialog.id = "settings-cleanup-confirmation";
+  dialog.setAttribute("aria-labelledby", "cleanup-confirmation-title");
+  dialog.setAttribute("aria-describedby", "cleanup-confirmation-description");
+  dialog.innerHTML = `<h2 id="cleanup-confirmation-title">应用设置并清理记录？</h2>
+    <p id="cleanup-confirmation-description">新设置将删除 <strong>${count}</strong> 条已有普通记录及其本地文件。</p>
+    <p class="hint">收藏和自建分组中的记录会保留。此操作无法撤销。</p>
+    <div class="confirmation-actions"><button type="button" data-cancel autofocus>取消</button><button type="button" class="primary" data-confirm>删除并应用</button></div>`;
+  root.append(dialog);
+  return new Promise(resolve => {
+    dialog.querySelector<HTMLButtonElement>("[data-cancel]")!.onclick = () => dialog.close("cancel");
+    dialog.querySelector<HTMLButtonElement>("[data-confirm]")!.onclick = () => dialog.close("confirm");
+    dialog.addEventListener("close", () => {
+      const confirmed = dialog.returnValue === "confirm";
+      dialog.remove();
+      resolve(confirmed);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
 function saveSetting(patch: Partial<Settings>, reposition = false) {
+  if (pendingSettings && (patch.maxOrdinary !== undefined || patch.retentionDays !== undefined)
+    && Object.keys(patch).every(key => pendingSettings![key as keyof Settings] === patch[key as keyof Settings])) return;
   settingsSave = settingsSave.then(async () => {
     const previous = state.settings;
     const next = { ...previous, ...patch };
@@ -880,7 +907,17 @@ function saveSetting(patch: Partial<Settings>, reposition = false) {
         next.panelX = position.x; next.panelY = position.y;
       }
       if (patch.shortcut !== undefined) await registerShortcut(next.shortcut);
-      await call("save_settings", { value: next });
+      pendingSettings = next;
+      let confirmedCount: number | undefined;
+      while (true) {
+        const result = await call<SettingsSaveResult>("save_settings", { value: next, confirmedCount });
+        if (result.status === "saved") break;
+        if (!panelActive || !await confirmSettingsCleanup(result.count)) {
+          renderSettings();
+          return;
+        }
+        confirmedCount = result.count;
+      }
       state.settings = next;
       if (patch.shortcut !== undefined) {
         if (shortcutDraft === next.shortcut) shortcutDraft = null;
@@ -893,6 +930,8 @@ function saveSetting(patch: Partial<Settings>, reposition = false) {
       renderSettings();
       toast(shortcutError ?? String(error));
       return;
+    } finally {
+      pendingSettings = null;
     }
     if (reposition) await placePanel().catch(error => toast(String(error)));
   });
@@ -1343,6 +1382,7 @@ root.addEventListener("keydown", event => {
 
 document.addEventListener("keydown", event => {
   if (!state || (event.target as HTMLElement).id === "shortcut") return;
+  if (document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.open) return;
   const recordMenu = document.querySelector<HTMLElement>("#record-menu")!;
   if (!recordMenu.hidden && recordMenu.contains(event.target as Node)) {
     if (event.key === "Escape") {
@@ -1589,7 +1629,7 @@ function scheduleGeometrySave() {
     const position = await panel.outerPosition(); const size = await panel.innerSize();
     const next = { ...state.settings, panelX: position.x, panelY: position.y,
       panelWidth: size.width, panelHeight: size.height };
-    try { await call("save_settings", { value: next }); state.settings = next; } catch { /* keep last valid size */ }
+    try { if ((await call<SettingsSaveResult>("save_settings", { value: next })).status === "saved") state.settings = next; } catch { /* keep last valid size */ }
   }, 300);
 }
 

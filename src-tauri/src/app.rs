@@ -433,30 +433,57 @@ fn remove_record(conn: &Connection, dir: &Path, id: &str) -> Result<()> {
 }
 
 fn clean(store: &Store) -> Result<bool> {
+    clean_at(store, now())
+}
+
+fn clean_at(store: &Store, timestamp: i64) -> Result<bool> {
     let conn = store.db.lock().map_err(err)?;
     let config = settings(&conn)?;
-    let cutoff = now() - i64::from(config.retention_days) * 86_400_000;
-    let mut ids = Vec::new();
-    let mut stmt = conn.prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL AND (used_at < ?1 OR (expires_at IS NOT NULL AND expires_at <= ?2))").map_err(err)?;
-    ids.extend(
-        stmt.query_map(params![cutoff, now()], |r| r.get::<_, String>(0))
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?,
-    );
-    let mut stmt = conn.prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL ORDER BY used_at DESC LIMIT -1 OFFSET ?1").map_err(err)?;
-    ids.extend(
-        stmt.query_map([config.max_ordinary], |r| r.get::<_, String>(0))
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?,
-    );
-    ids.sort();
-    ids.dedup();
+    let ids = cleanup_ids(&conn, &config, timestamp)?;
     for id in &ids {
         remove_record(&conn, &store.dir, id)?;
     }
     Ok(!ids.is_empty())
+}
+
+fn cleanup_ids(conn: &Connection, config: &Settings, timestamp: i64) -> Result<Vec<String>> {
+    let cutoff = timestamp - i64::from(config.retention_days) * 86_400_000;
+    let mut ids = Vec::new();
+    let mut stmt = conn.prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL AND (used_at < ?1 OR (expires_at IS NOT NULL AND expires_at <= ?2))").map_err(err)?;
+    ids.extend(
+        stmt.query_map(params![cutoff, timestamp], |r| r.get::<_, String>(0))
+            .map_err(err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)?,
+    );
+    let mut stmt = conn.prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL AND used_at >= ?2 AND (expires_at IS NULL OR expires_at > ?3) ORDER BY used_at DESC LIMIT -1 OFFSET ?1").map_err(err)?;
+    ids.extend(
+        stmt.query_map(params![config.max_ordinary, cutoff, timestamp], |r| {
+            r.get::<_, String>(0)
+        })
+        .map_err(err)?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(err)?,
+    );
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
+fn settings_cleanup_confirmation(
+    conn: &Connection,
+    value: &Settings,
+    timestamp: i64,
+    confirmed_count: usize,
+) -> Result<Option<usize>> {
+    let previous = settings(conn)?;
+    if previous.max_ordinary == value.max_ordinary
+        && previous.retention_days == value.retention_days
+    {
+        return Ok(None);
+    }
+    let count = cleanup_ids(conn, value, timestamp)?.len();
+    Ok((count > confirmed_count).then_some(count))
 }
 
 fn protected_assets(conn: &Connection, assets: &Path) -> Result<HashSet<OsString>> {
@@ -675,10 +702,29 @@ fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<()> {
     }
 }
 
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum SettingsSaveResult {
+    Saved,
+    ConfirmationRequired { count: usize },
+}
+
 #[tauri::command]
-fn save_settings(app: tauri::AppHandle, store: tauri::State<Store>, value: Settings) -> Result<()> {
+fn save_settings(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    value: Settings,
+    confirmed_count: Option<usize>,
+) -> Result<SettingsSaveResult> {
     value.validate()?;
     let conn = store.db.lock().map_err(err)?;
+    let timestamp = now();
+    if let Some(count) =
+        settings_cleanup_confirmation(&conn, &value, timestamp, confirmed_count.unwrap_or(0))?
+    {
+        return Ok(SettingsSaveResult::ConfirmationRequired { count });
+    }
+    let ids = cleanup_ids(&conn, &value, timestamp)?;
     if settings(&conn)?.always_on_top != value.always_on_top {
         app.get_webview_window("main")
             .ok_or("面板窗口不存在")?
@@ -690,11 +736,14 @@ fn save_settings(app: tauri::AppHandle, store: tauri::State<Store>, value: Setti
         [serde_json::to_string(&value).map_err(err)?],
     )
     .map_err(err)?;
+    for id in &ids {
+        remove_record(&conn, &store.dir, id)?;
+    }
     drop(conn);
-    if clean(&store)? {
+    if !ids.is_empty() {
         changed(&app);
     }
-    Ok(())
+    Ok(SettingsSaveResult::Saved)
 }
 
 #[tauri::command]
@@ -3090,6 +3139,235 @@ mod tests {
             .map(|r| r.id)
             .collect();
         assert_eq!(remaining, vec!["new", "saved"]);
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn settings_cleanup_confirmation_counts_deletions_without_applying_settings() {
+        let store = test_store();
+        let timestamp = now();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute("INSERT INTO groups(id,name) VALUES(1,'项目')", [])
+                .unwrap();
+            for (id, used_at, favorite, group_id, expires_at) in [
+                ("new", timestamp - 1000, 0, None, None),
+                ("second", timestamp - 2000, 0, None, None),
+                ("third", timestamp - 3000, 0, None, None),
+                ("old", timestamp - 2 * 86_400_000, 0, None, None),
+                ("expired", timestamp - 500, 0, None, Some(timestamp)),
+                ("favorite", timestamp - 31 * 86_400_000, 1, None, None),
+                ("grouped", timestamp - 31 * 86_400_000, 0, Some(1), None),
+            ] {
+                conn.execute("INSERT INTO records(id,digest,kind,used_at,favorite,group_id,expires_at) VALUES(?1,?1,'text',?2,?3,?4,?5)",
+                    params![id, used_at, favorite, group_id, expires_at]).unwrap();
+            }
+            let original = settings(&conn).unwrap();
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &original, timestamp, 0).unwrap(),
+                None
+            );
+            let mut value = original.clone();
+            value.retention_days = 1;
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 0).unwrap(),
+                Some(2)
+            );
+            value.max_ordinary = 2;
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 0).unwrap(),
+                Some(3)
+            );
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 3).unwrap(),
+                None
+            );
+            assert_eq!(settings(&conn).unwrap().max_ordinary, original.max_ordinary);
+            assert_eq!(
+                settings(&conn).unwrap().retention_days,
+                original.retention_days
+            );
+            assert_eq!(
+                conn.query_row("SELECT count(*) FROM records", [], |r| r.get::<_, usize>(0))
+                    .unwrap(),
+                7
+            );
+
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,used_at) VALUES('added','added','text',?1)",
+                [timestamp],
+            )
+            .unwrap();
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 3).unwrap(),
+                Some(4)
+            );
+            conn.execute("UPDATE records SET favorite=1 WHERE id='third'", [])
+                .unwrap();
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 3).unwrap(),
+                None
+            );
+        }
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn settings_changes_without_deletions_do_not_require_confirmation() {
+        let store = test_store();
+        let timestamp = now();
+        {
+            let conn = store.db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,used_at) VALUES('recent','recent','text',?1)",
+                [timestamp],
+            )
+            .unwrap();
+            let mut value = settings(&conn).unwrap();
+            value.max_ordinary = 1;
+            value.retention_days = 1;
+            assert_eq!(
+                settings_cleanup_confirmation(&conn, &value, timestamp, 0).unwrap(),
+                None
+            );
+        }
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn retention_uses_last_use_time_for_every_supported_duration() {
+        let store = test_store();
+        let timestamp = now();
+        for days in [1, 3, 5, 7, 30] {
+            let cutoff = timestamp - i64::from(days) * 86_400_000;
+            {
+                let conn = store.db.lock().unwrap();
+                conn.execute("DELETE FROM records", []).unwrap();
+                conn.execute("INSERT OR IGNORE INTO groups(id,name) VALUES(1,'项目')", [])
+                    .unwrap();
+                let mut value = settings(&conn).unwrap();
+                value.retention_days = days;
+                conn.execute(
+                    "UPDATE settings SET value=?1 WHERE key='main'",
+                    [serde_json::to_string(&value).unwrap()],
+                )
+                .unwrap();
+                for (id, used_at, favorite, group_id, pinned_at, expires_at) in [
+                    ("old", cutoff - 1, 0, None, None, None),
+                    ("boundary", cutoff, 0, None, None, None),
+                    ("recent", cutoff + 1, 0, None, None, None),
+                    ("reused", timestamp, 0, None, None, None),
+                    ("pinned", cutoff - 1, 0, None, Some(timestamp), None),
+                    ("favorite", cutoff - 1, 1, None, None, Some(timestamp)),
+                    ("grouped", cutoff - 1, 0, Some(1), None, Some(timestamp)),
+                ] {
+                    conn.execute("INSERT INTO records(id,digest,kind,used_at,created_at,favorite,group_id,pinned_at,expires_at) VALUES(?1,?1,'text',?2,?3,?4,?5,?6,?7)",
+                        params![id, used_at, cutoff - 86_400_000, favorite, group_id, pinned_at, expires_at]).unwrap();
+                }
+            }
+            assert!(clean_at(&store, timestamp).unwrap());
+            let mut remaining: Vec<String> = snapshot(&store)
+                .unwrap()
+                .records
+                .into_iter()
+                .map(|r| r.id)
+                .collect();
+            remaining.sort();
+            assert_eq!(
+                remaining,
+                vec!["boundary", "favorite", "grouped", "recent", "reused"],
+                "retention: {days} days"
+            );
+            assert!(!clean_at(&store, timestamp).unwrap());
+        }
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn count_limit_keeps_latest_ordinary_records_at_supported_limits() {
+        let store = test_store();
+        let timestamp = now();
+        for limit in [1, 300, 500] {
+            {
+                let conn = store.db.lock().unwrap();
+                conn.execute("DELETE FROM records", []).unwrap();
+                conn.execute("INSERT OR IGNORE INTO groups(id,name) VALUES(1,'项目')", [])
+                    .unwrap();
+                let mut value = settings(&conn).unwrap();
+                value.max_ordinary = limit;
+                conn.execute(
+                    "UPDATE settings SET value=?1 WHERE key='main'",
+                    [serde_json::to_string(&value).unwrap()],
+                )
+                .unwrap();
+                for age in 0..=limit {
+                    let id = format!("record-{age}");
+                    conn.execute("INSERT INTO records(id,digest,kind,used_at,pinned_at) VALUES(?1,?1,'text',?2,?3)",
+                        params![id, timestamp - i64::from(age), (age == limit).then_some(timestamp)]).unwrap();
+                }
+                for (id, favorite, group_id) in [("favorite", 1, None), ("grouped", 0, Some(1))] {
+                    conn.execute("INSERT INTO records(id,digest,kind,used_at,favorite,group_id) VALUES(?1,?1,'text',?2,?3,?4)",
+                        params![id, timestamp - 31 * 86_400_000, favorite, group_id]).unwrap();
+                }
+            }
+            assert!(clean_at(&store, timestamp).unwrap());
+            let records = snapshot(&store).unwrap().records;
+            let ordinary: Vec<&Record> = records
+                .iter()
+                .filter(|r| !r.favorite && r.group_id.is_none())
+                .collect();
+            assert_eq!(ordinary.len(), usize::from(limit));
+            assert!(ordinary
+                .iter()
+                .all(|r| r.used_at > timestamp - i64::from(limit)));
+            assert_eq!(records.len(), usize::from(limit) + 2);
+            assert!(!clean_at(&store, timestamp).unwrap());
+        }
+        let dir = store.dir.clone();
+        drop(store);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn count_limit_does_not_count_expired_sensitive_records() {
+        let store = test_store();
+        {
+            let conn = store.db.lock().unwrap();
+            let mut value = settings(&conn).unwrap();
+            value.max_ordinary = 2;
+            conn.execute(
+                "UPDATE settings SET value=?1 WHERE key='main'",
+                [serde_json::to_string(&value).unwrap()],
+            )
+            .unwrap();
+            let base = now();
+            for (id, age, expires_at) in [
+                ("expired", 1, Some(base - 1)),
+                ("new", 2, None),
+                ("older", 3, None),
+                ("oldest", 4, None),
+            ] {
+                conn.execute("INSERT INTO records(id,digest,kind,used_at,expires_at) VALUES(?1,?1,'text',?2,?3)",
+                    params![id, base - age * 1000, expires_at]).unwrap();
+            }
+        }
+        assert!(clean(&store).unwrap());
+        let remaining: Vec<String> = snapshot(&store)
+            .unwrap()
+            .records
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(remaining, vec!["new", "older"]);
+        assert!(!clean(&store).unwrap());
         let dir = store.dir.clone();
         drop(store);
         fs::remove_dir_all(dir).unwrap();

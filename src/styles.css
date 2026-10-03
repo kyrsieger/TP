@@ -154,6 +154,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .primary{width:100%;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:13px}
 .primary:hover{background:#4338ca}
 .primary:disabled{opacity:.5;cursor:not-allowed}
+#settings-cleanup-confirmation{width:340px;max-width:calc(100% - 32px);margin:auto;padding:20px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--text-1);box-shadow:0 12px 28px rgba(23,28,40,.14)}
+#settings-cleanup-confirmation::backdrop{background:rgba(23,28,40,.18)}
+#settings-cleanup-confirmation h2{margin:0 0 14px;font-size:17px;font-weight:650}
+#settings-cleanup-confirmation p{margin:0 0 10px;color:var(--text-2);font-size:12px;line-height:1.6}
+#settings-cleanup-confirmation strong{color:#c73737;font-weight:650}
+#settings-cleanup-confirmation .hint{font-size:11px;color:var(--text-3)}
+.confirmation-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.confirmation-actions button{width:auto;min-height:34px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#f8f9fc;color:var(--text-2);font-size:12px}
+.confirmation-actions button:hover{background:var(--hover)}
+.confirmation-actions .primary{border-color:#c73737;background:#c73737;color:#fff}
+.confirmation-actions .primary:hover{background:#ad2727;border-color:#ad2727}
 #toast{position:absolute;right:16px;bottom:16px;left:16px;z-index:9;padding:10px 12px;border-radius:8px;background:#273149;color:#fff;font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s}
 #toast.visible{opacity:1}
 .resize-edge{position:fixed;z-index:7}
