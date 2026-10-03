@@ -43,7 +43,6 @@ let selectedId: string | null = null;
 let selectedIds = new Set<string>();
 let selectionAnchorId: string | null = null;
 let moveGroupIds: string[] = [];
-let pendingShortcutId: string | null = null;
 let settingsOpen = false;
 let settingsReturnFocus: FocusTarget | null = null;
 let clearingCache = false;
@@ -309,7 +308,7 @@ function schedulePreviewClose() {
 }
 
 // 清空搜索词并恢复当前视图的完整列表；Esc 与工具栏的清空按钮共用这一行为。
-// 清空按钮把焦点留在搜索框便于继续输入；Esc 清空后移走搜索框焦点，与“未聚焦时输入即搜索”的规则一致。
+// 清空按钮把焦点留在搜索框便于继续输入；Esc 清空后移走搜索框焦点。
 function clearSearch(refocus = true) {
   const input = document.querySelector<HTMLInputElement>("#search")!;
   input.value = "";
@@ -666,9 +665,9 @@ function renderSettings() {
     <p class="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <h3>快捷键</h3><table class="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>
       <tr><td>${s.shortcut ? escapeHtml(displayShortcut(s.shortcut)) : "未设置"}</td><td>唤出面板（全局快捷键）</td></tr>
-      <tr><td>直接输入</td><td>在主页搜索当前分组</td></tr>
-      <tr><td>Shift+Esc</td><td>聚焦搜索框</td></tr>
-      <tr><td>Backspace / Delete</td><td>搜索框聚焦时编辑搜索词；未聚焦时 Backspace 也可编辑搜索词</td></tr>
+      <tr><td>直接输入</td><td>搜索框聚焦时搜索当前分组</td></tr>
+      <tr><td>Ctrl+F</td><td>聚焦搜索框</td></tr>
+      <tr><td>${isMacOS ? "Delete / Fn+Delete" : "Backspace / Delete"}</td><td>搜索框聚焦时编辑搜索词</td></tr>
       <tr><td>Tab / Shift+Tab</td><td>切换到下一个 / 上一个分组</td></tr>
       <tr><td>←</td><td>选中图片或视频记录时打开大图预览</td></tr>
       <tr><td>→</td><td>显示当前选中记录的悬浮预览</td></tr>
@@ -676,9 +675,9 @@ function renderSettings() {
       <tr><td>Shift+↑ / Shift+↓、Shift+点击</td><td>按当前列表顺序连续选择多条记录</td></tr>
       <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
       <tr><td>Space</td><td>打开或关闭大图预览；分组菜单中确认选择</td></tr>
-      <tr><td>Ctrl+1～9</td><td>应用当前可见序号对应的记录</td></tr>
-      <tr><td>Ctrl+D / Delete</td><td>删除所有选中记录（搜索框聚焦时仅 Ctrl+D）</td></tr>
-      <tr><td>Ctrl+F</td><td>收藏或取消收藏所有选中记录</td></tr>
+      <tr><td>1～9</td><td>搜索框未聚焦时应用当前可见序号对应的记录</td></tr>
+      <tr><td>Ctrl+D</td><td>收藏或取消收藏所有选中记录</td></tr>
+      <tr><td>${isMacOS ? "Ctrl+Delete" : "Ctrl+Backspace / Delete"}</td><td>搜索框未聚焦时删除所有选中记录</td></tr>
       <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
       <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
       <tr><td>Ctrl+A</td><td>面板中禁用全选；搜索框聚焦时全选搜索文字</td></tr>
@@ -769,7 +768,6 @@ function releasePanelContent() {
   settingsOpen = false;
   settingsReturnFocus = null;
   groupEdit = null;
-  pendingShortcutId = null;
   selectedId = null;
   selectedIds.clear();
   selectionAnchorId = null;
@@ -965,7 +963,7 @@ root.innerHTML = `<div class="shell"><div class="resize-edge left" data-resize-e
   <header class="titlebar"><svg class="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="#4f46e5" stroke-width="2"/><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="#4f46e5"/></svg><span class="appname">TP</span>
     <div class="winbtns"><button id="minimize" class="winbtn" title="最小化" aria-label="最小化">${icon("minus", 13)}</button><button id="maximize" class="winbtn" title="最大化或还原" aria-label="最大化或还原">${icon("square", 11)}</button><button id="close" class="winbtn close" title="隐藏面板" aria-label="隐藏面板">${icon("x", 13)}</button></div>
   </header>
-  <div class="toolbar"><div class="search-box"><label class="search-field" for="search">${icon("search", 13)}<input id="search" placeholder="搜索 · Shift+Esc" aria-label="搜索当前分组" autocomplete="off"></label><button id="clear-search" type="button" title="清空搜索" aria-label="清空搜索" hidden>${icon("x", 13)}</button></div>
+  <div class="toolbar"><div class="search-box"><label class="search-field" for="search">${icon("search", 13)}<input id="search" placeholder="搜索 · Ctrl+F" aria-label="搜索当前分组" autocomplete="off"></label><button id="clear-search" type="button" title="清空搜索" aria-label="清空搜索" hidden>${icon("x", 13)}</button></div>
     <div id="filter-wrap" class="filter-wrap"><div class="filter-control"><button id="kind-filter" class="iconbtn" title="类型筛选：全部" aria-label="类型筛选：全部" aria-haspopup="menu" aria-expanded="false">${icon("filter", 14)}</button><button id="clear-filter" class="clear-filter" title="清除筛选" aria-label="清除筛选" hidden>${icon("x", 11)}</button></div>
       <div id="filter-menu" class="filter-menu" role="menu" hidden>${(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind => `<button data-kind="${kind}" role="menuitem">${icon(kind === "all" ? "filter" : kind, 14)}<span>${kind === "all" ? "全部" : labels[kind]}</span></button>`).join("")}</div></div>
     <button id="pin" class="iconbtn" aria-label="置顶" aria-pressed="false" title="置顶">${icon("pin", 15)}</button><button id="settings-button" class="iconbtn" aria-label="设置" title="设置">${icon("gear", 15)}</button></div>
@@ -1401,26 +1399,27 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if (event.shiftKey && event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLInputElement>("#search")!.focus(); return; }
-  if (event.isComposing || event.keyCode === 229) {
+  if (event.isComposing || event.keyCode === 229) return;
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") && event.code === "KeyF") {
+    event.preventDefault();
     document.querySelector<HTMLInputElement>("#search")!.focus();
     return;
   }
-  const shortcutDigit = /^Digit([1-9])$/.exec(event.code)?.[1];
-  if (event.ctrlKey && !event.getModifierState("AltGraph") && shortcutDigit) {
+  if (/^[1-9]$/.test(event.key) && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
+      !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
     event.preventDefault();
-    pendingShortcutId = visibleRecords()[Number(shortcutDigit) - 1]?.dataset.id ?? null;
+    const id = visibleRecords()[Number(event.key) - 1]?.dataset.id;
+    if (!event.repeat && id) void apply(id);
     return;
   }
   if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
-      ["KeyD", "KeyF", "KeyG", "KeyP"].includes(event.code)) {
+      ["KeyD", "KeyG", "KeyP"].includes(event.code)) {
     event.preventDefault();
     if (event.repeat || !selectedId) return;
     const records = filtered().filter(record => selectedIds.has(record.id));
     if (!records.length) return;
     const ids = records.map(record => record.id);
-    if (event.code === "KeyD") void action("batch_records", { ids, operation: { kind: "delete" } });
-    if (event.code === "KeyF") void action("batch_records", { ids, operation: { kind: "set_favorite", favorite: !records.every(record => record.favorite) } });
+    if (event.code === "KeyD") void action("batch_records", { ids, operation: { kind: "set_favorite", favorite: !records.every(record => record.favorite) } });
     if (event.code === "KeyP") void action("batch_records", { ids, operation: { kind: "set_pinned", pinned: !records.every(record => record.pinnedAt !== null) } });
     if (event.code === "KeyG") {
       const id = selectedId;
@@ -1468,47 +1467,18 @@ document.addEventListener("keydown", event => {
     void action("hide_panel");
     return;
   }
-  if (event.key === "Delete" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
+  // Mac 主键盘上标为 Delete 的退格键也发送 Backspace；仅 Windows 支持单独按向前删除键删除记录。
+  if ((event.key === "Backspace" && event.ctrlKey || !isMacOS && event.key === "Delete" && !event.ctrlKey) &&
+      !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
       !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
     event.preventDefault();
     if (!event.repeat && selectedIds.size) void action("batch_records", { ids: [...selectedIds], operation: { kind: "delete" } });
     return;
   }
-  if ((event.target as HTMLElement).closest("input, textarea, [contenteditable='true']") ||
-      event.ctrlKey && !event.getModifierState("AltGraph") || event.metaKey) return;
-  const input = document.querySelector<HTMLInputElement>("#search")!;
-  if (event.key === "Process" || event.key === "Dead") {
-    input.focus();
-    return;
-  }
-  if (event.key === "Backspace") {
-    event.preventDefault();
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-    if (input.value) {
-      const last = Array.from(input.value).pop()!;
-      input.setRangeText("", input.value.length - last.length, input.value.length, "end");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    return;
-  }
-  if (Array.from(event.key).length !== 1) return;
-  event.preventDefault();
-  input.focus();
-  input.setRangeText(event.key, input.value.length, input.value.length, "end");
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-});
-
-document.addEventListener("keyup", event => {
-  if (event.key !== "Control" || !pendingShortcutId) return;
-  event.preventDefault();
-  const id = pendingShortcutId;
-  pendingShortcutId = null;
-  void apply(id);
 });
 
 window.addEventListener("blur", () => {
-  pendingShortcutId = null; cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu(); closeRecordMenu();
+  cancelGroupEdit(); closeGroupMenu(); closeMoveGroupMenu(); closeRecordMenu();
   window.setTimeout(async () => {
     if (!await call<boolean>("preview_focused").catch(() => false)) closePreview();
   }, 120);

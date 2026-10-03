@@ -31,7 +31,7 @@ function setup() {
     panelActive: false, panelGeneration: 0, refreshing: null, refreshAgain: false, openingPanel: null,
     state: snapshot("old"), view: "favorite", kindFilter: "image", search: "kept",
     settingsOpen: false, backToTopFrame: 1, largePreviewId: "old", largePreviewSizeRequest: 0,
-    settingsReturnFocus: null, groupEdit: null, pendingShortcutId: null, backToTopPosition: null,
+    settingsReturnFocus: null, groupEdit: null, backToTopPosition: null,
     selectedId: "old", selectedIds: new Set(["old"]), selectionAnchorId: "old",
     listRecords: [{ id: "old" }], offsets: [0, 48], renderedRange: { start: 0, end: 1 },
     shortcutError: null, activeShortcut: "", thumbnailObserver: { disconnect: () => effects.push("disconnect-images") },
