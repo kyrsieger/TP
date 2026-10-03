@@ -5,7 +5,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::Mutex,
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use uuid::Uuid;
 
 use crate::platform;
@@ -142,6 +143,40 @@ struct Store {
     media_lock: Mutex<()>,
     paste_target: Mutex<Option<platform::PasteTarget>>,
     suppressed_digest: Mutex<Option<String>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PanelSession {
+    view: String,
+    kind_filter: String,
+    search: String,
+}
+
+impl Default for PanelSession {
+    fn default() -> Self {
+        Self {
+            view: "default".into(),
+            kind_filter: "all".into(),
+            search: String::new(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct PanelState {
+    ready: bool,
+    open_requested: bool,
+    releasing: bool,
+    hidden_at: Option<Instant>,
+    session: PanelSession,
+    shortcut_error: Option<String>,
+}
+
+#[derive(Default)]
+struct PanelLifecycle {
+    state: Mutex<PanelState>,
+    shortcut: Mutex<String>,
 }
 
 fn settings(conn: &Connection) -> Result<Settings> {
@@ -880,6 +915,22 @@ fn save_list_thumbnail(source: &Path, output: &Path) -> Result<()> {
     list_thumbnail(&image).save(output).map_err(err)
 }
 
+fn hover_preview_path(source: &Path, dir: &Path, index: usize) -> Result<PathBuf> {
+    let output = dir.join(if index == 0 {
+        "hover.png".to_string()
+    } else {
+        format!("hover-{index}.png")
+    });
+    if !output.exists() {
+        let image = image::open(source).map_err(err)?;
+        image
+            .thumbnail(image.width().min(1440), image.height().min(1440))
+            .save(&output)
+            .map_err(err)?;
+    }
+    Ok(output)
+}
+
 fn save_indexed_image_file_preview(source: &Path, dir: &Path, index: usize) -> Result<PathBuf> {
     let image = image::ImageReader::open(source)
         .map_err(err)?
@@ -993,7 +1044,7 @@ fn file_text_preview(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn preview_data(
     store: tauri::State<Store>,
     id: String,
@@ -1050,6 +1101,8 @@ fn preview_data(
             }
             if role == "thumbnail" {
                 thumbnail
+            } else if role == "preview" {
+                hover_preview_path(&original, &dir, index)?
             } else {
                 original
             }
@@ -1100,37 +1153,312 @@ fn remember_paste_target(store: tauri::State<Store>) -> Result<()> {
     Ok(())
 }
 
+fn set_window_memory_mode(window: &tauri::WebviewWindow, low: bool) {
+    #[cfg(windows)]
+    if let Err(error) = window.with_webview(move |webview| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows::core::Interface;
+        let result = webview
+            .controller()
+            .CoreWebView2()
+            .and_then(|core| core.cast::<ICoreWebView2_19>())
+            .and_then(|core| {
+                core.SetMemoryUsageTargetLevel(if low {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                } else {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                })
+            });
+        if let Err(error) = result {
+            eprintln!("Failed to set WebView memory mode: {error}");
+        }
+    }) {
+        eprintln!("Failed to access WebView: {error}");
+    }
+    #[cfg(not(windows))]
+    let _ = (window, low);
+}
+
+fn create_panel(app: &tauri::AppHandle) -> Result<()> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .ok_or("面板窗口配置不存在")?;
+    let window = tauri::WebviewWindowBuilder::from_config(app, config)
+        .map_err(err)?
+        .build()
+        .map_err(err)?;
+    let pinned = {
+        let store = app.state::<Store>();
+        let conn = store.db.lock().map_err(err)?;
+        settings(&conn)?.always_on_top
+    };
+    window.set_always_on_top(pinned).map_err(err)?;
+    #[cfg(windows)]
+    {
+        window
+            .with_webview(|webview| unsafe {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                use windows::core::Interface;
+                let result = webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.Settings())
+                    .and_then(|settings| settings.cast::<ICoreWebView2Settings3>())
+                    .and_then(|settings| settings.SetAreBrowserAcceleratorKeysEnabled(false));
+                if let Err(error) = result {
+                    eprintln!("Failed to disable panel browser shortcuts: {error}");
+                }
+            })
+            .map_err(err)?;
+        filter_browser_context_menu(&window).map_err(err)?;
+        platform::install_panel_resize_double_click(window.hwnd().map_err(err)?).map_err(err)?;
+    }
+    #[cfg(target_os = "macos")]
+    platform::install_panel_resize_double_click_macos(window.ns_window().map_err(err)?)
+        .map_err(err)?;
+    Ok(())
+}
+
+// Window creation and destruction are serialized on Tauri's main thread.
+fn open_panel(app: &tauri::AppHandle) -> Result<()> {
+    let lifecycle = app.state::<PanelLifecycle>();
+    let mut state = lifecycle.state.lock().map_err(err)?;
+    if state.releasing {
+        return Ok(());
+    }
+    let ready = state.ready;
+    if ready {
+        state.open_requested = false;
+    }
+    drop(state);
+    if app.get_webview_window("main").is_none() {
+        if let Err(error) = create_panel(app) {
+            lifecycle.state.lock().map_err(err)?.open_requested = false;
+            return Err(error);
+        }
+    } else if ready {
+        app.emit_to("main", "open-requested", ()).map_err(err)?;
+    }
+    Ok(())
+}
+
+fn request_panel(app: &tauri::AppHandle) {
+    let _ = remember_paste_target(app.state::<Store>());
+    let wake = if let Ok(mut state) = app.state::<PanelLifecycle>().state.lock() {
+        let wake = !state.open_requested;
+        state.hidden_at = None;
+        state.open_requested = true;
+        wake
+    } else {
+        false
+    };
+    if wake {
+        // Hotkey messages alone may not wake Tauri. Queue outside the shortcut
+        // callback, which holds the plugin lock during its handler.
+        let handle = app.clone();
+        thread::spawn(move || {
+            let _ = handle.run_on_main_thread(|| {});
+        });
+    }
+}
+
+fn register_panel_shortcut_inner(app: &tauri::AppHandle, shortcut: &str) -> Result<()> {
+    let lifecycle = app.state::<PanelLifecycle>();
+    let mut active = lifecycle.shortcut.lock().map_err(err)?;
+    if *active == shortcut {
+        return Ok(());
+    }
+    if !shortcut.is_empty() {
+        app.global_shortcut()
+            .on_shortcut(shortcut, |app, _, event| {
+                if event.state == ShortcutState::Pressed {
+                    request_panel(app);
+                }
+            })
+            .map_err(err)?;
+    }
+    if !active.is_empty() {
+        if let Err(error) = app.global_shortcut().unregister(active.as_str()) {
+            if !shortcut.is_empty() {
+                let _ = app.global_shortcut().unregister(shortcut);
+            }
+            return Err(err(error));
+        }
+    }
+    *active = shortcut.into();
+    lifecycle.state.lock().map_err(err)?.shortcut_error = None;
+    Ok(())
+}
+
+#[tauri::command]
+async fn register_panel_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<()> {
+    register_panel_shortcut_inner(&app, &shortcut)
+}
+
+#[tauri::command]
+fn get_panel_session(lifecycle: tauri::State<PanelLifecycle>) -> Result<PanelSession> {
+    Ok(lifecycle.state.lock().map_err(err)?.session.clone())
+}
+
+#[tauri::command]
+fn save_panel_session(
+    lifecycle: tauri::State<PanelLifecycle>,
+    session: PanelSession,
+) -> Result<()> {
+    lifecycle.state.lock().map_err(err)?.session = session;
+    Ok(())
+}
+
+#[tauri::command]
+fn panel_ready(
+    app: tauri::AppHandle,
+    lifecycle: tauri::State<PanelLifecycle>,
+) -> Result<Option<String>> {
+    let mut state = lifecycle.state.lock().map_err(err)?;
+    state.ready = true;
+    let opening = state.open_requested;
+    state.open_requested = false;
+    let error = state.shortcut_error.clone();
+    drop(state);
+    if opening {
+        app.emit_to("main", "open-requested", ()).map_err(err)?;
+    }
+    Ok(error)
+}
+
+fn release_idle_panel(app: &tauri::AppHandle) {
+    let due = app
+        .state::<PanelLifecycle>()
+        .state
+        .lock()
+        .is_ok_and(|state| {
+            state
+                .hidden_at
+                .is_some_and(|at| at.elapsed() >= Duration::from_secs(30))
+        });
+    if !due {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let lifecycle = handle.state::<PanelLifecycle>();
+        let Ok(mut state) = lifecycle.state.lock() else {
+            return;
+        };
+        if !state
+            .hidden_at
+            .is_some_and(|at| at.elapsed() >= Duration::from_secs(30))
+        {
+            return;
+        }
+        state.hidden_at = None;
+        state.releasing = true;
+        state.ready = false;
+        drop(state);
+        for label in ["preview", "large-preview", "main"] {
+            if let Some(window) = handle.get_webview_window(label) {
+                if let Err(error) = window.destroy() {
+                    eprintln!("Failed to release {label}: {error}");
+                }
+            }
+        }
+    });
+}
+
 #[tauri::command]
 fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
     remember_paste_target(store)?;
     let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
+    {
+        let lifecycle = app.state::<PanelLifecycle>();
+        let mut state = lifecycle.state.lock().map_err(err)?;
+        state.hidden_at = None;
+        state.open_requested = false;
+    }
+    set_window_memory_mode(&window, false);
     window.show().map_err(err)?;
     window.unminimize().map_err(err)?;
     window.set_focus().map_err(err)?;
     Ok(())
 }
 
-fn open_panel_from_tray(app: &tauri::AppHandle) {
-    if let Err(error) = show_panel(app.clone(), app.state::<Store>()) {
-        eprintln!("Failed to open panel from tray: {error}");
+#[tauri::command]
+async fn ensure_preview_window(app: tauri::AppHandle, label: String) -> Result<()> {
+    if !matches!(label.as_str(), "preview" | "large-preview") {
+        return Err("无效的预览窗口".into());
     }
-    let _ = app.emit("open-requested", ());
+    if app.get_webview_window(&label).is_none() {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|config| config.label == label)
+            .ok_or("预览窗口配置不存在")?;
+        let window = tauri::WebviewWindowBuilder::from_config(&app, config)
+            .map_err(err)?
+            .build()
+            .map_err(err)?;
+        #[cfg(windows)]
+        filter_browser_context_menu(&window).map_err(err)?;
+        #[cfg(not(windows))]
+        let _ = window;
+    }
+    app.emit_to("main", "preview-window-used", &label)
+        .map_err(err)
+}
+
+#[tauri::command]
+async fn release_preview_window(app: tauri::AppHandle, label: String) -> Result<bool> {
+    if !matches!(label.as_str(), "preview" | "large-preview") {
+        return Err("无效的预览窗口".into());
+    }
+    if let Some(window) = app.get_webview_window(&label) {
+        if !window.is_visible().map_err(err)? {
+            window.destroy().map_err(err)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn hide_preview_window(app: &tauri::AppHandle, label: &str) -> Result<()> {
+    if let Some(window) = app.get_webview_window(label) {
+        window.hide().map_err(err)?;
+        set_window_memory_mode(&window, true);
+        let _ = app.emit_to(label, &format!("{label}-clear"), ());
+        if label == "large-preview" {
+            let _ = app.emit_to("main", "large-preview-closed", ());
+        }
+        app.emit_to("main", "preview-window-hidden", label)
+            .map_err(err)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn hide_panel(app: tauri::AppHandle) -> Result<()> {
-    if let Some(preview) = app.get_webview_window("preview") {
-        preview.hide().map_err(err)?;
+    hide_preview_window(&app, "preview")?;
+    hide_preview_window(&app, "large-preview")?;
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(err)?;
+        {
+            let lifecycle = app.state::<PanelLifecycle>();
+            let mut state = lifecycle.state.lock().map_err(err)?;
+            state.open_requested = false;
+            state.hidden_at.get_or_insert_with(Instant::now);
+        }
+        app.emit_to("main", "panel-hidden", ()).map_err(err)?;
+        set_window_memory_mode(&window, true);
     }
-    if let Some(large) = app.get_webview_window("large-preview") {
-        large.hide().map_err(err)?;
-        let _ = app.emit_to("large-preview", "large-preview-clear", ());
-        let _ = app.emit_to("main", "large-preview-closed", ());
-    }
-    app.get_webview_window("main")
-        .ok_or("面板窗口不存在")?
-        .hide()
-        .map_err(err)
+    Ok(())
 }
 
 #[tauri::command]
@@ -1142,14 +1470,20 @@ fn show_preview(app: tauri::AppHandle, x: i32, y: i32, width: u32, height: u32) 
     preview
         .set_position(tauri::PhysicalPosition::new(x, y))
         .map_err(err)?;
-    preview.show().map_err(err)
+    set_window_memory_mode(&preview, false);
+    preview.show().map_err(err)?;
+    app.emit_to("main", "preview-window-used", "preview")
+        .map_err(err)
 }
 
 #[tauri::command]
 fn hide_preview(app: tauri::AppHandle) -> Result<()> {
-    let preview = app.get_webview_window("preview").ok_or("预览窗口不存在")?;
-    let focused = preview.is_focused().map_err(err)?;
-    preview.hide().map_err(err)?;
+    let focused = app
+        .get_webview_window("preview")
+        .map(|preview| preview.is_focused().map_err(err))
+        .transpose()?
+        .unwrap_or(false);
+    hide_preview_window(&app, "preview")?;
     if focused {
         app.get_webview_window("main")
             .ok_or("面板窗口不存在")?
@@ -1162,9 +1496,9 @@ fn hide_preview(app: tauri::AppHandle) -> Result<()> {
 #[tauri::command]
 fn preview_focused(app: tauri::AppHandle) -> Result<bool> {
     app.get_webview_window("preview")
-        .ok_or("预览窗口不存在")?
-        .is_focused()
-        .map_err(err)
+        .map(|preview| preview.is_focused().map_err(err))
+        .transpose()
+        .map(|focused| focused.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -1184,18 +1518,16 @@ fn show_large_preview(
     large
         .set_position(tauri::PhysicalPosition::new(x, y))
         .map_err(err)?;
+    set_window_memory_mode(&large, false);
     large.show().map_err(err)?;
+    app.emit_to("main", "preview-window-used", "large-preview")
+        .map_err(err)?;
     large.set_focus().map_err(err)
 }
 
 #[tauri::command]
 fn hide_large_preview(app: tauri::AppHandle) -> Result<()> {
-    app.get_webview_window("large-preview")
-        .ok_or("大图预览窗口不存在")?
-        .hide()
-        .map_err(err)?;
-    let _ = app.emit_to("large-preview", "large-preview-clear", ());
-    let _ = app.emit_to("main", "large-preview-closed", ());
+    hide_preview_window(&app, "large-preview")?;
     app.get_webview_window("main")
         .ok_or("面板窗口不存在")?
         .set_focus()
@@ -1268,10 +1600,7 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
             settings(&conn)?.always_on_top
         };
         if !pinned {
-            let _ = app
-                .get_webview_window("preview")
-                .map(|window| window.hide());
-            let _ = app.get_webview_window("main").map(|window| window.hide());
+            let _ = hide_panel(app.clone());
         }
         if platform::paste_to_target(target) {
             return Ok("已放回剪贴板，并已尝试粘贴到原窗口".into());
@@ -1687,6 +2016,7 @@ fn filter_browser_context_menu(window: &tauri::WebviewWindow) -> tauri::Result<(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(PanelLifecycle::default())
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("store")
                 .setup(|app, _| {
@@ -1703,45 +2033,22 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
-            let pinned = {
+            let shortcut = {
                 let store = app.state::<Store>();
                 let conn = store
                     .db
                     .lock()
                     .map_err(|_| std::io::Error::other("无法读取设置"))?;
-                settings(&conn)
-                    .map_err(std::io::Error::other)?
-                    .always_on_top
+                settings(&conn).map_err(std::io::Error::other)?.shortcut
             };
-            let window = app
-                .get_webview_window("main")
-                .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
-            #[cfg(windows)]
-            window.with_webview(|webview| unsafe {
-                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
-                use windows::core::Interface;
-
-                let result = webview
-                    .controller()
-                    .CoreWebView2()
-                    .and_then(|core| core.Settings())
-                    .and_then(|settings| settings.cast::<ICoreWebView2Settings3>())
-                    .and_then(|settings| settings.SetAreBrowserAcceleratorKeysEnabled(false));
-                if let Err(error) = result {
-                    eprintln!("Failed to disable panel browser shortcuts: {error}");
-                }
-            })?;
-            #[cfg(windows)]
-            for label in ["main", "preview", "large-preview"] {
-                if let Some(window) = app.get_webview_window(label) {
-                    filter_browser_context_menu(&window)?;
-                }
+            if let Err(error) = register_panel_shortcut_inner(app.handle(), &shortcut) {
+                eprintln!("Failed to register panel shortcut: {error}");
+                app.state::<PanelLifecycle>()
+                    .state
+                    .lock()
+                    .map_err(|_| std::io::Error::other("无法读取面板状态"))?
+                    .shortcut_error = Some(error);
             }
-            window.set_always_on_top(pinned)?;
-            #[cfg(windows)]
-            platform::install_panel_resize_double_click(window.hwnd()?)?;
-            #[cfg(target_os = "macos")]
-            platform::install_panel_resize_double_click_macos(window.ns_window()?)?;
             let handle = app.handle().clone();
             thread::spawn(move || {
                 if let (Ok(ctx), Ok(mut watcher)) =
@@ -1759,6 +2066,7 @@ pub fn run() {
                         changed(&handle);
                     }
                 }
+                release_idle_panel(&handle);
             });
             let handle = app.handle().clone();
             thread::spawn(move || loop {
@@ -1792,12 +2100,12 @@ pub fn run() {
                             ..
                         }
                     ) {
-                        open_panel_from_tray(tray.app_handle());
+                        request_panel(tray.app_handle());
                     }
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open" => {
-                        open_panel_from_tray(app);
+                        request_panel(app);
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -1806,30 +2114,30 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                #[cfg(target_os = "macos")]
+                platform::remove_panel_resize_double_click_macos();
+                let lifecycle = window.app_handle().state::<PanelLifecycle>();
+                if let Ok(mut state) = lifecycle.state.lock() {
+                    state.ready = false;
+                    state.releasing = false;
+                };
+            }
+            if matches!(event, tauri::WindowEvent::Destroyed)
+                && matches!(window.label(), "preview" | "large-preview")
+            {
+                let _ = window.app_handle().emit_to(
+                    "main",
+                    &format!("{}-destroyed", window.label()),
+                    (),
+                );
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if window.label() == "main" {
-                    let _ = window
-                        .app_handle()
-                        .get_webview_window("preview")
-                        .map(|preview| preview.hide());
-                    let _ = window
-                        .app_handle()
-                        .get_webview_window("large-preview")
-                        .map(|large| large.hide());
-                    let _ = window
-                        .app_handle()
-                        .emit_to("large-preview", "large-preview-clear", ());
-                    let _ = window
-                        .app_handle()
-                        .emit_to("main", "large-preview-closed", ());
-                } else if window.label() == "large-preview" {
-                    let _ = window
-                        .app_handle()
-                        .emit_to("large-preview", "large-preview-clear", ());
-                    let _ = window
-                        .app_handle()
-                        .emit_to("main", "large-preview-closed", ());
+                    let _ = hide_panel(window.app_handle().clone());
+                } else {
+                    let _ = hide_preview_window(window.app_handle(), window.label());
                 }
                 let _ = window.hide();
             }
@@ -1855,8 +2163,14 @@ pub fn run() {
             preview_data,
             file_text_preview,
             remember_paste_target,
+            register_panel_shortcut,
+            get_panel_session,
+            save_panel_session,
+            panel_ready,
             show_panel,
             hide_panel,
+            ensure_preview_window,
+            release_preview_window,
             show_preview,
             hide_preview,
             preview_focused,
@@ -1864,8 +2178,29 @@ pub fn run() {
             hide_large_preview,
             apply_record
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested {
+                code: None, api, ..
+            } => api.prevent_exit(),
+            tauri::RunEvent::MainEventsCleared => {
+                let main_absent = app.get_webview_window("main").is_none();
+                let reopen = app
+                    .state::<PanelLifecycle>()
+                    .state
+                    .lock()
+                    .is_ok_and(|state| {
+                        state.open_requested && !state.releasing && (state.ready || main_absent)
+                    });
+                if reopen {
+                    if let Err(error) = open_panel(app) {
+                        eprintln!("Failed to reopen panel: {error}");
+                    }
+                }
+            }
+            _ => {}
+        });
 }
 
 #[cfg(test)]
@@ -2036,6 +2371,55 @@ mod tests {
         );
         drop(store);
         fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn hover_previews_preserve_the_whole_image_without_upscaling() {
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        for (index, (width, height, expected)) in [
+            (3200, 1600, (1440, 720)),
+            (200, 4000, (72, 1440)),
+            (12, 8, (12, 8)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let source = dir.join(format!("source-{index}.png"));
+            let image = image::ImageBuffer::from_fn(width, height, |_, y| {
+                if y < height / 2 {
+                    image::Rgba([255u8, 0, 0, 255])
+                } else {
+                    image::Rgba([0u8, 0, 255, 255])
+                }
+            });
+            image.save(&source).unwrap();
+            let output = hover_preview_path(&source, &dir, index).unwrap();
+            let preview = image::open(&output).unwrap();
+            assert_eq!(preview.dimensions(), expected);
+            assert_eq!(preview.get_pixel(0, 0).0, [255, 0, 0, 255]);
+            assert_eq!(
+                preview.get_pixel(0, preview.height() - 1).0,
+                [0, 0, 255, 255]
+            );
+            assert_eq!(image::open(&source).unwrap().dimensions(), (width, height));
+        }
+        assert!(dir.join("hover.png").exists());
+        assert!(dir.join("hover-1.png").exists());
+        assert!(dir.join("hover-2.png").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn hover_previews_reuse_the_generated_file() {
+        let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.png");
+        DynamicImage::new_rgb8(12, 8).save(&source).unwrap();
+        let output = hover_preview_path(&source, &dir, 0).unwrap();
+        fs::remove_file(&source).unwrap();
+        assert_eq!(hover_preview_path(&source, &dir, 0).unwrap(), output);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

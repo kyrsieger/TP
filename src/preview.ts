@@ -56,7 +56,7 @@ async function measure(payload: PreviewPayload, token: number) {
   if (token !== generation) return;
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   if (token !== generation) return;
-  await emitTo("main", "preview-measured", { id: payload.id, height: root.querySelector<HTMLElement>(".card")!.offsetHeight });
+  await emitTo("main", "preview-measured", { id: payload.id, generation: payload.generation, height: root.querySelector<HTMLElement>(".card")!.offsetHeight });
 }
 
 async function loadSingle(payload: PreviewPayload, token: number) {
@@ -155,8 +155,8 @@ document.addEventListener("wheel", event => {
 
 async function start() {
   await listen<PreviewPayload>("preview-content", event => { void showContent(event.payload); });
-  await listen<number>("preview-clear", event => {
-    if (event.payload !== currentRequest) return;
+  await listen<number | null>("preview-clear", event => {
+    if (event.payload !== null && event.payload !== currentRequest) return;
     generation++;
     currentId = null;
     currentKind = null;

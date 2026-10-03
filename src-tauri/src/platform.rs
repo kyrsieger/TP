@@ -282,6 +282,19 @@ unsafe extern "system" fn panel_resize_subclass(
 }
 
 #[cfg(target_os = "macos")]
+std::thread_local! {
+    static PANEL_RESIZE_MONITOR: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "macos")]
+pub fn remove_panel_resize_double_click_macos() {
+    let remove = PANEL_RESIZE_MONITOR.with(|monitor| monitor.borrow_mut().take());
+    if let Some(remove) = remove {
+        remove();
+    }
+}
+
+#[cfg(target_os = "macos")]
 pub fn install_panel_resize_double_click_macos(
     ns_window: *mut std::ffi::c_void,
 ) -> std::io::Result<()> {
@@ -292,6 +305,7 @@ pub fn install_panel_resize_double_click_macos(
 
     let native = NonNull::new(ns_window.cast::<NSWindow>())
         .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
+    remove_panel_resize_double_click_macos();
     let window_number = unsafe { native.as_ref().windowNumber() };
     let window_pointer = native.as_ptr() as usize;
     let handler = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
@@ -321,7 +335,12 @@ pub fn install_panel_resize_double_click_macos(
     let monitor = unsafe {
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown, &handler)
     };
-    if monitor.is_some() {
+    if let Some(monitor) = monitor {
+        PANEL_RESIZE_MONITOR.with(|current| {
+            *current.borrow_mut() = Some(Box::new(move || unsafe {
+                NSEvent::removeMonitor(&monitor)
+            }));
+        });
         Ok(())
     } else {
         Err(std::io::Error::other("无法监听面板边框双击"))

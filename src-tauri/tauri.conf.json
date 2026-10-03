@@ -13,6 +13,7 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "TP",
         "width": 420,
         "height": 600,
@@ -25,6 +26,7 @@
       },
       {
         "label": "preview",
+        "create": false,
         "title": "TP 预览",
         "url": "preview.html",
         "width": 420,
@@ -39,6 +41,7 @@
       },
       {
         "label": "large-preview",
+        "create": false,
         "title": "TP 大图预览",
         "url": "large-preview.html",
         "width": 900,

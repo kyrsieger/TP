@@ -23,7 +23,7 @@ function setup(overrides = {}) {
     window: { cancelAnimationFrame: () => {} }, markSelectedRows: () => {},
     closePreview: () => effects.push("close-preview"),
     updateOrdinals: () => effects.push("ordinals"),
-    recordRow: id => ({
+    ensureRecordRow: id => ({
       scrollIntoView: options => effects.push(["scroll", id, options.block]),
       focus: options => effects.push(["focus", id, options.preventScroll]),
     }),
@@ -100,5 +100,51 @@ for (const [name, excluded, filter] of [
     assert.equal(context.selectedId, "last");
     context.moveSelection(1);
     assert.equal(context.selectedId, "first");
+  });
+}
+
+let groupMenuBranch;
+function findGroupMenuBranch(node) {
+  if (ts.isIfStatement(node) && ts.isBinaryExpression(node.expression)
+    && node.expression.left.getText(source) === "event.code"
+    && node.expression.right.getText(source) === '"KeyG"') groupMenuBranch = node;
+  ts.forEachChild(node, findGroupMenuBranch);
+}
+findGroupMenuBranch(source);
+assert.ok(groupMenuBranch);
+const { outputText: openGroupMenu } = ts.transpileModule(groupMenuBranch.getText(source), {
+  compilerOptions: { target: ts.ScriptTarget.ES2020 },
+});
+
+function groupMenuSetup() {
+  const frames = [];
+  const scrollEvents = [];
+  const trigger = {};
+  const row = { querySelector: () => trigger };
+  let menuOpen = false;
+  const context = {
+    event: { code: "KeyG" }, selectedId: "first", panelActive: true, panelGeneration: 1, records,
+    ensureRecordRow: () => { scrollEvents.push(() => { menuOpen = false; }); return row; },
+    recordRow: () => row,
+    window: { requestAnimationFrame: callback => frames.push(callback) },
+    openMoveGroupMenu: () => { menuOpen = true; },
+  };
+  runInNewContext(openGroupMenu, context);
+  return { context, frames, scrollEvents, menuIsOpen: () => menuOpen };
+}
+
+test("Ctrl+G keeps its menu open after scrolling an unmounted selection into view", () => {
+  const { frames, scrollEvents, menuIsOpen } = groupMenuSetup();
+  scrollEvents.forEach(callback => callback());
+  frames.forEach(callback => callback());
+  assert.equal(menuIsOpen(), true);
+});
+
+for (const [name, changed] of [["hidden panel", { panelActive: false }], ["changed selection", { selectedId: "last" }]]) {
+  test(`a pending Ctrl+G ignores a ${name}`, () => {
+    const { context, frames, menuIsOpen } = groupMenuSetup();
+    Object.assign(context, changed);
+    frames.forEach(callback => callback());
+    assert.equal(menuIsOpen(), false);
   });
 }

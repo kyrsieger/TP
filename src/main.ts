@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { cursorPosition, currentMonitor, getCurrentWindow, PhysicalSize, monitorFromPoint, PhysicalPosition } from "@tauri-apps/api/window";
-import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { highlightSearch } from "./search-highlight";
+import { ensurePreviewWindow, initPreviewWindows } from "./preview-windows";
+import { backToTopOffset, listOffsets, rowScrollTop, visibleRange } from "./list-layout";
 import "./styles.css";
 
 type Kind = "text" | "link" | "image" | "file" | "video" | "color";
@@ -22,12 +23,18 @@ type Settings = {
   alwaysOnTop: boolean;
 };
 type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
+type PanelSession = { view: string; kindFilter: string; search: string };
 type FocusTarget = { kind: "id" | "record" | "view"; value: string };
 
 const panel = getCurrentWindow();
 const isMacOS = navigator.userAgent.includes("Macintosh");
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let state: Snapshot;
+let panelActive = false;
+let panelGeneration = 0;
+let openingPanel: Promise<void> | null = null;
+let refreshing: Promise<void> | null = null;
+let refreshAgain = false;
 let view = "default";
 let kindFilter = "all";
 let search = "";
@@ -58,17 +65,17 @@ let hoveredId: string | null = null;
 let previewFromKeyboard = false;
 let previewId: string | null = null;
 let previewHovered = false;
-let previewReady = false;
-let largePreviewReady = false;
 let largePreviewId: string | null = null;
 let largePreviewSizeRequest = 0;
 let hoverTimer: number | undefined;
-let hoverStartedAt = 0;
 let previewCloseTimer: number | undefined;
 let previewGeneration = 0;
 let previewPlacement: { x: number; rowY: number; width: number; scale: number; top: number; bottom: number } | null = null;
 let thumbnailObserver: IntersectionObserver;
-let backToTopTarget: HTMLElement | null = null;
+let listRecords: RecordItem[] = [];
+let offsets = [0];
+let renderedRange = { start: -1, end: -1 };
+let backToTopPosition: number | null = null;
 let backToTopFrame = 0;
 
 const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
@@ -84,8 +91,12 @@ function toast(message: string) {
   window.setTimeout(() => el.classList.remove("visible"), 3500);
 }
 
+function savePanelSession() {
+  void call("save_panel_session", { session: { view, kindFilter, search } }).catch(() => {});
+}
+
 async function action(name: string, args: Record<string, unknown> = {}) {
-  try { await call(name, args); await refresh(); }
+  try { await call(name, args); if (name === "hide_panel") releasePanelContent(); await refresh(); }
   catch (error) { toast(String(error)); }
 }
 
@@ -100,6 +111,7 @@ function filtered(): RecordItem[] {
 }
 
 function renderGroups() {
+  if (!panelActive) return;
   const tabs = document.querySelector<HTMLElement>("#groups")!;
   if (!groupEdit) {
     const groups = [{ id: "default", name: "默认" }, { id: "favorite", name: "收藏" },
@@ -113,6 +125,7 @@ function renderGroups() {
 
 function selectGroup(nextView: string) {
   view = nextView;
+  savePanelSession();
   selectedId = null;
   selectedIds.clear();
   selectionAnchorId = null;
@@ -300,6 +313,7 @@ function clearSearch(refocus = true) {
   const input = document.querySelector<HTMLInputElement>("#search")!;
   input.value = "";
   search = "";
+  savePanelSession();
   document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = true;
   renderList();
   if (refocus) input.focus({ preventScroll: true });
@@ -310,6 +324,15 @@ function recordRow(id: string): HTMLElement | null {
   return [...document.querySelectorAll<HTMLElement>("#list .record")].find(item => item.dataset.id === id) ?? null;
 }
 
+function ensureRecordRow(id: string): HTMLElement | null {
+  const index = listRecords.findIndex(record => record.id === id);
+  if (index < 0) return null;
+  const list = document.querySelector<HTMLElement>("#list")!;
+  list.scrollTop = rowScrollTop(offsets, index, list.scrollTop, list.clientHeight - 8);
+  renderListRange();
+  return recordRow(id);
+}
+
 // 悬停预览的路径列表：文件、图片和视频记录使用原路径；
 // 直接复制的图片（截图等只有位图的复制）没有原文件，改用本工具保存的图片副本路径。
 function previewPaths(record: RecordItem): FileItem[] {
@@ -318,12 +341,17 @@ function previewPaths(record: RecordItem): FileItem[] {
 }
 
 async function preparePreview(id: string) {
-  if (!previewReady || hoveredId !== id) return;
+  if (hoveredId !== id) return;
   const token = ++previewGeneration;
   const row = recordRow(id);
   const record = state.records.find(item => item.id === id);
   if (!row || !record) return;
   try {
+    await ensurePreviewWindow("preview");
+    if (token !== previewGeneration || hoveredId !== id) {
+      if (!hoveredId) void call("hide_preview").catch(() => {});
+      return;
+    }
     const [position, size, scale] = await Promise.all([panel.outerPosition(), panel.outerSize(), panel.scaleFactor()]);
     const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
     if (!monitor || token !== previewGeneration || hoveredId !== id) return;
@@ -351,7 +379,11 @@ async function preparePreview(id: string) {
       maxHeight: (area.size.height - 2 * margin) / scale,
       generation: token,
     });
-  } catch (error) { if (token === previewGeneration) toast(`预览失败：${String(error)}`); }
+  } catch (error) {
+    if (token !== previewGeneration) return;
+    void call("hide_preview").catch(() => {});
+    toast(`预览失败：${String(error)}`);
+  }
 }
 
 function hoverRecord(id: string) {
@@ -359,7 +391,6 @@ function hoverRecord(id: string) {
   if (hoveredId === id) return;
   closePreview();
   hoveredId = id;
-  hoverStartedAt = performance.now();
   hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 300);
 }
 
@@ -367,7 +398,7 @@ function hoverRecord(id: string) {
 // 选中记录滚出可视区时先滚入列表，再等一帧启动，避免 #list 的滚动监听把刚打开的预览关掉。
 function showHoverPreview(id: string) {
   if (largePreviewId || !state || hoveredId === id) return;
-  const row = recordRow(id);
+  const row = ensureRecordRow(id);
   if (!row) return;
   row.scrollIntoView({ block: "nearest" });
   window.requestAnimationFrame(() => {
@@ -375,7 +406,6 @@ function showHoverPreview(id: string) {
     if (!recordRow(id) || !state.records.some(item => item.id === id)) return;
     closePreview();
     hoveredId = id;
-    hoverStartedAt = performance.now();
     previewFromKeyboard = true;
     window.clearTimeout(hoverTimer);
     hoverTimer = window.setTimeout(() => { void preparePreview(id); }, 0);
@@ -387,7 +417,7 @@ function markSelectedRows() {
   rows.forEach(row => {
     const selected = selectedIds.has(row.dataset.id!);
     row.classList.toggle("selected", selected);
-    row.classList.toggle("before-selected", selectedIds.has((row.nextElementSibling as HTMLElement | null)?.dataset.id ?? ""));
+    row.classList.toggle("before-selected", selectedIds.has(listRecords[Number(row.dataset.index) + 1]?.id ?? ""));
   });
 }
 
@@ -404,16 +434,13 @@ function selectRecord(id: string, extend = false) {
 }
 
 function renderList() {
+  if (!panelActive) return;
   window.cancelAnimationFrame(backToTopFrame);
   backToTopFrame = 0;
   closePreview();
   closeMoveGroupMenu();
   closeRecordMenu();
   const list = document.querySelector<HTMLElement>("#list")!;
-  thumbnailObserver?.disconnect();
-  const previousImages = new Map([...list.querySelectorAll<HTMLImageElement>(".preview[data-preview]")]
-    .map(image => [image.dataset.preview!, image]));
-  const scrollTop = list.scrollTop;
   const records = filtered();
   const visibleIds = new Set(records.map(record => record.id));
   selectedIds = new Set([...selectedIds].filter(id => visibleIds.has(id)));
@@ -424,8 +451,28 @@ function renderList() {
     largePreviewId = null;
     void call("hide_large_preview").catch(() => {});
   }
+  listRecords = records;
+  offsets = listOffsets(records);
+  renderedRange = { start: -1, end: -1 };
+  const maximumScroll = Math.max(0, offsets[offsets.length - 1] + 8 - list.clientHeight);
+  list.scrollTop = Math.min(list.scrollTop, maximumScroll);
+  renderListRange();
+  updateBackToTopTarget();
+}
+
+function renderListRange() {
+  if (!panelActive) return;
+  const list = document.querySelector<HTMLElement>("#list")!;
+  const scrollTop = list.scrollTop;
+  const { start, end } = visibleRange(offsets, Math.max(0, scrollTop - 2), list.clientHeight - 8);
+  if (renderedRange.start === start && renderedRange.end === end) { updateOrdinals(); return; }
+  renderedRange = { start, end };
+  thumbnailObserver?.disconnect();
+  const previousImages = new Map([...list.querySelectorAll<HTMLImageElement>(".preview[data-preview]")]
+    .map(image => [image.dataset.preview!, image]));
+  const records = listRecords;
   const nextList = document.createElement("template");
-  nextList.innerHTML = records.length ? records.map(record => {
+  nextList.innerHTML = records.length ? `<div class="list-spacer" style="height:${offsets[start]}px" aria-hidden="true"></div>` + records.slice(start, end).map((record, index) => {
     const status = record.status === "pending" ? "保存副本中" : record.status === "missing" ? "文件已不可用" : record.status === "copy_failed" ? "副本保存失败" : "";
     const swatch = record.kind === "color" && /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(record.body.trim());
     const media = record.kind === "image" || record.kind === "video";
@@ -436,7 +483,7 @@ function renderList() {
       : record.kind === "text" ? "" : record.kind === "file" ? `<span class="file-tag" title="${fileTag}">${fileTag}</span>`
       : `<span class="kind-icon ${record.kind}">${icon(record.kind, 12)}</span>`;
     const note = status || (record.expiresAt ? "敏感记录" : "");
-    return `<article class="record ${selectedIds.has(record.id) ? "selected" : ""} ${media ? "media-record" : ""}" data-id="${record.id}" tabindex="-1">
+    return `<article class="record ${selectedIds.has(record.id) ? "selected" : ""} ${media ? "media-record" : ""} ${start + index === records.length - 1 ? "last-record" : ""}" data-id="${record.id}" data-index="${start + index}" tabindex="-1">
       <span class="ordinal"></span>
       ${media ? `<span class="preview-wrap">${hasPreview ? `<img class="preview" data-preview="${record.id}" alt="${labels[record.kind]}预览" />${record.kind === "video" ? `<span class="play">▶</span>` : ""}` : `<span class="preview-unavailable">${record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>`}</span>${search ? `<span class="media-search-match" style="bottom:${note ? 32 : 9}px">${highlightSearch(text, search)}</span>` : ""}${note ? `<span class="media-note">${note}</span>` : ""}`
         : `<div class="record-main"><div class="record-content">${kindIcon}<span class="record-text">${highlightSearch(text, search)}</span>${note ? `<span class="record-note">${note}</span>` : ""}</div></div>`}
@@ -447,24 +494,29 @@ function renderList() {
       <button class="favorite ${record.favorite ? "on" : ""}" data-favorite="${record.id}" title="${record.favorite ? "取消收藏" : "收藏"}" aria-label="${record.favorite ? "取消收藏" : "收藏"}">${icon(record.favorite ? "star-fill" : "star", 13)}</button>
       <button class="move-group ${record.groupId !== null ? "on" : ""}" type="button" data-move-group-trigger="${record.id}" title="移动到分组" aria-label="移动到分组" aria-haspopup="menu" aria-expanded="false">${icon("group", 13)}</button>
       <button class="delete" data-delete="${record.id}" title="删除记录" aria-label="删除记录">${icon("x", 12)}</button></div></article>`;
-  }).join("") : `<div class="empty">这里还没有记录</div>`;
+  }).join("") + `<div class="list-spacer" style="height:${offsets[records.length] - offsets[end]}px" aria-hidden="true"></div>` : `<div class="empty">这里还没有记录</div>`;
   nextList.content.querySelectorAll<HTMLImageElement>(".preview[data-preview]").forEach(image => {
     const previous = previousImages.get(image.dataset.preview!);
-    if (previous) image.replaceWith(previous);
+    if (previous) { image.replaceWith(previous); previousImages.delete(image.dataset.preview!); }
   });
+  previousImages.forEach(image => image.removeAttribute("src"));
   list.replaceChildren(nextList.content);
   markSelectedRows();
   list.scrollTop = scrollTop;
   updateOrdinals();
-  updateBackToTopTarget();
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       const image = entry.target as HTMLImageElement;
       observer.unobserve(image);
       image.dataset.loading = "true";
-      void call<string>("preview_data", { id: image.dataset.preview, role: "thumbnail" }).then(src => { image.src = src; delete image.dataset.loading; })
-        .catch(() => { image.closest(".preview-wrap")?.replaceChildren(Object.assign(document.createElement("span"), { className: "preview-unavailable", textContent: "预览图不可用" })); });
+      void call<string>("preview_data", { id: image.dataset.preview, role: "thumbnail" }).then(src => {
+        if (!panelActive || !image.isConnected || !list.contains(image)) return;
+        image.src = src; delete image.dataset.loading;
+      }).catch(() => {
+        if (!panelActive || !image.isConnected || !list.contains(image)) return;
+        image.closest(".preview-wrap")?.replaceChildren(Object.assign(document.createElement("span"), { className: "preview-unavailable", textContent: "预览图不可用" }));
+      });
     }
   }, { root: list, rootMargin: "180px 0px" });
   thumbnailObserver = observer;
@@ -475,17 +527,9 @@ function renderList() {
 
 function updateBackToTopTarget() {
   const list = document.querySelector<HTMLElement>("#list")!;
-  const rows = [...list.querySelectorAll<HTMLElement>(".record")];
   const style = getComputedStyle(list);
   const availableHeight = list.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-  let capacity = 0;
-  let height = 0;
-  for (const row of rows) {
-    if (height + row.offsetHeight > availableHeight) break;
-    height += row.offsetHeight;
-    capacity++;
-  }
-  backToTopTarget = rows[capacity + 9] ?? null;
+  backToTopPosition = backToTopOffset(offsets, availableHeight);
   updateBackToTopButton();
 }
 
@@ -494,11 +538,23 @@ async function openLargePreview(id: string) {
   const record = state.records.find(item => item.id === id);
   if (!record || (record.kind !== "image" && record.kind !== "video")) return;
   if (record.kind === "video" && !record.preview && record.files.length < 2) { toast("首帧预览不可用"); return; }
-  if (!largePreviewReady) { toast("大图预览尚未就绪"); return; }
   closePreview();
   largePreviewId = id;
-  try { await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length) }); }
-  catch (error) { largePreviewId = null; toast(`预览失败：${String(error)}`); }
+  const request = ++largePreviewSizeRequest;
+  try {
+    await ensurePreviewWindow("large-preview");
+    if (largePreviewId !== id || request !== largePreviewSizeRequest) {
+      if (!largePreviewId) void call("hide_large_preview").catch(() => {});
+      return;
+    }
+    await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length) });
+  }
+  catch (error) {
+    if (largePreviewId !== id || request !== largePreviewSizeRequest) return;
+    largePreviewId = null;
+    void call("hide_large_preview").catch(() => {});
+    toast(`预览失败：${String(error)}`);
+  }
 }
 
 function visibleRecords(): HTMLElement[] {
@@ -528,7 +584,7 @@ function updateBackToTopButton() {
   }
   if (!active) return;
   const list = document.querySelector<HTMLElement>("#list")!;
-  const show = backToTopTarget !== null && backToTopTarget.getBoundingClientRect().top < list.getBoundingClientRect().bottom;
+  const show = backToTopPosition !== null && backToTopPosition + 2 - list.scrollTop < list.clientHeight;
   if (active.classList.contains("back-to-top") === show) return;
   if (show) active.style.width = `${active.getBoundingClientRect().width}px`;
   active.classList.toggle("back-to-top", show);
@@ -584,6 +640,7 @@ async function refreshCacheSize() {
 }
 
 function renderSettings() {
+  if (!panelActive) return;
   const settings = document.querySelector<HTMLElement>("#settings")!;
   settings.hidden = !settingsOpen;
   document.querySelector<HTMLElement>("#settings-button")!.classList.toggle("active", settingsOpen);
@@ -647,7 +704,7 @@ function focusTargetOf(element: Element | null): FocusTarget | null {
 function resolveFocusTarget(target: FocusTarget | null): HTMLElement | null {
   if (!target) return null;
   if (target.kind === "id") return document.getElementById(target.value);
-  if (target.kind === "record") return document.querySelector<HTMLElement>(`.record[data-id="${CSS.escape(target.value)}"]`);
+  if (target.kind === "record") return ensureRecordRow(target.value);
   return document.querySelector<HTMLElement>(`#groups [data-view="${CSS.escape(target.value)}"]`);
 }
 
@@ -667,16 +724,75 @@ function closeSettings() {
 }
 
 function render() {
+  if (!panelActive) return;
   renderGroups(); renderList(); renderSettings();
   const pin = document.querySelector<HTMLButtonElement>("#pin")!;
   pin.setAttribute("aria-pressed", String(state.settings.alwaysOnTop));
   pin.title = state.settings.alwaysOnTop ? "取消置顶" : "置顶";
   pin.setAttribute("aria-label", pin.title);
 }
-async function refresh() { state = await call<Snapshot>("get_state"); render(); if (settingsOpen) void refreshCacheSize(); }
+function refresh(): Promise<void> {
+  if (!panelActive) return Promise.resolve();
+  refreshAgain = true;
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    while (refreshAgain && panelActive) {
+      refreshAgain = false;
+      const generation = panelGeneration;
+      const next = await call<Snapshot>("get_state");
+      if (!panelActive || generation !== panelGeneration) continue;
+      state = next;
+      if (view.startsWith("group:") && !state.groups.some(group => `group:${group.id}` === view)) { view = "default"; savePanelSession(); }
+      render();
+      if (settingsOpen) void refreshCacheSize();
+    }
+  })().finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+function releasePanelContent() {
+  if (!panelActive) return;
+  panelActive = false;
+  panelGeneration++;
+  refreshAgain = false;
+  savePanelSession();
+  window.cancelAnimationFrame(backToTopFrame);
+  backToTopFrame = 0;
+  closePreview();
+  largePreviewId = null;
+  largePreviewSizeRequest++;
+  settingsOpen = false;
+  settingsReturnFocus = null;
+  groupEdit = null;
+  pendingShortcutId = null;
+  selectedId = null;
+  selectedIds.clear();
+  selectionAnchorId = null;
+  closeGroupMenu();
+  closeMoveGroupMenu();
+  closeRecordMenu();
+  setFilterMenuOpen(false);
+  thumbnailObserver?.disconnect();
+  const list = document.querySelector<HTMLElement>("#list")!;
+  list.querySelectorAll<HTMLImageElement>("img").forEach(image => image.removeAttribute("src"));
+  list.replaceChildren();
+  document.querySelector<HTMLElement>("#groups")!.replaceChildren();
+  const settings = document.querySelector<HTMLElement>("#settings")!;
+  settings.hidden = true;
+  settings.replaceChildren();
+  listRecords = [];
+  offsets = [0];
+  renderedRange = { start: -1, end: -1 };
+  backToTopPosition = null;
+  if (state) state.records = [];
+}
 
 async function apply(id: string) {
-  try { toast(await call<string>("apply_record", { id })); await refresh(); }
+  try {
+    toast(await call<string>("apply_record", { id }));
+    if (!await panel.isVisible()) releasePanelContent();
+    await refresh();
+  }
   catch (error) { toast(String(error)); }
 }
 
@@ -701,7 +817,7 @@ function moveSelection(direction: number, extend = false) {
   selectRecord(id, extend);
   // 键盘触发的悬浮预览跟随选中记录：选中变化时关闭，鼠标悬停触发的预览不受影响。
   if (previewFromKeyboard) closePreview();
-  const row = recordRow(id);
+  const row = ensureRecordRow(id);
   row?.scrollIntoView({ block: "nearest" });
   row?.focus({ preventScroll: true });
   updateOrdinals();
@@ -734,13 +850,7 @@ async function placePanel() {
 
 async function registerShortcut(shortcut: string) {
   if (shortcut === activeShortcut) return;
-  if (shortcut && await isRegistered(shortcut)) await unregister(shortcut);
-  if (shortcut) await register(shortcut, event => {
-    if (event.state !== "Pressed") return;
-    if (settingsOpen) closeSettings();
-    void openPanel().catch(error => toast(String(error)));
-  });
-  if (activeShortcut) await unregister(activeShortcut);
+  await call("register_panel_shortcut", { shortcut });
   activeShortcut = shortcut;
 }
 
@@ -795,15 +905,26 @@ function saveNumberSetting(element: HTMLInputElement, restoreInvalid = false) {
   saveSetting({ [key]: value });
 }
 
-async function openPanel() {
-  await call("remember_paste_target");
-  selectedId = null;
-  selectedIds.clear();
-  selectionAnchorId = null;
-  document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
-  renderList();
-  await placePanel();
-  await call("show_panel");
+function openPanel(): Promise<void> {
+  if (openingPanel) return panelActive ? openingPanel : openingPanel.then(() => openPanel());
+  panelActive = true;
+  const generation = ++panelGeneration;
+  openingPanel = (async () => {
+    if (settingsOpen) closeSettings();
+    selectedId = null;
+    selectedIds.clear();
+    selectionAnchorId = null;
+    document.querySelector<HTMLElement>("#list")!.scrollTop = 0;
+    document.querySelector<HTMLInputElement>("#search")!.value = search;
+    document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = !search;
+    await refresh();
+    if (!panelActive || generation !== panelGeneration) return;
+    activeShortcut = shortcutError ? "" : state.settings.shortcut;
+    await placePanel();
+    if (!panelActive || generation !== panelGeneration) return;
+    await call("show_panel");
+  })().finally(() => { openingPanel = null; });
+  return openingPanel;
 }
 
 function shortcutFromKey(event: KeyboardEvent): string | null {
@@ -1033,9 +1154,9 @@ root.addEventListener("click", async event => {
     setFilterMenuOpen(filterMenu.hidden === true);
     return;
   }
-  if (element.closest("#clear-filter")) { kindFilter = "all"; setFilterMenuOpen(false); renderFilter(); renderList(); return; }
+  if (element.closest("#clear-filter")) { kindFilter = "all"; savePanelSession(); setFilterMenuOpen(false); renderFilter(); renderList(); return; }
   const kindOption = element.closest<HTMLElement>("[data-kind]");
-  if (kindOption) { kindFilter = kindOption.dataset.kind!; setFilterMenuOpen(false); renderFilter(); renderList(); return; }
+  if (kindOption) { kindFilter = kindOption.dataset.kind!; savePanelSession(); setFilterMenuOpen(false); renderFilter(); renderList(); return; }
   if (element.closest("#retention-trigger")) { setRetentionMenuOpen(retentionMenu?.hidden === true); return; }
   const retentionOption = element.closest<HTMLButtonElement>("[data-retention]");
   if (retentionOption) {
@@ -1161,6 +1282,7 @@ root.addEventListener("input", event => {
   const element = event.target as HTMLInputElement;
   if (element.id === "search") {
     search = element.value;
+    savePanelSession();
     document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = !search;
     renderList();
   }
@@ -1296,9 +1418,15 @@ document.addEventListener("keydown", event => {
     if (event.code === "KeyF") void action("batch_records", { ids, operation: { kind: "set_favorite", favorite: !records.every(record => record.favorite) } });
     if (event.code === "KeyP") void action("batch_records", { ids, operation: { kind: "set_pinned", pinned: !records.every(record => record.pinnedAt !== null) } });
     if (event.code === "KeyG") {
-      const row = [...document.querySelectorAll<HTMLElement>("#list .record")].find(row => row.dataset.id === selectedId);
-      const trigger = row?.querySelector<HTMLElement>("[data-move-group-trigger]");
-      if (row && trigger) openMoveGroupMenu(trigger, row, records);
+      const id = selectedId;
+      const generation = panelGeneration;
+      ensureRecordRow(id);
+      window.requestAnimationFrame(() => {
+        if (!panelActive || panelGeneration !== generation || selectedId !== id) return;
+        const row = recordRow(id);
+        const trigger = row?.querySelector<HTMLElement>("[data-move-group-trigger]");
+        if (row && trigger) openMoveGroupMenu(trigger, row, records);
+      });
     }
     return;
   }
@@ -1394,17 +1522,17 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("pointerout", eve
     schedulePreviewClose();
   }
 });
-document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { updateOrdinals(); updateBackToTopButton(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
+document.querySelector<HTMLElement>("#list")!.addEventListener("scroll", () => { renderListRange(); updateOrdinals(); updateBackToTopButton(); closeMoveGroupMenu(); closeRecordMenu(); closePreview(); });
 document.querySelector<HTMLElement>("#list")!.addEventListener("wheel", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
 document.querySelector<HTMLElement>("#list")!.addEventListener("pointerdown", () => { window.cancelAnimationFrame(backToTopFrame); backToTopFrame = 0; });
 document.querySelector<HTMLElement>("#list")!.addEventListener("mousedown", event => {
   if (event.button === 0 && event.shiftKey && (event.target as HTMLElement).closest(".record") && !(event.target as HTMLElement).closest("button")) event.preventDefault();
 });
-window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); updateBackToTopTarget(); });
+window.addEventListener("resize", () => { closeMoveGroupMenu(); closeRecordMenu(); closePreview(); renderListRange(); updateBackToTopTarget(); });
 
 async function start() {
   try {
-    await listen("large-preview-ready", () => { largePreviewReady = true; });
+    await initPreviewWindows();
     await listen<{ id: string; fixed: boolean; width: number; height: number }>("large-preview-loaded", async event => {
       const request = ++largePreviewSizeRequest;
       const { id, fixed, width: imageWidth, height: imageHeight } = event.payload;
@@ -1438,18 +1566,10 @@ async function start() {
       }
     });
     await listen("large-preview-closed", () => { largePreviewId = null; });
-    await listen("preview-ready", () => {
-      previewReady = true;
-      if (hoveredId) {
-        const id = hoveredId;
-        window.clearTimeout(hoverTimer);
-        hoverTimer = window.setTimeout(() => { void preparePreview(id); }, Math.max(0, 300 - (performance.now() - hoverStartedAt)));
-      }
-    });
-    await listen<{ id: string; height: number }>("preview-measured", event => {
-      const { id, height: measured } = event.payload;
+    await listen<{ id: string; generation: number; height: number }>("preview-measured", event => {
+      const { id, generation, height: measured } = event.payload;
       const placement = previewPlacement;
-      if (id !== previewId || !placement || (!hoveredId && !previewHovered)) return;
+      if (id !== previewId || generation !== previewGeneration || !placement || (!hoveredId && !previewHovered)) return;
       const margin = Math.round(12 * placement.scale);
       const height = Math.max(1, Math.min(Math.ceil(measured * placement.scale), placement.bottom - placement.top - 2 * margin));
       const y = Math.max(placement.top + margin, Math.min(placement.rowY, placement.bottom - margin - height));
@@ -1474,22 +1594,21 @@ async function start() {
     await listen<string>("preview-space", event => {
       if (event.payload === selectedId) void openLargePreview(event.payload);
     });
-    await emitTo("preview", "preview-ping");
-    await emitTo("large-preview", "large-preview-ping");
-    await refresh(); await placePanel();
-    try { await registerShortcut(state.settings.shortcut); }
-    catch (error) { shortcutError = shortcutFailure(state.settings.shortcut, error); toast(shortcutError); }
-    await listen("history-changed", () => { void refresh(); });
+    await listen("history-changed", () => { void refresh().catch(error => toast(String(error))); });
+    await listen("panel-hidden", releasePanelContent);
     await listen("open-requested", () => { void openPanel().catch(error => toast(String(error))); });
     await panel.onMoved(() => { closePreview(); scheduleGeometrySave(); });
     await panel.onResized(() => { closePreview(); scheduleGeometrySave(); });
+    ({ view, kindFilter, search } = await call<PanelSession>("get_panel_session"));
+    shortcutError = await call<string | null>("panel_ready");
+    if (shortcutError) toast(shortcutError);
   } catch (error) {
     toast(`启动失败：${String(error)}`);
   }
 }
 
 function scheduleGeometrySave() {
-  if (placing || !state) return;
+  if (placing || !state || !panelActive) return;
   window.clearTimeout(positionSaveTimer);
   positionSaveTimer = window.setTimeout(async () => {
     const position = await panel.outerPosition(); const size = await panel.innerSize();

@@ -66,11 +66,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #record-menu button{display:block;width:100%;height:30px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font-size:12px;text-align:left}
 #record-menu button:hover{background:var(--hover)}
 
-#list{flex:1 1 auto;min-height:0;margin-right:7px;padding:2px 3px 6px 8px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d4d9e4 transparent}
+#list{flex:1 1 auto;min-height:0;margin-right:7px;padding:2px 3px 6px 8px;overflow-x:hidden;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d4d9e4 transparent}
+.list-spacer{width:100%;pointer-events:none}
 #list::-webkit-scrollbar{width:7px}
 #list::-webkit-scrollbar-thumb{border-radius:4px;background:#d4d9e4}
 .record{position:relative;display:flex;align-items:center;width:100%;height:48px;padding:0 6px 0 4px;overflow:hidden;border-radius:8px;cursor:default;transition:background .12s}
-.record:not(:last-child):not(.selected):not(.before-selected)::after{content:"";position:absolute;right:6px;bottom:0;left:28px;height:1px;background:rgba(23,28,40,.05);pointer-events:none}
+.record:not(.last-record):not(.selected):not(.before-selected)::after{content:"";position:absolute;right:6px;bottom:0;left:28px;height:1px;background:rgba(23,28,40,.05);pointer-events:none}
 .record:focus{outline:none}
 .record:hover,.record:focus-within{background:var(--hover)}
 .record.selected,.record.selected:hover,.record.selected:focus-within{background:var(--accent-soft)}
