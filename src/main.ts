@@ -675,14 +675,14 @@ function renderSettings() {
       <tr><td>→</td><td>显示当前选中记录的悬浮预览</td></tr>
       <tr><td>↑ / ↓</td><td>选择上一条 / 下一条记录，首尾循环；分组菜单中切换选项</td></tr>
       <tr><td>Shift+↑ / Shift+↓、Shift+点击</td><td>按当前列表顺序连续选择多条记录</td></tr>
-      <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名时提交</td></tr>
+      <tr><td>Enter</td><td>应用选中记录；分组菜单中确认选择；编辑分组名或普通记录数量上限时提交</td></tr>
       <tr><td>Space</td><td>打开或关闭大图预览；分组菜单中确认选择</td></tr>
       <tr><td>1～9</td><td>搜索框未聚焦时应用当前可见序号对应的记录</td></tr>
       <tr><td>Ctrl+D</td><td>收藏或取消收藏所有选中记录</td></tr>
       <tr><td>${isMacOS ? "Ctrl+Delete" : "Ctrl+Backspace / Delete"}</td><td>搜索框未聚焦时删除所有选中记录</td></tr>
       <tr><td>Ctrl+G</td><td>打开分组菜单，移动所有选中记录</td></tr>
       <tr><td>Ctrl+P</td><td>置顶或取消置顶所有选中记录</td></tr>
-      <tr><td>Ctrl+A</td><td>面板中禁用全选；搜索框聚焦时全选搜索文字</td></tr>
+      <tr><td>Ctrl+A</td><td>输入框聚焦时全选框内文字；面板其他区域禁用全选</td></tr>
       <tr><td>Esc</td><td>关闭当前菜单、设置或大图预览；搜索词非空时清除搜索词并移走搜索框焦点，面板保持显示；搜索框为空时在主页隐藏面板；编辑分组名时取消</td></tr>
     </tbody></table>
     <section class="cache-cleanup" aria-labelledby="cache-cleanup-title"><div class="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
@@ -1141,6 +1141,8 @@ document.querySelector<HTMLElement>("#list")!.addEventListener("contextmenu", ev
 });
 
 root.addEventListener("focusout", event => {
+  const element = event.target as HTMLInputElement;
+  if (element.id === "max-ordinary") { saveNumberSetting(element, true); return; }
   const input = (event.target as HTMLElement).closest<HTMLInputElement>("#groups .group-input");
   if (!input) return;
   window.setTimeout(() => { if (document.activeElement !== input) cancelGroupEdit(); }, 0);
@@ -1313,7 +1315,7 @@ root.addEventListener("change", event => {
     const enabled = element.checked;
     saveSetting({ rememberPosition: enabled }, !enabled);
   }
-  if (element.id === "max-ordinary" || element.id === "sensitive") {
+  if (element.id === "sensitive") {
     window.clearTimeout(numberSaveTimers.get(element.id));
     numberSaveTimers.delete(element.id);
     saveNumberSetting(element as HTMLInputElement, true);
@@ -1328,7 +1330,7 @@ root.addEventListener("input", event => {
     document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = !search;
     renderList();
   }
-  if (element.id === "max-ordinary" || element.id === "sensitive") {
+  if (element.id === "sensitive") {
     window.clearTimeout(numberSaveTimers.get(element.id));
     numberSaveTimers.set(element.id, window.setTimeout(() => {
       numberSaveTimers.delete(element.id);
@@ -1340,11 +1342,12 @@ root.addEventListener("input", event => {
 document.addEventListener("keydown", event => {
   if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.getModifierState("AltGraph") ||
       event.key.toLowerCase() !== "a") return;
-  // 面板本身仍然禁用全选；只有搜索框保留全选，且不依赖 WebView2 的浏览器快捷键开关。
+  // 输入框保留全选，且不依赖 WebView2 的浏览器快捷键开关。
   const target = event.target as HTMLElement;
-  if (target instanceof HTMLInputElement && target.id === "search") {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     event.preventDefault();
     target.select();
+    event.stopImmediatePropagation();
     return;
   }
   event.preventDefault();
@@ -1353,6 +1356,12 @@ document.addEventListener("keydown", event => {
 
 root.addEventListener("keydown", event => {
   const element = event.target as HTMLElement;
+  if (element.id === "max-ordinary" && event.key === "Enter") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.repeat && !event.isComposing) saveNumberSetting(element as HTMLInputElement, true);
+    return;
+  }
   if (element.matches("#groups .group-input")) {
     event.stopPropagation();
     if (event.key === "Enter") { event.preventDefault(); void commitGroupEdit(); }
