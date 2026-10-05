@@ -5,11 +5,12 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
 const source = ts.createSourceFile("main.ts", readFileSync(new URL("../src/main.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const declaration = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === "saveSetting");
-const { outputText } = ts.transpileModule(declaration.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2020 } });
+const functions = ["saveSetting", "clearHiddenSearch"].map(name => source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name).getText(source));
+const { outputText } = ts.transpileModule(functions.join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020 } });
 
 function setup(save, confirm = () => false) {
   const effects = [];
+  const elements = new Map([["#search", { value: "kept" }], ["#clear-search", { hidden: false }]]);
   const original = { maxOrdinary: 100, retentionDays: 3, shortcut: "", rememberPosition: false };
   const context = {
     state: { settings: original }, panelActive: true, settingsSave: Promise.resolve(), pendingSettings: null, activeShortcut: "", shortcutDraft: null, shortcutError: null,
@@ -21,10 +22,37 @@ function setup(save, confirm = () => false) {
     confirmSettingsCleanup: count => { effects.push(["confirm", count]); return confirm(count); },
     renderSettings: () => effects.push("render-settings"), toast: error => effects.push(["toast", error]),
     placePanel: async () => effects.push("place-panel"),
+    search: "kept", document: { querySelector: selector => elements.get(selector) },
+    savePanelSession: () => effects.push(["session", context.search]),
   };
   runInNewContext(outputText, context);
-  return { context, effects, original };
+  return { context, effects, original, elements };
 }
+
+test("retention saved after the panel hides clears and saves the hidden search", async () => {
+  let resolve;
+  const saved = new Promise(done => { resolve = done; });
+  const { context, effects, elements } = setup(() => saved);
+  context.saveSetting({ retainSearchInput: false });
+  await new Promise(done => setImmediate(done));
+  context.panelActive = false;
+  resolve({ status: "saved" });
+  await context.settingsSave;
+  assert.equal(context.state.settings.retainSearchInput, false);
+  assert.equal(context.search, "");
+  assert.equal(elements.get("#search").value, "");
+  assert.equal(elements.get("#clear-search").hidden, true);
+  assert.ok(effects.some(effect => effect[0] === "session" && effect[1] === ""));
+});
+
+test("failed retention changes keep the saved preference and search", async () => {
+  const { context, original } = setup(() => { throw new Error("save failed"); });
+  original.retainSearchInput = true;
+  context.saveSetting({ retainSearchInput: false });
+  await context.settingsSave;
+  assert.equal(context.state.settings.retainSearchInput, true);
+  assert.equal(context.search, "kept");
+});
 
 for (const patch of [{ maxOrdinary: 50 }, { retentionDays: 1 }]) {
   test(`cancelled cleanup restores the saved ${Object.keys(patch)[0]}`, async () => {

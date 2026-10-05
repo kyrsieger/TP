@@ -58,6 +58,12 @@ struct Settings {
     panel_y: Option<f64>,
     #[serde(default)]
     always_on_top: bool,
+    #[serde(default = "default_retain_search_input")]
+    retain_search_input: bool,
+}
+
+fn default_retain_search_input() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -75,6 +81,7 @@ impl Default for Settings {
             panel_x: None,
             panel_y: None,
             always_on_top: false,
+            retain_search_input: true,
         }
     }
 }
@@ -171,6 +178,14 @@ struct PanelState {
     hidden_at: Option<Instant>,
     session: PanelSession,
     shortcut_error: Option<String>,
+}
+
+impl PanelState {
+    fn clear_hidden_search(&mut self, retain_search_input: bool) {
+        if self.hidden_at.is_some() && !retain_search_input {
+            self.session.search.clear();
+        }
+    }
 }
 
 #[derive(Default)]
@@ -739,6 +754,11 @@ fn save_settings(
     for id in &ids {
         remove_record(&conn, &store.dir, id)?;
     }
+    app.state::<PanelLifecycle>()
+        .state
+        .lock()
+        .map_err(err)?
+        .clear_hidden_search(value.retain_search_input);
     drop(conn);
     if !ids.is_empty() {
         changed(&app);
@@ -1358,10 +1378,15 @@ fn get_panel_session(lifecycle: tauri::State<PanelLifecycle>) -> Result<PanelSes
 
 #[tauri::command]
 fn save_panel_session(
+    store: tauri::State<Store>,
     lifecycle: tauri::State<PanelLifecycle>,
     session: PanelSession,
 ) -> Result<()> {
-    lifecycle.state.lock().map_err(err)?.session = session;
+    let conn = store.db.lock().map_err(err)?;
+    let retain_search_input = settings(&conn)?.retain_search_input;
+    let mut state = lifecycle.state.lock().map_err(err)?;
+    state.session = session;
+    state.clear_hidden_search(retain_search_input);
     Ok(())
 }
 
@@ -1497,13 +1522,18 @@ fn hide_panel(app: tauri::AppHandle) -> Result<()> {
     hide_preview_window(&app, "preview")?;
     hide_preview_window(&app, "large-preview")?;
     if let Some(window) = app.get_webview_window("main") {
+        let store = app.state::<Store>();
+        let conn = store.db.lock().map_err(err)?;
+        let retain_search_input = settings(&conn)?.retain_search_input;
         window.hide().map_err(err)?;
         {
             let lifecycle = app.state::<PanelLifecycle>();
             let mut state = lifecycle.state.lock().map_err(err)?;
             state.open_requested = false;
             state.hidden_at.get_or_insert_with(Instant::now);
+            state.clear_hidden_search(retain_search_input);
         }
+        drop(conn);
         app.emit_to("main", "panel-hidden", ()).map_err(err)?;
         set_window_memory_mode(&window, true);
     }
@@ -2628,6 +2658,65 @@ mod tests {
         value.as_object_mut().unwrap().remove("alwaysOnTop");
         let restored: Settings = serde_json::from_value(value).unwrap();
         assert!(!restored.always_on_top);
+    }
+
+    #[test]
+    fn older_settings_default_to_retaining_search_without_resetting_preferences() {
+        let mut config = Settings::default();
+        config.max_ordinary = 100;
+        config.shortcut = "Control+Shift+V".into();
+        let mut value = serde_json::to_value(config).unwrap();
+        value.as_object_mut().unwrap().remove("retainSearchInput");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert!(restored.retain_search_input);
+        assert_eq!(restored.max_ordinary, 100);
+        assert_eq!(restored.shortcut, "Control+Shift+V");
+    }
+
+    #[test]
+    fn search_retention_setting_round_trips_both_values() {
+        assert!(Settings::default().retain_search_input);
+        for retain in [true, false] {
+            let mut config = Settings::default();
+            config.retain_search_input = retain;
+            let value = serde_json::to_value(config).unwrap();
+            assert_eq!(value["retainSearchInput"], retain);
+            let restored: Settings = serde_json::from_value(value).unwrap();
+            assert_eq!(restored.retain_search_input, retain);
+            assert!(restored.validate().is_ok());
+        }
+    }
+
+    #[test]
+    fn hidden_search_retention_preserves_other_session_state_and_rejects_late_search() {
+        for hidden in [true, false] {
+            for retain in [true, false] {
+                let mut state = PanelState::default();
+                state.hidden_at = hidden.then(Instant::now);
+                state.session = PanelSession {
+                    view: "favorite".into(),
+                    kind_filter: "image".into(),
+                    search: "keyword".into(),
+                };
+                state.clear_hidden_search(retain);
+                assert_eq!(
+                    state.session.search,
+                    if hidden && !retain { "" } else { "keyword" }
+                );
+                assert_eq!(state.session.view, "favorite");
+                assert_eq!(state.session.kind_filter, "image");
+                state.session.search = "late keyword".into();
+                state.clear_hidden_search(retain);
+                assert_eq!(
+                    state.session.search,
+                    if hidden && !retain {
+                        ""
+                    } else {
+                        "late keyword"
+                    }
+                );
+            }
+        }
     }
 
     #[test]

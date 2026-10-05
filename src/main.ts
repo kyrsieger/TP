@@ -22,6 +22,7 @@ type Settings = {
   rememberPosition: boolean; panelWidth: number; panelHeight: number;
   panelX: number | null; panelY: number | null;
   alwaysOnTop: boolean;
+  retainSearchInput: boolean;
 };
 type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
 type SettingsSaveResult = { status: "saved" } | { status: "confirmation_required"; count: number };
@@ -650,6 +651,8 @@ function renderSettings() {
   const s = state.settings;
   settings.innerHTML = `<h2>设置</h2><label class="inline"><input id="autostart" type="checkbox" ${autostartEnabled ? "checked" : ""} ${autostartEnabled === null || autostartSaving ? "disabled" : ""}>开机启动</label>
     <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value="${escapeHtml(displayShortcut(shortcutDraft ?? s.shortcut))}" readonly>${shortcutError ? `<span class="shortcut-error" role="alert">${escapeHtml(shortcutError)}</span>` : ""}</label>
+    <label class="inline"><input id="retain-search-input" type="checkbox" ${s.retainSearchInput ? "checked" : ""}>保留搜索框输入</label>
+    <p class="hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</p>
     <label>普通记录数量上限<input id="max-ordinary" type="number" min="1" max="500" value="${s.maxOrdinary}"></label>
     <div class="setting-field"><span class="setting-label">普通记录保留时间</span><div class="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="retention-value">${([[1,"24 小时"],[3,"3 天"],[5,"5 天"],[7,"7 天"],[30,"1 个月"]].find(([value]) => value === s.retentionDays) ?? [s.retentionDays, `${s.retentionDays} 天`])[1]}</span>${icon("chevron", 14)}</button>
@@ -756,12 +759,20 @@ function refresh(): Promise<void> {
   return refreshing;
 }
 
+function clearHiddenSearch() {
+  if (panelActive || state?.settings.retainSearchInput !== false) return;
+  search = "";
+  document.querySelector<HTMLInputElement>("#search")!.value = "";
+  document.querySelector<HTMLButtonElement>("#clear-search")!.hidden = true;
+}
+
 function releasePanelContent() {
   if (!panelActive) return;
   document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.close("cancel");
   panelActive = false;
   panelGeneration++;
   refreshAgain = false;
+  clearHiddenSearch();
   savePanelSession();
   window.cancelAnimationFrame(backToTopFrame);
   backToTopFrame = 0;
@@ -919,6 +930,10 @@ function saveSetting(patch: Partial<Settings>, reposition = false) {
         confirmedCount = result.count;
       }
       state.settings = next;
+      if (!panelActive) {
+        clearHiddenSearch();
+        savePanelSession();
+      }
       if (patch.shortcut !== undefined) {
         if (shortcutDraft === next.shortcut) shortcutDraft = null;
         shortcutError = null;
@@ -1293,6 +1308,7 @@ root.addEventListener("dblclick", event => {
 
 root.addEventListener("change", event => {
   const element = event.target as HTMLInputElement;
+  if (element.id === "retain-search-input") saveSetting({ retainSearchInput: element.checked });
   if (element.id === "autostart") {
     const previous = autostartEnabled;
     const enabled = element.checked;

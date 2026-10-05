@@ -60,6 +60,16 @@ function setup() {
   };
 }
 
+for (const checked of [true, false]) {
+  test(`search retention checkbox immediately saves ${checked}`, () => {
+    const { Input, dispatch, saved } = setup();
+    const input = new Input("retain-search-input");
+    input.checked = checked;
+    dispatch("change", input);
+    assert.deepEqual(saved, [{ retainSearchInput: checked }]);
+  });
+}
+
 test("typing a lower record limit and pausing does not save or request deletion", () => {
   const { Input, saved, dispatch, runTimers } = setup();
   const input = new Input("max-ordinary");

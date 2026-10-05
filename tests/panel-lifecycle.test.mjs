@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
 const source = ts.createSourceFile("main.ts", readFileSync(new URL("../src/main.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const functions = ["refresh", "releasePanelContent", "openPanel"].map(name => {
+const functions = ["refresh", "clearHiddenSearch", "releasePanelContent", "openPanel"].map(name => {
   const declaration = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name);
   assert.ok(declaration, `Missing ${name}`);
   return declaration.getText(source);
@@ -26,7 +26,7 @@ function setup() {
     value: "", hidden: false, scrollTop: 0,
     querySelectorAll: () => [image], replaceChildren: () => effects.push(`clear-${selector}`),
   }]));
-  const snapshot = body => ({ records: [{ id: body, body }], groups: [], settings: { shortcut: "Control+Shift+V" } });
+  const snapshot = body => ({ records: [{ id: body, body }], groups: [], settings: { shortcut: "Control+Shift+V", retainSearchInput: true } });
   const context = {
     panelActive: false, panelGeneration: 0, refreshing: null, refreshAgain: false, openingPanel: null,
     state: snapshot("old"), view: "favorite", kindFilter: "image", search: "kept",
@@ -109,6 +109,40 @@ test("opening coalesces wake requests and loads current data before showing", as
   assert.equal(context.panelActive, true);
   assert.equal(elements.get("#search").value, "kept");
   assert.deepEqual(effects, ["get-state", ["render", "fresh"], "place", "show_panel"]);
+});
+
+for (const retain of [true, false]) {
+  test(`hiding and reopening ${retain ? "retains" : "clears"} search without changing group or type`, async () => {
+    const { context, elements, effects, requests, snapshot } = setup();
+    context.panelActive = true;
+    context.state.settings.retainSearchInput = retain;
+    elements.get("#search").value = "kept";
+    context.releasePanelContent();
+    const expected = retain ? "kept" : "";
+    assert.equal(context.search, expected);
+    assert.equal(elements.get("#search").value, expected);
+    if (!retain) assert.equal(elements.get("#clear-search").hidden, true);
+    assert.deepEqual(effects.find(effect => Array.isArray(effect) && effect[0] === "session"), ["session", "favorite", "image", expected]);
+    context.releasePanelContent();
+    const opened = context.openPanel();
+    const fresh = snapshot("fresh");
+    fresh.settings.retainSearchInput = retain;
+    requests[0].resolve(fresh);
+    await opened;
+    assert.equal(elements.get("#search").value, expected);
+    assert.equal(elements.get("#clear-search").hidden, !expected);
+    assert.equal(context.search, expected);
+  });
+}
+
+test("turning retention off leaves the current visible search intact", () => {
+  const { context, elements } = setup();
+  context.panelActive = true;
+  context.state.settings.retainSearchInput = false;
+  elements.get("#search").value = "kept";
+  context.clearHiddenSearch();
+  assert.equal(context.search, "kept");
+  assert.equal(elements.get("#search").value, "kept");
 });
 
 test("a canceled open never shows the panel and a later wake can reopen", async () => {
