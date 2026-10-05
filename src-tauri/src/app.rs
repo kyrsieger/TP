@@ -1614,7 +1614,7 @@ fn hide_large_preview(app: tauri::AppHandle) -> Result<()> {
 }
 
 #[tauri::command]
-fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -> Result<String> {
+fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -> Result<()> {
     let (kind, body, files, mode, digest): (String, String, String, String, String) = {
         let conn = store.db.lock().map_err(err)?;
         conn.query_row(
@@ -1681,11 +1681,9 @@ fn apply_record(app: tauri::AppHandle, store: tauri::State<Store>, id: String) -
         if !pinned {
             let _ = hide_panel(app.clone());
         }
-        if platform::paste_to_target(target) {
-            return Ok("已放回剪贴板，并已尝试粘贴到原窗口".into());
-        }
+        let _ = platform::paste_to_target(target);
     }
-    Ok("已放回系统剪贴板，请在目标位置手动粘贴".into())
+    Ok(())
 }
 
 fn video(path: &str) -> bool {

@@ -806,7 +806,7 @@ function releasePanelContent() {
 
 async function apply(id: string) {
   try {
-    toast(await call<string>("apply_record", { id }));
+    await call<void>("apply_record", { id });
     if (!await panel.isVisible()) releasePanelContent();
     await refresh();
   }
