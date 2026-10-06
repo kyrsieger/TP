@@ -44,8 +44,8 @@ export function ensurePreviewWindow(label: Label): Promise<void> {
 }
 
 export async function initPreviewWindows() {
-  await listen<Label>("preview-window-used", event => { cancelRelease(event.payload); });
-  await listen<Label>("preview-window-hidden", event => {
+  const used = await listen<Label>("preview-window-used", event => { cancelRelease(event.payload); });
+  const hidden = await listen<Label>("preview-window-hidden", event => {
     const label = event.payload;
     const state = windows[label];
     if (state.timer !== undefined || state.releasing) return;
@@ -59,4 +59,5 @@ export async function initPreviewWindows() {
         .finally(() => { state.releasing = null; });
     }, 30000);
   });
+  return () => { used(); hidden(); cancelRelease("preview"); cancelRelease("large-preview"); };
 }

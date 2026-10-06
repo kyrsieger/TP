@@ -1,65 +1,30 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
-import ts from "typescript";
-
-const source = ts.createSourceFile("main.ts", readFileSync(new URL("../src/main.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const handler = source.statements.find(statement => ts.isExpressionStatement(statement)
-  && ts.isCallExpression(statement.expression)
-  && statement.expression.expression.getText(source) === "document.addEventListener"
-  && statement.expression.arguments[0]?.text === "keydown"
-  && statement.expression.arguments[1].getText(source).includes("if (!state"));
-assert.ok(handler, "Missing panel keyboard handler");
-const { outputText } = ts.transpileModule(handler.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2020 } });
+import { loadTs } from "./load-ts.mjs";
 
 function setup({ focused = false, settingsOpen = false, selectedId = "selected", isMacOS = false,
   records = [{ id: "selected", favorite: false }] } = {}) {
-  const effects = [];
-  const actions = [];
-  const input = {
-    id: "search", value: "existing", selectionStart: 8, selectionEnd: 8,
-    matches: () => false, closest: () => input,
-    focus: () => effects.push("focus-search"), blur: () => effects.push("blur-search"),
-    setSelectionRange: () => {},
-    setRangeText: text => { input.value += text; },
-    dispatchEvent: () => effects.push("search-input"),
-  };
+  const effects = [], actions = [];
+  const input = { id: "search", value: "existing", matches: () => false, closest: () => input,
+    focus: () => effects.push("focus-search"), blur: () => effects.push("blur-search") };
   const row = { id: "", matches: () => false, closest: () => null };
   const menu = { hidden: true, contains: () => false };
-  let keydown;
+  const { createPanelKeydown } = loadTs("src/input/keyboard.ts", { document: { querySelector: selector => selector === "#search" ? input : menu } });
   const context = {
-    state: { records }, settingsOpen, selectedId, isMacOS,
-    selectedIds: new Set(records.map(record => record.id)),
-    document: {
-      querySelector: selector => selector === "#search" ? input : menu,
-      addEventListener: (_, callback) => { keydown = callback; },
-    },
-    visibleRecords: () => ["visible-second", "visible-third"].map(id => ({ dataset: { id } })),
-    filtered: () => context.state.records,
-    apply: id => effects.push(["apply", id]),
-    action: (name, args) => { effects.push([name, args.operation.kind]); actions.push(JSON.parse(JSON.stringify(args))); },
-    Event: class {},
+    history: { value: { snapshot: { records }, selectedId, selectedIds: new Set(records.map(record => record.id)) },
+      records, apply: id => effects.push(["apply", id]), action: (name,args) => { effects.push([name,args.operation.kind]); actions.push(JSON.parse(JSON.stringify(args))); } },
+    settings: { value: { open: settingsOpen } }, menus: { update() {} }, previews: {},
+    list: { visibleRecords: () => ["visible-second", "visible-third"].map(id => ({dataset:{id}})) }, isMacOS,
   };
-  runInNewContext(outputText, context);
-  return {
-    effects, input, actions,
-    press(key, overrides = {}) {
-      const event = {
-        key, code: key.length === 1 ? (/\d/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`) : key,
-        target: focused ? input : row,
-        ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, repeat: false,
-        isComposing: false, keyCode: 0, defaultPrevented: false,
-        getModifierState: () => false,
-        preventDefault() { this.defaultPrevented = true; },
-        ...overrides,
-      };
-      keydown(event);
-      return event;
-    },
-  };
+  const keydown = createPanelKeydown(context);
+  return { effects, input, actions, press(key, overrides = {}) {
+    const event = { key, code: key.length === 1 ? (/\d/.test(key) ? 'Digit'+key : 'Key'+key.toUpperCase()) : key,
+      target: focused ? input : row, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, repeat: false,
+      isComposing: false, keyCode: 0, defaultPrevented: false, getModifierState: () => false,
+      preventDefault() { this.defaultPrevented = true; }, ...overrides };
+    keydown(event); return event;
+  } };
 }
-
 for (const focused of [false, true]) {
   test(`Ctrl+F focuses search without favoriting (search focused: ${focused})`, () => {
     const { press, effects } = setup({ focused });

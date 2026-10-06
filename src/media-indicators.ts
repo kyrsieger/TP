@@ -1,8 +1,3 @@
-export function indicatorHtml(count: number) {
-  if (count < 2) return "";
-  return `<div class="page-indicators" role="group" aria-label="预览页码">${Array.from({ length: count }, (_, index) => `<button class="page-indicator" type="button" data-index="${index}" aria-label="查看第 ${index + 1} 项预览" aria-pressed="${index === 0}"></button>`).join("")}</div>`;
-}
-
 export function bindIndicators(host: HTMLElement | null, onSelect: (index: number) => void) {
   if (!host) return (_index: number) => {};
   const buttons = [...host.querySelectorAll<HTMLButtonElement>(".page-indicator")];

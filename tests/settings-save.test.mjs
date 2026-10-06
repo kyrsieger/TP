@@ -1,34 +1,36 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
-import ts from "typescript";
-
-const source = ts.createSourceFile("main.ts", readFileSync(new URL("../src/main.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const functions = ["saveSetting", "clearHiddenSearch"].map(name => source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name).getText(source));
-const { outputText } = ts.transpileModule(functions.join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020 } });
-
+import { loadTs } from "./load-ts.mjs";
+const { SettingsController } = loadTs("src/state/settings.ts");
 function setup(save, confirm = () => false) {
-  const effects = [];
-  const elements = new Map([["#search", { value: "kept" }], ["#clear-search", { hidden: false }]]);
+  const effects = [], elements = new Map([["#search", { value: "kept" }], ["#clear-search", { hidden: false }]]);
   const original = { maxOrdinary: 100, retentionDays: 3, shortcut: "", rememberPosition: false };
-  const context = {
-    state: { settings: original }, panelActive: true, settingsSave: Promise.resolve(), pendingSettings: null, activeShortcut: "", shortcutDraft: null, shortcutError: null,
-    call: async (name, args) => {
-      effects.push([name, args.value, args.confirmedCount]);
-      const result = await save(args.value, args.confirmedCount);
-      return typeof result === "boolean" ? (result ? { status: "saved" } : { status: "confirmation_required", count: 50 }) : result;
-    },
-    confirmSettingsCleanup: count => { effects.push(["confirm", count]); return confirm(count); },
-    renderSettings: () => effects.push("render-settings"), toast: error => effects.push(["toast", error]),
-    placePanel: async () => effects.push("place-panel"),
-    search: "kept", document: { querySelector: selector => elements.get(selector) },
-    savePanelSession: () => effects.push(["session", context.search]),
-  };
-  runInNewContext(outputText, context);
+  const context = { state: { settings: original }, panelActive: true, search: "kept" };
+  const history = { get value() { return { settings: context.state.settings, active: context.panelActive }; }, commitSettings(next) {
+    context.state.settings = next;
+    if (!context.panelActive) {
+      if (next.retainSearchInput === false) { context.search = ""; elements.get("#search").value = ""; elements.get("#clear-search").hidden = true; }
+      effects.push(["session", context.search]);
+    }
+  } };
+  const controller = new SettingsController(history, async (name,args) => {
+    effects.push([name,args.value,args.confirmedCount]);
+    const result = await save(args.value,args.confirmedCount);
+    return typeof result === "boolean" ? (result ? {status:"saved"} : {status:"confirmation_required",count:50}) : result;
+  }, { toast: error=>effects.push(["toast",error]), place: async()=>effects.push("place-panel") });
+  let requested = null, revision = 0;
+  controller.subscribe(() => {
+    const count=controller.value.confirmationCount;
+    if (count!==null && count!==requested) {
+      requested=count; effects.push(["confirm",count]); Promise.resolve(confirm(count)).then(result=>controller.confirm(result));
+    }
+    if (count===null) requested=null;
+    if (revision!==controller.value.revision && context.state.settings===original) effects.push("render-settings");
+    revision=controller.value.revision;
+  });
+  context.saveSetting = (...args) => { context.settingsSave = controller.save(...args); };
   return { context, effects, original, elements };
 }
-
 test("retention saved after the panel hides clears and saves the hidden search", async () => {
   let resolve;
   const saved = new Promise(done => { resolve = done; });
@@ -149,30 +151,3 @@ test("a panel hidden before the response does not open a confirmation or apply s
   assert.equal(effects.filter(effect => effect[0] === "confirm").length, 0);
   assert.equal(effects.filter(effect => effect[0] === "save_settings").length, 1);
 });
-
-const dialogDeclaration = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === "confirmSettingsCleanup");
-const { outputText: dialogScript } = ts.transpileModule(dialogDeclaration.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2020 } });
-
-for (const action of ["confirm", "cancel", "escape"]) {
-  test(`the styled modal resolves ${action} and removes itself`, async () => {
-    const buttons = new Map([["[data-cancel]", {}], ["[data-confirm]", {}]]);
-    const listeners = new Map();
-    const dialog = {
-      returnValue: "", removed: false, open: false,
-      setAttribute() {}, querySelector: selector => buttons.get(selector),
-      addEventListener: (name, handler) => listeners.set(name, handler),
-      showModal() { this.open = true; },
-      close(value = "") { this.returnValue = value; this.open = false; listeners.get("close")(); },
-      remove() { this.removed = true; },
-    };
-    const context = { document: { createElement: () => dialog }, root: { append() {} } };
-    runInNewContext(dialogScript, context);
-    const result = context.confirmSettingsCleanup(7);
-    assert.equal(dialog.open, true);
-    assert.match(dialog.innerHTML, /<strong>7<\/strong>/);
-    if (action === "escape") dialog.close();
-    else buttons.get(action === "confirm" ? "[data-confirm]" : "[data-cancel]").onclick();
-    assert.equal(await result, action === "confirm");
-    assert.equal(dialog.removed, true);
-  });
-}

@@ -1,6 +1,6 @@
 # 系统架构
 
-本文描述 TP 的系统边界、运行组成、数据模型、关键流程与平台适配，以截至 2026-10-03 的仓库代码为依据。产品行为以[产品设计](DESIGN.md)为准，术语以[术语表](GLOSSARY.md)为准；本文将当前实现及其限制与产品要求区分开来，不把代码存在等同于平台验收通过。
+本文描述 TP 的系统边界、运行组成、数据模型、关键流程与平台适配，以截至 2026-10-06 的仓库代码为依据。产品行为以[产品设计](DESIGN.md)为准，术语以[术语表](GLOSSARY.md)为准；本文将当前实现及其限制与产品要求区分开来，不把代码存在等同于平台验收通过。
 
 ## 1. 系统定位与边界
 
@@ -19,12 +19,12 @@ TP 是面向 Windows 11 和 macOS 的本地剪贴板历史工具，以托盘或�
 
 ## 2. 总体组成与职责
 
-TP 采用 Tauri 2 桌面应用结构：TypeScript 页面负责交互，Rust 宿主负责历史记录、持久化和系统操作。三个 WebView 窗口按需创建、共享同一个 Rust 应用状态，后台常驻不依赖页面存活，没有独立部署的业务服务。下图是逻辑组成，不表示操作系统进程数量。
+TP 采用 Tauri 2 桌面应用结构：React 与 TypeScript 页面负责交互，Rust 宿主负责历史记录、持久化和系统操作。三个 WebView 窗口按需创建、共享同一个 Rust 应用状态，后台常驻不依赖页面存活，没有独立部署的业务服务。下图是逻辑组成，不表示操作系统进程数量。
 
 ```mermaid
 flowchart TB
     subgraph TP[TP 桌面应用]
-        subgraph UI[TypeScript / WebView]
+        subgraph UI[React / TypeScript / WebView]
             Main[主面板与设置]
             Hover[悬停预览窗口]
             Large[大图预览窗口]
@@ -58,17 +58,32 @@ flowchart TB
     Originals -->|读取| Core
 ```
 
-以下职责已经存在于代码中，但 Rust 的记录、存储和窗口编排逻辑目前集中在 `app.rs`，尚未拆成独立的服务模块。
+三个前端入口只挂载 React 根组件，`app.rs` 只组装 Rust 宿主与命令。模块按业务职责拆分，保留原有命令名、事件载荷、SQLite 格式、应用身份和样式。
 
 | 组成 | 主要职责 | 代码位置 |
 | --- | --- | --- |
-| 主面板 | 可见范围内的列表、搜索筛选、分组与记录操作、设置、键盘导航、窗口定位及预览协调；隐藏时释放记录快照与列表 | [src/main.ts](../src/main.ts)、[index.html](../index.html) |
-| 预览窗口 | 展示记录内容；按需读取图片、首帧和文本文件；向主面板报告内容尺寸与交互状态；主页面协调按需创建与闲置释放 | [src/preview.ts](../src/preview.ts)、[src/large-preview.ts](../src/large-preview.ts)、[src/preview-windows.ts](../src/preview-windows.ts) |
-| 多页媒体展示 | 纯图片或纯视频组合逐项切换、相邻项预载、页面指示器 | [src/media-carousel.ts](../src/media-carousel.ts)、[src/media-indicators.ts](../src/media-indicators.ts) |
-| 记录与附件逻辑 | 剪贴板采集、类型识别、去重、时间与归属维护、清理、文件保存及预览生成 | [src-tauri/src/app.rs](../src-tauri/src/app.rs) |
-| 应用宿主 | 初始化 Store、注册命令、后台线程、托盘菜单、全局快捷键、按需窗口生命周期、面板浏览状态与登录启动 | [src-tauri/src/app.rs](../src-tauri/src/app.rs) 的 `run` |
-| 平台适配 | 来源识别、目标捕获、激活目标并发送粘贴键、打开原文件所在目录、边框双击与视频首帧提取 | [src-tauri/src/platform.rs](../src-tauri/src/platform.rs) |
+| 界面组装 | 挂载 React、组合主面板、组装控制器和事件监听 | [src/main.ts](../src/main.ts)、[src/App.tsx](../src/App.tsx)、[src/application.ts](../src/application.ts) |
+| 主面板组件 | 搜索与类型筛选、分组页签、虚拟列表和记录行、设置、弹出菜单与确认弹窗 | [src/components](../src/components) |
+| 面板状态 | 完整快照读取与请求合并、拒绝过期响应、浏览会话、选中范围、隐藏后释放快照 | [src/state/panel.ts](../src/state/panel.ts) |
+| 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑和名称校验 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
+| 前端系统服务 | Tauri 命令、窗口定位和平台缩放、预览协调和就绪握手、焦点还原 | [src/services](../src/services)、[src/preview-windows.ts](../src/preview-windows.ts) |
+| 前端领域与键盘 | 数据契约、过滤、显示文本和连续选择的纯计算；键盘操作规则 | [src/domain](../src/domain)、[src/input](../src/input)、[src/list-layout.ts](../src/list-layout.ts) |
+| 预览页面 | React 渲染文本、路径、颜色、图片和视频首帧；测量尺寸、读取单文件文本与清空内容 | [src/preview](../src/preview)、[src/preview.ts](../src/preview.ts)、[src/large-preview.ts](../src/large-preview.ts) |
+| 多页媒体展示 | 逐项切换、相邻项预载、页码指示器；React 组件通过 effect 管理既有动画引擎的创建与销毁，动画只操作独立子树 | [src/components/MediaCarousel.tsx](../src/components/MediaCarousel.tsx)、[src/media-carousel.ts](../src/media-carousel.ts)、[src/media-indicators.ts](../src/media-indicators.ts) |
+| Rust 模型与存储 | 序列化契约和设置校验、共享窗口会话；Store、SQLite 初始化与旧数据迁移、设置读取和快照查询 | [app/model.rs](../src-tauri/src/app/model.rs)、[app/session.rs](../src-tauri/src/app/session.rs)、[app/storage.rs](../src-tauri/src/app/storage.rs) |
+| 记录与清理 | 单条和批量整理、分组操作；普通记录和敏感记录到期、保护规则、清理缓存与删除数量确认 | [app/records.rs](../src-tauri/src/app/records.rs)、[app/cleanup.rs](../src-tauri/src/app/cleanup.rs)、[app/settings.rs](../src-tauri/src/app/settings.rs) |
+| 文件与媒体 | 文件副本任务、路径复制、打开目录与另存为；缩略图、悬停图、原图、视频首帧与文本文件预览 | [app/files.rs](../src-tauri/src/app/files.rs)、[app/filesystem.rs](../src-tauri/src/app/filesystem.rs)、[app/media.rs](../src-tauri/src/app/media.rs) |
+| 剪贴板 | 采集、识别、去重、主动写回抑制、应用记录和粘贴目标 | [app/clipboard.rs](../src-tauri/src/app/clipboard.rs)、[app/digest.rs](../src-tauri/src/app/digest.rs)、[app/targets.rs](../src-tauri/src/app/targets.rs) |
+| 宿主与窗口 | Tauri 插件、命令注册、事件循环；后台线程与托盘；主面板和预览生命周期、全局快捷键、WebView2 适配 | [app.rs](../src-tauri/src/app.rs)、[app/runtime.rs](../src-tauri/src/app/runtime.rs)、[app/panel.rs](../src-tauri/src/app/panel.rs)、[app/preview.rs](../src-tauri/src/app/preview.rs)、[app/webview.rs](../src-tauri/src/app/webview.rs) |
+| 平台适配 | 来源识别、目标捕获、激活目标并发送粘贴键、打开原文件所在目录、边框双击与视频首帧提取 | [platform.rs](../src-tauri/src/platform.rs) |
 | 应用与权限配置 | 三个窗口、构建入口、应用身份、WebView 能力授权 | [tauri.conf.json](../src-tauri/tauri.conf.json)、[capabilities/default.json](../src-tauri/capabilities/default.json)、[vite.config.ts](../vite.config.ts) |
+
+依赖方向与状态边界：
+
+- 前端由 `application.ts` 组装服务与控制器；组件通过 props 和 `useSyncExternalStore` 订阅缓存的不可变快照。领域计算不依赖 React、DOM 或 Tauri；状态控制器通过注入的命令接口调用宿主，不导入组件。系统服务只通过 `viewport.ts` 的测量、滚动和焦点接口访问列表，不创建或替换记录 DOM。
+- React 拥有主界面和预览卡片的 DOM。列表依据已有高度算法创建可见行，记录 ID 作为 key，异步缩略图和预览请求在组件卸载后不再提交。轮播的动画子树交给既有引擎，React effect 在清空或卸载时销毁引擎，防止双重管理。
+- Rust 宿主向下组装窗口、后台任务和命令模块；剪贴板与记录操作调用存储、清理和附件能力。存储依赖模型、摘要和文件基础函数，不依赖窗口或 React；媒体生成不依赖剪贴板采集或文件副本任务。文件副本任务可以调用媒体生成，避免媒体与文件模块互相依赖。模块和共享接口只在 `app` 内部可见，平台特有代码继续留在 `platform.rs` 和 `webview.rs`。
+- 复杂度集中在有明确生命周期的模块中：面板控制器处理刷新/隐藏竞态，设置控制器处理串行写入与确认，预览服务处理异步就绪/尺寸/关闭。入口不承载这些状态机；数据库锁、清理保护和媒体锁的原有范围保持一致。
 
 SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可见时前端持有 `Snapshot` 的内存副本和界面状态，隐藏时释放记录快照，不直接访问数据库或文件系统。当前搜索仍在前端对完整快照的正文与原路径进行不区分大小写的包含匹配；列表虚拟化只减少记录行与图片的驻留，不对数据库查询分页。内容类型筛选只作用于默认视图。
 
@@ -231,6 +246,8 @@ flowchart TD
 
 悬停 300 毫秒后，主面板向预览窗口发送记录内容；在面板中按 `→` 可跳过等待，直接触发同一流程。预览窗口调用 Rust 读取资源并报告尺寸，主面板按当前显示器可用区域定位。大图预览使用另一窗口，单页按画面尺寸适配，多页保持固定窗口尺寸。两种预览共用多页媒体组件，加载相邻页面，并通过请求代次避免过期结果覆盖新内容。
 
+搜索、类型筛选或分组变化后，面板控制器在更新筛选结果与选择状态后通知预览服务检查大图记录；快照刷新后执行相同检查。大图记录不再属于当前结果时，立即清除其打开状态并调用宿主隐藏窗口，宿主继续负责清空预览内容和闲置释放；记录仍匹配时保留大图。
+
 悬停预览的路径来自记录的 `files`；直接复制的图片没有文件项，主面板改用快照返回的 `assetPath`（`assets/<记录 ID>/image.png`）作为唯一路径发送，因此该路径与“复制路径”及应用记录写回时使用的一致。该路径不参与列表搜索，只有文件项的 `original` 参与。
 
 `preview_data` 按记录 ID、角色和序号选择资源，必要时补生成，返回 Base64 PNG data URL。图片的 `thumbnail` 角色读取列表缩略图，`preview` 角色按需生成并复用最长边不超过 1440 像素的完整悬停预览图，`full` 角色仍读取完整尺寸 PNG；缩小图不裁剪、不放大，也不替代原图。旧记录在首次悬停时补生成小图；`preview_data` 在线程池中执行，避免首次图片解码与缩小阻塞窗口事件处理。视频首帧已有 1280 像素限制，读取方式不变。文本文件预览只接受扩展名白名单中的文件，大小不超过 1 MB，编码为 UTF-8 或带 BOM 的 UTF-16；目录、PDF、Office 等不读取内部内容。文本以原文展示，不作为 HTML 或 Markdown 执行。
@@ -285,12 +302,16 @@ flowchart TD
 
 ## 8. 验证状态与完成条件
 
-现有单元测试位于 [app.rs](../src-tauri/src/app.rs) 的 `tests` 模块，覆盖文本文件预览、原路径分组、文件类型、图片解码与缩略图、悬停预览图的尺寸与缓存复用、颜色迁移、时间字段兼容、置顶排序、批量记录操作、自动清理和缓存清理等逻辑。测试代码存在不表示本次已执行，也不能证明剪贴板、焦点和系统权限行为通过验收。
+2026-10-06 修复筛选后的大图预览关闭：Windows 环境下 119 项前端模块测试及前端构建通过。新增 [preview-filtering.test.mjs](../tests/preview-filtering.test.mjs) 使用实际面板控制器、预览服务与应用组装，模拟桌面接口，验证搜索、类型筛选、收藏和自建分组排除大图记录后发送关闭命令并允许后续预览，以及仍匹配时保留大图。此次未在真实 Tauri 桌面窗口或 macOS 中运行验证。
+
+2026-10-06 React 迁移与职责拆分：Windows 环境下 112 项前端模块测试、19 项 Chromium 浏览器回归及前端构建通过；拆分后 34 项 Rust 测试通过。`npm run tauri build -- --debug --no-bundle` 成功构建 Windows 桌面可执行文件。浏览器使用合成记录和模拟 IPC，覆盖原有六种记录、列表虚拟化、筛选范围、连续选择与批量操作、可见序号、Esc 和焦点恢复、搜索保留、设置提交与清理确认、分组编辑、文件菜单，以及两个预览页面的图片/颜色/文本文件/轮播/内容清空。420×600 的主列表、搜索结果、设置顶部和底部与迁移前相同数据的截图逐像素比较，四组均无差异；现有 CSS 样式文件未修改。此次未用浏览器测试结果认定真实剪贴板写回、跨应用粘贴、原生窗口闲置销毁或系统快捷键已重新验收。macOS 分支保留，仍未在 Mac 编译或运行。
+
+Rust 单元测试按职责位于 [app/tests](../src-tauri/src/app/tests)，从各业务模块的 `cfg(test)` 子模块运行，共用独立临时 Store；覆盖文本文件预览、原路径分组、文件类型、图片解码与缩略图、悬停预览图的尺寸与缓存复用、颜色迁移、时间字段兼容、置顶排序、批量记录操作、自动清理和缓存清理等逻辑。测试代码存在不表示本次已执行，也不能证明剪贴板、焦点和系统权限行为通过验收。
 2026-10-05 增加“保留搜索框输入”设置：Windows 环境下 126 项前端测试、34 项 Rust 测试和前端构建通过，覆盖默认开启与旧配置兼容、两种开关值序列化、隐藏后保留或清空搜索并重新唤出、保持分组与类型筛选、隐藏后延迟会话保存、开关即时提交、保存失败恢复，以及开关保存完成前隐藏面板的处理。此次未在 Windows 桌面窗口实际验证关闭与粘贴交互，macOS 尚未运行验证。
 2026-10-03 此次保留规则检查的 29 项 Rust 测试通过：补充验证 1、3、5、7、30 天的时间边界、按最后使用时间计时、1、300、500 条数量上限、收藏与分组豁免、置顶不豁免，以及敏感到期记录不占用数量名额。Windows 运行实例的只读数据库快照核查显示：当时设置为 300 条、3 天，共 171 条记录，其中普通记录 164 条、受保护记录 7 条；最旧普通记录距最后使用约 2.81 天，没有超出数量、保留时间或敏感到期时刻的普通记录。通过当前进程已打开文件的只读映射取得数据，并校验 WAL 提交帧与 SQLite 完整性；直接重开同名路径读到不同文件，未用其结果判断运行实例。此次未修改真实记录或设置，也未在 macOS 上运行验证。
 同日用户将数量上限改为 100 条后，运行实例的只读快照显示普通记录已降至 100 条、受保护记录仍为 7 条，共 107 条。随后增加设置清理确认：31 项 Rust 测试、107 项前端测试及前端构建通过，覆盖删除条数合并与保护豁免、确认前不修改数据、新增记录后重新确认、无删除直接保存，以及前端等待、确认、取消恢复、保存失败、重复失焦提交、隐藏面板时取消和页内弹窗的确认、取消、关闭。Windows 桌面实际验证将保留时间从 3 天临时改为 24 小时：面板内弹窗提示将删除 41 条记录，显示“取消”和“删除并应用”；点击取消后弹窗关闭，控件恢复 3 天。只读复核设置仍为 100 条、3 天，普通记录 100 条、受保护记录 7 条均未变。未在真实记录上点击“删除并应用”，macOS 尚未运行验证。
 2026-10-04 修正普通记录数量的提交时机及输入框全选：119 项前端测试和前端构建通过。新增 [settings-input.test.mjs](../tests/settings-input.test.mjs) 用模拟事件与计时器复现并验证输入停顿和数字增减按钮不提交、Enter 与失焦提交、无效值恢复，以及搜索、设置数字、分组名称和多行文本框的 `Ctrl+A` 全选；记录列表仍禁用全选，敏感记录秒数继续延迟保存。此次未在 Windows 桌面窗口或 macOS 上实际验证这两项输入交互。
-前端记录导航测试位于 [record-navigation.test.mjs](../tests/record-navigation.test.mjs)，通过 `npm test` 运行，覆盖首尾循环、当前视图筛选、空列表、单条记录、Shift 连续选择以及选中记录滚出屏幕后打开分组菜单。列表范围与滚动计算测试位于 [list-layout.test.mjs](../tests/list-layout.test.mjs)；主面板测试位于 [panel-lifecycle.test.mjs](../tests/panel-lifecycle.test.mjs)，验证隐藏不刷新、释放图片与记录、拒绝过期请求、就绪握手和并发唤出。焦点与滚动的单元测试使用模拟对象。预览窗口生命周期测试位于 [preview-windows.test.mjs](../tests/preview-windows.test.mjs)，模拟事件与计时器验证首次创建与就绪等待、并发创建、闲置释放、重复隐藏、重用取消释放及销毁期间重开。
+前端记录导航测试位于 [record-navigation.test.mjs](../tests/record-navigation.test.mjs)，通过 `npm test` 运行，覆盖首尾循环、当前视图筛选、空列表、单条记录和 Shift 连续选择；滚出屏幕后打开分组菜单由浏览器回归验证。列表范围与滚动计算测试位于 [list-layout.test.mjs](../tests/list-layout.test.mjs)；主面板测试位于 [panel-lifecycle.test.mjs](../tests/panel-lifecycle.test.mjs)，验证隐藏不刷新、释放记录快照、拒绝过期请求、搜索保留及并发唤出；DOM 图片释放由浏览器回归验证；启动监听顺序及 React 重新挂载由 application-lifecycle.test.mjs 直接验证。焦点与滚动的单元测试使用模拟对象。预览窗口生命周期测试位于 [preview-windows.test.mjs](../tests/preview-windows.test.mjs)，模拟事件与计时器验证首次创建与就绪等待、并发创建、闲置释放、重复隐藏、重用取消释放及销毁期间重开。
 主面板键盘测试位于 [panel-keyboard.test.mjs](../tests/panel-keyboard.test.mjs)，模拟键盘事件验证 `Ctrl+F` 聚焦搜索、未聚焦时不自动转入搜索、搜索框内保留原生输入，以及数字序号即时应用、修饰键与输入法保护、长按不重复应用；同时模拟 Windows 与 macOS 验证 `Ctrl+D` 批量收藏切换、退格与向前删除键的记录删除规则及搜索焦点保护。2026-10-03 此次快捷键修改的 94 项前端测试及前端构建通过；尚未在桌面窗口中实际验证这些新快捷键的焦点、删除与粘贴效果，也未在 macOS 上运行验证。
 
 | 验证范围 | 仓库已有记录与当前边界 |

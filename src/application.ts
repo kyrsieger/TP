@@ -1,0 +1,97 @@
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { flushSync } from "react-dom";
+import { call, isMacOS, panelWindow } from "./services/desktop";
+import { GeometryController } from "./services/geometry";
+import { PreviewController } from "./services/previews";
+import { SettingsFocus } from "./services/focus";
+import { GroupController } from "./state/groups";
+import { MenuController } from "./state/menus";
+import { PanelController } from "./state/panel";
+import { SettingsController } from "./state/settings";
+import { ToastController } from "./state/toast";
+import type { PanelSession } from "./domain/types";
+import type { ListHandle } from "./services/viewport";
+import { createPanelKeydown, selectAllKeydown } from "./input/keyboard";
+
+/** Composition root: services depend on domain/state, never on mounted components. */
+export function createApplication(list: ListHandle) {
+  const toasts = new ToastController(), menus = new MenuController(), focus = new SettingsFocus();
+  const toast = toasts.show;
+  const history = new PanelController(call, {
+    reset: () => { previews.reset(); menus.reset(); groups.reset(); settings.reset(); focus.reset(); list.reset(); },
+    beforeRefresh: () => { previews.closePreview(); menus.update({ record: null, move: null }); list.cancelScroll(); },
+    afterRefresh: () => { previews.reconcile(); if (settings.value.open) void settings.refreshCacheSize(); },
+    afterBrowse: () => previews.reconcile(),
+    place: async () => { settings.syncShortcut(); await geometry.placePanel(); },
+    isVisible: () => panelWindow.isVisible(), error: toast,
+  });
+  const groups = new GroupController(history, call, toast);
+  const settings = new SettingsController(history, call, { toast, place: () => geometry.placePanel(), position: () => panelWindow.outerPosition() });
+  const geometry = new GeometryController(history, panelWindow, toast);
+  const previews = new PreviewController(history, panelWindow, list, toast);
+  function clearSearch(refocus = true) {
+    flushSync(() => history.browse({ search: "" }));
+    const input = document.querySelector<HTMLInputElement>("#search")!;
+    if (refocus) input.focus({ preventScroll: true }); else input.blur();
+  }
+  function selectGroup(view: string) {
+    menus.update({ filter: view === "default" && menus.value.filter });
+    flushSync(() => history.selectGroup(view)); list.reset();
+  }
+  function cycleGroup(direction: number) {
+    flushSync(() => history.cycleGroup(direction));
+    if (history.value.view !== "default") menus.update({ filter: false });
+    list.reset();
+    const active = document.querySelector<HTMLElement>("#groups .group.active");
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" }); active?.focus({ preventScroll: true });
+  }
+  function moveSelection(direction: number, extend = false) {
+    list.cancelScroll(); history.moveSelection(direction, extend);
+    if (previews.previewFromKeyboard) previews.closePreview();
+    const id = history.value.selectedId;
+    if (!id) return;
+    const row = list.ensure(id); row?.scrollIntoView({ block: "nearest" }); row?.focus({ preventScroll: true });
+  }
+  function closeSettings() { flushSync(() => settings.update({ open: false })); focus.restore(list); }
+  const keydown = createPanelKeydown({ history, settings, menus, previews, list, clearSearch, cycleGroup, moveSelection, closeSettings, isMacOS });
+  let disposed = false;
+  let startGeneration = 0;
+  let blurTimer: number | undefined;
+  const disposers: (() => void)[] = [];
+  const onBlur = () => {
+    groups.cancel(); menus.closePopups();
+    window.clearTimeout(blurTimer);
+    blurTimer = window.setTimeout(() => { if (!disposed) void call<boolean>("preview_focused").catch(() => false).then(focused => { if (!disposed && !focused) previews.closePreview(); }); }, 120);
+  };
+  const onResize = () => { menus.update({ move: null, record: null }); previews.closePreview(); };
+  async function start() {
+    const generation = ++startGeneration;
+    disposed = false;
+    const track = (dispose: UnlistenFn) => {
+      if (disposed || generation !== startGeneration) dispose(); else disposers.push(dispose);
+    };
+    document.addEventListener("keydown", selectAllKeydown, true);
+    document.addEventListener("keydown", keydown);
+    window.addEventListener("blur", onBlur); window.addEventListener("resize", onResize);
+    disposers.push(() => {
+      document.removeEventListener("keydown", selectAllKeydown, true); document.removeEventListener("keydown", keydown);
+      window.removeEventListener("blur", onBlur); window.removeEventListener("resize", onResize);
+    });
+    try {
+      track(await previews.start());
+      track(await listen("history-changed", () => { void history.refresh().catch(error => toast(String(error))); }));
+      track(await listen("panel-hidden", () => history.release()));
+      track(await listen("open-requested", () => { void history.open().catch(error => toast(String(error))); }));
+      track(await panelWindow.onMoved(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }));
+      track(await panelWindow.onResized(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }));
+      const session = await call<PanelSession>("get_panel_session");
+      if (disposed || generation !== startGeneration) return;
+      history.restore(session);
+      const error = await call<string | null>("panel_ready");
+      if (!disposed && generation === startGeneration) settings.ready(error);
+    } catch (error) { if (!disposed && generation === startGeneration) toast(`启动失败：${String(error)}`); }
+  }
+  return { history, groups, settings, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, start,
+    dispose() { disposed = true; startGeneration++; window.clearTimeout(blurTimer); disposers.splice(0).forEach(dispose => dispose()); geometry.dispose(); settings.reset(); toasts.dispose(); } };
+}
+export type Application = ReturnType<typeof createApplication>;
