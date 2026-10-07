@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn older_settings_show_taskbar_icon_without_resetting_preferences() {
+    let mut config = Settings::default();
+    config.max_ordinary = 100;
+    config.shortcut = "Control+Shift+V".into();
+    config.retain_search_input = false;
+    let mut value = serde_json::to_value(config).unwrap();
+    value.as_object_mut().unwrap().remove("showTaskbarIcon");
+    let restored: Settings = serde_json::from_value(value).unwrap();
+    assert!(restored.show_taskbar_icon);
+    assert_eq!(restored.max_ordinary, 100);
+    assert_eq!(restored.shortcut, "Control+Shift+V");
+    assert!(!restored.retain_search_input);
+}
+
+#[test]
+fn taskbar_icon_setting_round_trips_both_values() {
+    assert!(Settings::default().show_taskbar_icon);
+    for show in [true, false] {
+        let mut config = Settings::default();
+        config.show_taskbar_icon = show;
+        let value = serde_json::to_value(config).unwrap();
+        assert_eq!(value["showTaskbarIcon"], show);
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.show_taskbar_icon, show);
+        assert!(restored.validate().is_ok());
+    }
+}
+
+#[test]
 fn older_settings_default_to_not_pinned() {
     let mut value = serde_json::to_value(Settings::default()).unwrap();
     value.as_object_mut().unwrap().remove("alwaysOnTop");

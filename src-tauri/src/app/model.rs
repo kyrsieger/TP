@@ -18,6 +18,12 @@ pub(super) struct Settings {
     pub(super) always_on_top: bool,
     #[serde(default = "default_retain_search_input")]
     pub(super) retain_search_input: bool,
+    #[serde(default = "default_show_taskbar_icon")]
+    pub(super) show_taskbar_icon: bool,
+}
+
+fn default_show_taskbar_icon() -> bool {
+    true
 }
 
 fn default_retain_search_input() -> bool {
@@ -40,6 +46,7 @@ impl Default for Settings {
             panel_y: None,
             always_on_top: false,
             retain_search_input: true,
+            show_taskbar_icon: true,
         }
     }
 }

@@ -52,10 +52,13 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   return <>
     <h2>设置</h2><label className="inline"><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
       onChange={event => { void controller.setAutostart(event.target.checked); }} />开机启动</label>
-    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
-      {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</label>
+    {!isMacOS && <><label className="inline"><input id="show-taskbar-icon" type="checkbox" checked={s.showTaskbarIcon}
+      onChange={event => save({ showTaskbarIcon: event.target.checked })} />在任务栏显示图标</label>
+      <p className="hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</p></>}
     <label className="inline"><input id="retain-search-input" type="checkbox" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} />保留搜索框输入</label>
     <p className="hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</p>
+    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
+      {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</label>
     <label>普通记录数量上限<NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
     <div className="setting-field"><span className="setting-label">普通记录保留时间</span><div className="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.retention} onClick={() => menus.update({ retention: !menu.retention })}><span className="retention-value">{retentionOptions.find(([value]) => value === s.retentionDays)?.[1] ?? `${s.retentionDays} 天`}</span><Icon name="chevron" /></button>

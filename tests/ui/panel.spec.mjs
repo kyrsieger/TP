@@ -56,9 +56,24 @@ test("Esc clears search and focus, then hides and releases rendered records", as
   expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "get_state").length)).toBe(before);
   await page.evaluate(() => window.__TP_TEST__.show()); await expect(page.locator(".record").first()).toBeVisible();
 });
+test("taskbar icon preference defaults on, saves immediately and survives page recreation", async ({ page }) => {
+  await page.locator("#settings-button").click();
+  const toggle = page.getByLabel("在任务栏显示图标", { exact: true });
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.showTaskbarIcon)).toBe(false);
+  const saved = await page.evaluate(() => window.__TP_TEST__.state.settings);
+  await page.reload();
+  await page.evaluate(settings => { Object.assign(window.__TP_TEST__.state.settings, settings); window.__TP_TEST__.show(); }, saved);
+  await page.locator("#settings-button").click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.showTaskbarIcon)).toBe(true);
+});
+
 test("settings restores the previous focus and saves search retention immediately", async ({ page }) => {
   await page.locator("#search").fill("React"); await page.locator("#settings-button").click();
-  await expect(page.locator("#app-version")).toHaveText("1.0.0");
+  await expect(page.locator("#app-version")).toHaveText("1.0.1");
   await page.locator("#retain-search-input").uncheck();
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.retainSearchInput)).toBe(false);
   await page.keyboard.press("Escape"); await expect(page.locator("#search")).toBeFocused();

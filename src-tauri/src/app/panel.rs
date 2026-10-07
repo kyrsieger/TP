@@ -23,16 +23,18 @@ fn create_panel(app: &tauri::AppHandle) -> Result<()> {
         .iter()
         .find(|config| config.label == "main")
         .ok_or("面板窗口配置不存在")?;
-    let window = tauri::WebviewWindowBuilder::from_config(app, config)
-        .map_err(err)?
-        .build()
-        .map_err(err)?;
-    let pinned = {
+    let settings = {
         let store = app.state::<Store>();
         let conn = store.db.lock().map_err(err)?;
-        settings(&conn)?.always_on_top
+        settings(&conn)?
     };
-    window.set_always_on_top(pinned).map_err(err)?;
+    let builder = tauri::WebviewWindowBuilder::from_config(app, config).map_err(err)?;
+    #[cfg(windows)]
+    let builder = builder.skip_taskbar(!settings.show_taskbar_icon);
+    let window = builder
+        .always_on_top(settings.always_on_top)
+        .build()
+        .map_err(err)?;
     #[cfg(windows)]
     {
         window

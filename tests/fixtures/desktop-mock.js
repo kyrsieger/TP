@@ -3,7 +3,7 @@ const callbacks = new Map(), listeners = new Map();
 let nextId = 1, visible = false, confirmationCount = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", positionMode: "fixed", fixedPosition: "right",
-  rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true };
+  rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
 const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, files: [], favorite: false, pinnedAt: null, groupId: null,
   usedAt: 1, createdAt: null, expiresAt: null, status: "ready", preview: false, assetPath: null, ...overrides });
 const image = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#eef0ff"/><circle cx="160" cy="90" r="50" fill="#4f46e5"/></svg>')}`;
@@ -80,7 +80,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "file_text_preview") return "# 文件内容\n中文文本";
     if (name === "release_preview_window") return false;
     if (name === "preview_focused") return false;
-    if (name === "plugin:app|version") return "1.0.0";
+    if (name === "plugin:app|version") return "1.0.1";
     if (name === "plugin:window|is_visible") return visible;
     if (name === "plugin:window|scale_factor") return 1;
     if (name === "plugin:window|outer_position") return { x: 1200, y: 200 };
