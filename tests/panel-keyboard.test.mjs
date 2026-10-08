@@ -3,9 +3,10 @@ import test from "node:test";
 import { loadTs } from "./load-ts.mjs";
 
 function setup({ focused = false, settingsOpen = false, selectedId = "selected", isMacOS = false,
+  search = "existing", visibleIds = ["visible-second", "visible-third"],
   records = [{ id: "selected", favorite: false }] } = {}) {
   const effects = [], actions = [];
-  const input = { id: "search", value: "existing", matches: () => false, closest: () => input,
+  const input = { id: "search", value: search, matches: () => false, closest: () => input,
     focus: () => effects.push("focus-search"), blur: () => effects.push("blur-search") };
   const row = { id: "", matches: () => false, closest: () => null };
   const menu = { hidden: true, contains: () => false };
@@ -14,7 +15,7 @@ function setup({ focused = false, settingsOpen = false, selectedId = "selected",
     history: { value: { snapshot: { records }, selectedId, selectedIds: new Set(records.map(record => record.id)) },
       records, apply: id => effects.push(["apply", id]), action: (name,args) => { effects.push([name,args.operation.kind]); actions.push(JSON.parse(JSON.stringify(args))); } },
     settings: { value: { open: settingsOpen } }, menus: { update() {} }, previews: {},
-    list: { visibleRecords: () => ["visible-second", "visible-third"].map(id => ({dataset:{id}})) }, isMacOS,
+    list: { visibleRecords: () => visibleIds.map(id => ({dataset:{id}})) }, isMacOS,
   };
   const keydown = createPanelKeydown(context);
   return { effects, input, actions, press(key, overrides = {}) {
@@ -59,42 +60,94 @@ for (const key of ["a", "1", "Backspace", "Delete", "中"]) {
   });
 }
 
-for (const code of ["Digit2", "Numpad2"]) {
-  test(`${code} immediately applies the matching visible ordinal`, () => {
-    const { press, effects } = setup();
-    assert.equal(press("2", { code }).defaultPrevented, true);
-    assert.deepEqual(effects, [["apply", "visible-third"]]);
-  });
+for (const isMacOS of [false, true]) {
+  const platform = isMacOS ? "macOS" : "Windows";
+  for (const ctrlKey of [false, true]) {
+    for (const code of ["Digit2", "Numpad2"]) {
+      test(`${platform} ${ctrlKey ? "Ctrl+" : ""}${code} applies the visible ordinal outside search with or without keywords`, () => {
+        for (const search of ["", "existing"]) {
+          const { press, effects, input } = setup({ isMacOS, search });
+          assert.equal(press("2", { code, ctrlKey }).defaultPrevented, true);
+          assert.equal(input.value, search);
+          assert.deepEqual(effects, [["apply", "visible-third"]]);
+        }
+      });
+    }
+  }
+  for (const code of ["Digit2", "Numpad2"]) {
+    test(`${platform} Ctrl+${code} applies the visible ordinal in focused search with or without keywords`, () => {
+      for (const search of ["", "existing"]) {
+        const { press, effects, input } = setup({ isMacOS, focused: true, search, selectedId: null });
+        assert.equal(press("2", { code, ctrlKey: true }).defaultPrevented, true);
+        assert.equal(input.value, search);
+        assert.deepEqual(effects, [["apply", "visible-third"]]);
+      }
+    });
+  }
 }
 
 for (const overrides of [
-  { ctrlKey: true }, { altKey: true }, { shiftKey: true }, { metaKey: true },
+  { altKey: true }, { shiftKey: true }, { metaKey: true },
   { getModifierState: () => true }, { isComposing: true }, { keyCode: 229 },
 ]) {
   test(`digits with ${Object.keys(overrides)[0]} do not apply a record`, () => {
-    const { press, effects } = setup();
-    press("1", overrides);
-    assert.deepEqual(effects, []);
+    for (const ctrlKey of [false, true]) {
+      for (const focused of [false, true]) {
+        const { press, effects } = setup({ focused });
+        assert.equal(press("1", { ctrlKey, ...overrides }).defaultPrevented, false);
+        assert.deepEqual(effects, []);
+      }
+    }
   });
 }
 
-test("holding a digit applies only once", () => {
-  const { press, effects } = setup();
-  press("1");
-  press("1", { repeat: true });
-  assert.deepEqual(effects, [["apply", "visible-second"]]);
+test("holding a digit or Ctrl+digit applies only once", () => {
+  for (const [ctrlKey, focused] of [[false, false], [true, false], [true, true]]) {
+    const { press, effects } = setup({ focused });
+    assert.equal(press("1", { ctrlKey }).defaultPrevented, true);
+    assert.equal(press("1", { ctrlKey, repeat: true }).defaultPrevented, true);
+    assert.deepEqual(effects, [["apply", "visible-second"]]);
+  }
+});
+
+test("both digit shortcuts cover ordinals one through nine", () => {
+  const visibleIds = Array.from({ length: 10 }, (_, index) => `visible-${index + 1}`);
+  for (const ctrlKey of [false, true]) {
+    const { press, effects } = setup({ visibleIds });
+    for (let ordinal = 1; ordinal <= 9; ordinal++) press(String(ordinal), { ctrlKey });
+    assert.deepEqual(effects, visibleIds.slice(0, 9).map(id => ["apply", id]));
+    assert.equal(press("0", { ctrlKey }).defaultPrevented, false);
+    assert.equal(effects.length, 9);
+  }
 });
 
 test("zero and ordinals with no visible record do not apply anything", () => {
-  const { press, effects } = setup();
-  press("0");
-  press("9");
-  assert.deepEqual(effects, []);
+  for (const [ctrlKey, focused] of [[false, false], [true, false], [true, true]]) {
+    const { press, effects } = setup({ focused });
+    assert.equal(press("0", { ctrlKey }).defaultPrevented, false);
+    assert.equal(press("9", { ctrlKey }).defaultPrevented, true);
+    assert.deepEqual(effects, []);
+    const empty = setup({ focused, visibleIds: [] });
+    empty.press("1", { ctrlKey });
+    assert.deepEqual(empty.effects, []);
+  }
+});
+
+test("digit shortcuts preserve other editable controls", () => {
+  for (const id of ["group-name", "textarea", "editable"]) {
+    const target = { id, matches: () => false, closest: () => target };
+    const { press, effects } = setup();
+    for (const ctrlKey of [false, true]) {
+      assert.equal(press("1", { target, ctrlKey }).defaultPrevented, false);
+    }
+    assert.deepEqual(effects, []);
+  }
 });
 
 test("settings retain their input behavior", () => {
   const { press, effects } = setup({ settingsOpen: true });
   press("1");
+  press("1", { ctrlKey: true });
   press("f", { ctrlKey: true });
   assert.deepEqual(effects, []);
 });

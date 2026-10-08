@@ -80,7 +80,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "file_text_preview") return "# 文件内容\n中文文本";
     if (name === "release_preview_window") return false;
     if (name === "preview_focused") return false;
-    if (name === "plugin:app|version") return "1.0.1";
+    if (name === "plugin:app|version") return "1.0.2";
     if (name === "plugin:window|is_visible") return visible;
     if (name === "plugin:window|scale_factor") return 1;
     if (name === "plugin:window|outer_position") return { x: 1200, y: 200 };

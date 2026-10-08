@@ -100,8 +100,9 @@ export function createPanelKeydown(context: KeyboardContext) {
       document.querySelector<HTMLInputElement>("#search")!.focus();
       return;
     }
-    if (/^[1-9]$/.test(event.key) && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
-      !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
+    const target = event.target as HTMLElement;
+    if (/^[1-9]$/.test(event.key) && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") &&
+      (!target.closest("input, textarea, [contenteditable='true']") || (event.ctrlKey && target.id === "search"))) {
       event.preventDefault();
       const id = visibleRecords()[Number(event.key) - 1]?.dataset.id;
       if (!event.repeat && id)

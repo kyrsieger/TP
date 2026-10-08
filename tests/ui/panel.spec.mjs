@@ -39,13 +39,51 @@ test("Ctrl+G opens after a distant virtual row is mounted", async ({ page }) => 
   await expect(page.locator("#move-group-menu")).toBeHidden();
   await expect(page.locator('.record[data-id="row-119"]')).toHaveClass(/selected/);
 });
-test("visible ordinals apply the matching scrolled record", async ({ page }) => {
+for (const shortcut of ["1", "Control+1"]) test(`${shortcut} applies the matching scrolled visible ordinal`, async ({ page }) => {
   await page.locator("#list").evaluate(list => { list.scrollTop = 1000; });
   await expect(page.locator(".ordinal").filter({ hasText: /^1$/ })).toHaveCount(1);
   const id = await page.locator(".record").filter({ has: page.locator(".ordinal").filter({ hasText: /^1$/ }) }).getAttribute("data-id");
-  await page.locator("#list").click({ position: { x: 20, y: 20 } }); await page.keyboard.press("1");
+  await page.locator("#list").click({ position: { x: 20, y: 20 } }); await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.name === "apply_record")?.args.id)).toBe(id);
 });
+for (const search of ["", "React"]) {
+  for (const code of ["Digit2", "Numpad2"]) test(`Ctrl+${code} applies the second visible result with search focused (${search || "empty"})`, async ({ page }) => {
+    await page.locator("#search").fill(search);
+    await expect(page.locator("#search")).toBeFocused();
+    await expect(page.locator('.record[data-id="link"] .ordinal')).toHaveText("2");
+    // Playwright maps Numpad2 to ArrowDown; dispatch its numeric event to model NumLock being on.
+    if (code === "Numpad2") await page.locator("#search").dispatchEvent("keydown", { key: "2", code, location: 3, ctrlKey: true });
+    else await page.keyboard.press(`Control+${code}`);
+    await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "apply_record").map(call => call.args.id))).toEqual(["link"]);
+    await page.evaluate(() => window.__TP_TEST__.show());
+    await expect(page.locator('.record[data-id="link"]')).toBeVisible();
+    await expect(page.locator("#search")).toHaveValue(search);
+  });
+}
+
+test("plain digits still edit focused search and Ctrl+digits leave empty results alone", async ({ page }) => {
+  await page.locator("#search").fill("React");
+  await page.keyboard.press("2");
+  await expect(page.locator("#search")).toHaveValue("React2");
+  await expect(page.locator(".record")).toHaveCount(0);
+  await page.keyboard.press("Control+1");
+  await expect(page.locator("#search")).toHaveValue("React2");
+  expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "apply_record"))).toEqual([]);
+});
+
+test("digit shortcuts preserve group editing and settings input", async ({ page }) => {
+  await page.locator("#add-group").click();
+  await page.locator(".group-input").fill("分组");
+  await page.keyboard.press("1"); await page.keyboard.press("Control+2");
+  await expect(page.locator(".group-input")).toHaveValue("分组1");
+  await page.keyboard.press("Escape");
+  await page.locator("#settings-button").click();
+  await page.locator("#max-ordinary").focus(); await page.keyboard.press("Control+1");
+  await expect(page.locator("#max-ordinary")).toHaveValue("300");
+  await expect(page.locator(".shortcut-table")).toContainText("Ctrl+1～9");
+  expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "apply_record"))).toEqual([]);
+});
+
 test("Esc clears search and focus, then hides and releases rendered records", async ({ page }) => {
   await page.locator("#search").fill("React"); await page.keyboard.press("Escape");
   await expect(page.locator("#search")).toHaveValue(""); await expect(page.locator("#search")).not.toBeFocused();
@@ -73,7 +111,7 @@ test("taskbar icon preference defaults on, saves immediately and survives page r
 
 test("settings restores the previous focus and saves search retention immediately", async ({ page }) => {
   await page.locator("#search").fill("React"); await page.locator("#settings-button").click();
-  await expect(page.locator("#app-version")).toHaveText("1.0.1");
+  await expect(page.locator("#app-version")).toHaveText("1.0.2");
   await page.locator("#retain-search-input").uncheck();
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.retainSearchInput)).toBe(false);
   await page.keyboard.press("Escape"); await expect(page.locator("#search")).toBeFocused();
