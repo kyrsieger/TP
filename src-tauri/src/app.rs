@@ -45,6 +45,9 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            if let Err(error) = settings::restore_saved_autostart(app.handle()) {
+                eprintln!("Failed to restore autostart: {error}");
+            }
             let shortcut = {
                 let store = app.state::<Store>();
                 let conn = store
