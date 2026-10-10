@@ -49,10 +49,10 @@ export function PopupMenus({ menus, history, groups, toast }: { menus: MenuContr
     </div>
     <div id="move-group-menu" ref={moveRef} role="menu" aria-label="移动到分组" hidden={!menu.move} data-record-id={menu.move?.triggerId}>
       {menu.move && [{ id: null, name: "未分组" }, ...(panel.snapshot?.groups ?? [])].map(group => <button key={group.id ?? "none"} type="button" role="menuitemradio" data-move-group={group.id ?? ""}
-        aria-checked={moveRecords.every(record => record.groupId === group.id)} onClick={() => {
+        aria-checked={moveRecords.every(record => record.groupId === group.id)} onMouseEnter={event => event.currentTarget.focus()} onClick={() => {
           const ids = menu.move!.ids; menus.update({ move: null });
           if (moveRecords.some(record => record.groupId !== group.id)) void history.action("batch_records", { ids, operation: { kind: "move_group", groupId: group.id } });
-        }}>{group.name}</button>)}
+        }}><span className="move-group-name">{group.name}</span><span className="move-group-check" aria-hidden="true">✓</span></button>)}
     </div>
   </>;
 }
