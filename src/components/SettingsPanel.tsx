@@ -44,6 +44,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   useEffect(() => { setDraft(panel.settings); }, [panel.settings, state.revision]);
   useEffect(() => { let alive = true; void getVersion().then(value => { if (alive) setVersion(value); }).catch(() => { if (alive) setVersion("无法获取"); }); return () => { alive = false; }; }, []);
   const s = draft;
+  const ordinaryCount = panel.snapshot?.records.filter(record => !record.favorite && record.groupId === null).length ?? 0;
   function save(patch: Partial<Settings>, reposition = false) {
     setDraft(previous => previous ? { ...previous, ...patch } : previous);
     void controller.save(patch, reposition);
@@ -63,7 +64,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       onKeyDown={event => { event.preventDefault(); event.stopPropagation(); controller.captureRenameShortcut(event.nativeEvent); }} />
       {state.renameShortcutError && <span className="shortcut-error" role="alert">{state.renameShortcutError}</span>}</label>
     <p className="hint">默认为 F2，仅在记录列表中生效。可使用功能键或带修饰键的字母、数字；按 Backspace 或 Delete 清除。</p>
-    <label>普通记录数量上限<NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
+    <label><span>普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
     <div className="setting-field"><span className="setting-label">普通记录保留时间</span><div className="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.retention} onClick={() => menus.update({ retention: !menu.retention })}><span className="retention-value">{retentionOptions.find(([value]) => value === s.retentionDays)?.[1] ?? `${s.retentionDays} 天`}</span><Icon name="chevron" /></button>
       <div id="retention-menu" role="listbox" hidden={!menu.retention}>{retentionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-retention={value} aria-selected={s.retentionDays === value}
