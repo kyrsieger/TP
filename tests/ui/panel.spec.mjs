@@ -4,6 +4,20 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/tests/fixtures/panel.html");
   await expect(page.locator('.record[data-id="text"]')).toBeVisible();
 });
+
+test("closing from another group reopens the default group and focuses its first record", async ({ page }) => {
+  for (const view of ["favorite", "group:1"]) {
+    await page.locator(`[data-view="${view}"]`).click();
+    await expect(page.locator(`[data-view="${view}"]`)).toHaveClass(/active/);
+    await page.locator("#close").click();
+    await expect(page.locator(".record")).toHaveCount(0);
+    await page.evaluate(() => window.__TP_TEST__.show());
+    await expect(page.locator('[data-view="default"]')).toHaveClass(/active/);
+    await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+    await expect(page.locator('.record[data-id="link"]')).toBeVisible();
+  }
+});
+
 test("renders all original record kinds with matching row heights and lazy images", async ({ page }) => {
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await expect(page.locator('.preview[data-preview="image"]')).toHaveAttribute("src", /data:image/);

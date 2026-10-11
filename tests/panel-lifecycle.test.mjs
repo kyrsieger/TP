@@ -46,6 +46,38 @@ test("reopening waits for the latest snapshot before positioning and showing", a
   assert.deepEqual(effects.at(-1), ["focus", "fresh"]);
 });
 
+test("opening resets a restored group while retaining search and type filter", async () => {
+  for (const view of ["favorite", "group:1"]) {
+    const { panel, requests, effects } = setup();
+    panel.restore({ view, kindFilter: "image", search: "kept" });
+    const opening = panel.open();
+    assert.equal(panel.value.view, "default");
+    requests[0].resolve({ ...snapshot("fresh"), records: [{ id: "fresh", body: "kept", files: [], kind: "image", groupId: null }] });
+    await opening;
+    assert.equal(panel.value.kindFilter, "image"); assert.equal(panel.value.search, "kept");
+    assert.deepEqual(panel.records.map(record => record.id), ["fresh"]);
+    assert.deepEqual(effects.at(-1), ["focus", "fresh"]);
+  }
+});
+
+test("closing from favorites or a custom group always reopens the default view", async () => {
+  for (const view of ["favorite", "group:1"]) {
+    const { panel, requests } = setup();
+    panel.restore({ view: "default", kindFilter: "all", search: "" });
+    const state = { ...snapshot("ordinary"), groups: [{ id: 1, name: "工作" }], records: [
+      ...snapshot("ordinary").records,
+      { id: "grouped", body: "grouped", files: [], kind: "text", groupId: 1, favorite: true },
+    ] };
+    const first = panel.open(); requests[0].resolve(state); await first;
+    panel.selectGroup(view);
+    assert.equal(panel.value.view, view); assert.equal(panel.value.selectedId, "grouped");
+    await panel.action("hide_panel");
+    const second = panel.open(); requests[1].resolve(state); await second;
+    assert.equal(panel.value.view, "default"); assert.equal(panel.value.selectedId, "ordinary");
+    assert.deepEqual(panel.records.map(record => record.id), ["ordinary", "grouped"]);
+  }
+});
+
 test("hiding while show is pending does not restore stale list focus", async () => {
   const showing = deferred(), { panel, requests, effects } = setup(() => showing.promise);
   panel.restore({ view: "default", kindFilter: "all", search: "" });

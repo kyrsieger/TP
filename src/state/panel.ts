@@ -108,7 +108,7 @@ export class PanelController extends Observable<PanelValue> {
   open(): Promise<void> {
     if (this.opening) return this.value.active ? this.opening : this.opening.then(() => this.open());
     this.effects.reset();
-    this.update({ active: true, selectedId: null, selectedIds: new Set(), anchorId: null });
+    this.update({ active: true, view: "default", selectedId: null, selectedIds: new Set(), anchorId: null });
     const generation = ++this.generation;
     this.opening = (async () => {
       await this.refresh();
