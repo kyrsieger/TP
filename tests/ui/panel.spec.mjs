@@ -139,7 +139,23 @@ test("groups can be created, renamed and removed through the original UI", async
   await page.locator("#add-group").click(); await page.locator(".group-input").fill("新分组"); await page.keyboard.press("Enter");
   await expect(page.locator('[data-view="group:3"]')).toHaveText("新分组"); await page.locator('[data-view="group:3"]').dblclick();
   await page.locator(".group-input").fill("重命名"); await page.keyboard.press("Enter"); await expect(page.locator('[data-view="group:3"]')).toHaveText("重命名");
-  await page.locator('[data-view="group:3"]').click({ button: "right" }); await page.locator('[data-group-action="delete"]').click();
+  await page.locator('[data-view="group:3"]').click({ button: "right" });
+  await expect(page.locator("#group-menu")).toBeFocused();
+  await expect(page.locator("#group-menu button:focus")).toHaveCount(0);
+  await page.keyboard.press("Enter"); await expect(page.locator(".group-input")).toHaveCount(0);
+  for (const action of ["rename", "delete"]) {
+    const item = page.locator(`[data-group-action="${action}"]`);
+    await page.keyboard.press("ArrowDown");
+    await expect(item).toBeFocused();
+    await expect(item).toHaveCSS("outline-width", "0px");
+    await expect(item).toHaveCSS("background-color", "rgb(246, 247, 251)");
+  }
+  await expect(page.locator('[data-group-action="delete"]')).toHaveCSS("color", "rgb(179, 91, 91)");
+  await page.keyboard.press("Escape");
+  await page.locator('[data-view="group:3"]').click({ button: "right" });
+  await expect(page.locator("#group-menu button:focus")).toHaveCount(0);
+  for (const button of await page.locator("#group-menu button").all()) await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.locator('[data-group-action="delete"]').click();
   await expect(page.locator('[data-view="group:3"]')).toHaveCount(0);
 });
 test("file context actions and both preview triggers retain command payloads", async ({ page }) => {

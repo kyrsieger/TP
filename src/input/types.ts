@@ -7,4 +7,5 @@ export type KeyboardContext = {
   history: PanelController; previews: PreviewController; menus: MenuController; settings: SettingsController;
   list: ListHandle; clearSearch: (refocus?: boolean) => void; cycleGroup: (direction: number) => void;
   closeSettings: () => void; moveSelection: (direction: number, extend?: boolean) => void; isMacOS: boolean;
+  startRecordRename: (id: string) => void;
 };

@@ -8,6 +8,37 @@ use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::path::Path;
 #[tauri::command]
+pub(super) fn rename_record(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    id: String,
+    title: String,
+) -> Result<()> {
+    let conn = store.db.lock().map_err(err)?;
+    set_title(&conn, &id, &title)?;
+    drop(conn);
+    changed(&app);
+    Ok(())
+}
+
+fn set_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
+    let title = title.trim();
+    if title.chars().count() > 100 || title.contains(['\r', '\n']) {
+        return Err("记录标题最多 100 个字符，且不能换行".into());
+    }
+    let updated = conn
+        .execute(
+            "UPDATE records SET title=?1 WHERE id=?2",
+            params![title, id],
+        )
+        .map_err(err)?;
+    if updated == 0 {
+        return Err("记录不存在".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub(super) fn add_group(
     app: tauri::AppHandle,
     store: tauri::State<Store>,

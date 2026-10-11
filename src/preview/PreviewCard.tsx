@@ -47,6 +47,7 @@ export function PreviewCard({ payload, measured, carouselRef }: { payload: Previ
   const color = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(payload.body.trim()) ? payload.body.trim() : "";
   const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   return <div ref={ref} className={`card${payload.kind === "text" ? " text-card" : ""}`} style={{ width: payload.width, maxHeight: payload.kind === "text" ? payload.maxHeight : undefined }}>
+    {payload.title && <div className="record-preview-title"><Highlight text={payload.title} query={payload.search} /></div>}
     {(payload.kind === "text" || payload.kind === "link") && <pre className="text-content"><Highlight text={payload.body} query={payload.search} /></pre>}
     {payload.kind === "color" && <div className="color-content"><span className="color-disc" style={{ background: color }} /><span><Highlight text={payload.body} query={payload.search} /></span></div>}
     {(payload.kind === "image" || payload.kind === "video") && (payload.files.length > 1

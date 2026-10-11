@@ -5,7 +5,7 @@ const { PanelController } = loadTs("src/state/panel.ts");
 const records = ["first", "middle", "last"].map(id => ({ id, kind: "text", body: "match", files: [], favorite: true, groupId: 1 }));
 function setup(overrides = {}) {
   const effects = [];
-  const panel = new PanelController(async () => {}, { reset() {}, beforeRefresh() {}, afterRefresh() {}, afterBrowse() {} });
+  const panel = new PanelController(async () => {}, { reset() {}, beforeRefresh() {}, afterRefresh() {}, afterBrowse() {}, afterOpen() {} });
   panel.update({ snapshot: overrides.state ?? { records }, view: "default", kindFilter: "all", search: "",
     selectedId: "first", selectedIds: new Set(["first"]), anchorId: overrides.selectionAnchorId ?? "first", ...overrides });
   const context = { moveSelection: (direction,extend) => panel.moveSelection(direction,extend) };

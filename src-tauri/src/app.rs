@@ -107,6 +107,7 @@ pub fn run() {
             settings::save_settings,
             records::add_group,
             records::rename_group,
+            records::rename_record,
             records::delete_group,
             records::set_favorite,
             records::set_record_pinned,

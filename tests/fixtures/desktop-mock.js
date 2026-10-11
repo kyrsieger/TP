@@ -2,9 +2,9 @@
 const callbacks = new Map(), listeners = new Map();
 let nextId = 1, visible = false, confirmationCount = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
-const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", positionMode: "fixed", fixedPosition: "right",
+const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
-const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, files: [], favorite: false, pinnedAt: null, groupId: null,
+const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, title: "", files: [], favorite: false, pinnedAt: null, groupId: null,
   usedAt: 1, createdAt: null, expiresAt: null, status: "ready", preview: false, assetPath: null, ...overrides });
 const image = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#eef0ff"/><circle cx="160" cy="90" r="50" fill="#4f46e5"/></svg>')}`;
 const state = { records: [
@@ -60,6 +60,12 @@ window.__TAURI_INTERNALS__ = {
       return;
     }
     if (name === "delete_record") { state.records = state.records.filter(record => record.id !== args.id); return; }
+    if (name === "rename_record") {
+      if (window.__TP_TEST__.renameError) throw new Error(window.__TP_TEST__.renameError);
+      const record = state.records.find(record => record.id === args.id);
+      if (!record) throw new Error("记录不存在");
+      record.title = args.title.trim(); return;
+    }
     if (name === "batch_records") {
       const operation = args.operation;
       if (operation.kind === "delete") state.records = state.records.filter(record => !args.ids.includes(record.id));

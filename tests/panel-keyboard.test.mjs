@@ -4,18 +4,19 @@ import { loadTs } from "./load-ts.mjs";
 
 function setup({ focused = false, settingsOpen = false, selectedId = "selected", isMacOS = false,
   search = "existing", visibleIds = ["visible-second", "visible-third"],
-  records = [{ id: "selected", favorite: false }] } = {}) {
+  records = [{ id: "selected", favorite: false }], inList = false, renameShortcut = "F2" } = {}) {
   const effects = [], actions = [];
   const input = { id: "search", value: search, matches: () => false, closest: () => input,
     focus: () => effects.push("focus-search"), blur: () => effects.push("blur-search") };
-  const row = { id: "", matches: () => false, closest: () => null };
+  const row = { id: "", matches: () => false, closest: selector => inList && selector === "#list" ? row : null };
   const menu = { hidden: true, contains: () => false };
   const { createPanelKeydown } = loadTs("src/input/keyboard.ts", { document: { querySelector: selector => selector === "#search" ? input : menu } });
   const context = {
-    history: { value: { snapshot: { records }, selectedId, selectedIds: new Set(records.map(record => record.id)) },
+    history: { value: { snapshot: { records }, settings: { renameShortcut }, selectedId, selectedIds: new Set(records.map(record => record.id)) },
       records, apply: id => effects.push(["apply", id]), action: (name,args) => { effects.push([name,args.operation.kind]); actions.push(JSON.parse(JSON.stringify(args))); } },
     settings: { value: { open: settingsOpen } }, menus: { update() {} }, previews: {},
     list: { visibleRecords: () => visibleIds.map(id => ({dataset:{id}})) }, isMacOS,
+    startRecordRename: id => effects.push(["rename", id]),
   };
   const keydown = createPanelKeydown(context);
   return { effects, input, actions, press(key, overrides = {}) {
@@ -25,6 +26,24 @@ function setup({ focused = false, settingsOpen = false, selectedId = "selected",
       preventDefault() { this.defaultPrevented = true; }, ...overrides };
     keydown(event); return event;
   } };
+}
+
+for (const isMacOS of [false, true]) {
+  test(`rename shortcuts match only the active list record (${isMacOS ? "macOS" : "Windows"})`, () => {
+    const { press, effects } = setup({ inList: true, isMacOS });
+    assert.equal(press("F2").defaultPrevented, true);
+    assert.deepEqual(effects, [["rename", "selected"]]);
+    press("F2", { repeat: true }); press("F2", { isComposing: true }); press("F2", { ctrlKey: true });
+    assert.equal(effects.length, 1);
+    for (const options of [{ inList: false }, { inList: true, focused: true }, { inList: true, settingsOpen: true },
+      { inList: true, selectedId: null }, { inList: true, records: [] }, { inList: true, renameShortcut: "" }]) {
+      const other = setup({ ...options, isMacOS }); other.press("F2"); assert.deepEqual(other.effects, []);
+    }
+    const custom = setup({ inList: true, isMacOS, renameShortcut: isMacOS ? "Super+R" : "Control+Shift+R" });
+    custom.press("F2"); assert.deepEqual(custom.effects, []);
+    custom.press("r", isMacOS ? { metaKey: true } : { ctrlKey: true, shiftKey: true });
+    assert.deepEqual(custom.effects, [["rename", "selected"]]);
+  });
 }
 for (const focused of [false, true]) {
   test(`Ctrl+F focuses search without favoriting (search focused: ${focused})`, () => {

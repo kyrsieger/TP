@@ -1,6 +1,6 @@
-export function listOffsets(records: readonly { kind: string }[]): number[] {
+export function listOffsets(records: readonly { kind: string; title?: string }[]): number[] {
   const offsets = [0];
-  for (const record of records) offsets.push(offsets[offsets.length - 1] + (record.kind === "image" || record.kind === "video" ? 180 : 48));
+  for (const record of records) offsets.push(offsets[offsets.length - 1] + (record.kind === "image" || record.kind === "video" ? record.title ? 212 : 180 : 48));
   return offsets;
 }
 

@@ -5,7 +5,7 @@ export function filteredRecords(records: RecordItem[], { view, kindFilter, searc
     if (view === "favorite" && !record.favorite) return false;
     if (view.startsWith("group:") && record.groupId !== Number(view.slice(6))) return false;
     if (view === "default" && kindFilter !== "all" && record.kind !== kindFilter) return false;
-    const text = `${record.body} ${record.files.map(file => file.original).join(" ")}`.toLocaleLowerCase();
+    const text = `${record.title ?? ""} ${record.body} ${record.files.map(file => file.original).join(" ")}`.toLocaleLowerCase();
     return text.includes(search.toLocaleLowerCase());
   });
 }
@@ -23,6 +23,7 @@ export function recordListText(record: RecordItem, search: string): string {
     : firstLineText(record.body);
   if (!search) return usual;
   const needle = search.toLocaleLowerCase();
+  if (![record.body, ...record.files.map(file => file.original)].some(text => text.toLocaleLowerCase().includes(needle))) return usual;
   const source = [record.body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
     ?? `${record.body} ${record.files.map(file => file.original).join(" ")}`;
   const index = source.toLocaleLowerCase().indexOf(needle);

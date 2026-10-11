@@ -4,6 +4,46 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn rename_shortcut_migrates_old_settings_and_survives_restart() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut old = serde_json::to_value(settings(&conn).unwrap()).unwrap();
+        old.as_object_mut().unwrap().remove("renameShortcut");
+        old["maxOrdinary"] = 100.into();
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [old.to_string()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut config = settings(&conn).unwrap();
+        assert_eq!(config.rename_shortcut, "F2");
+        assert_eq!(config.max_ordinary, 100);
+        config.rename_shortcut = "Control+Shift+R".into();
+        config.validate().unwrap();
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [serde_json::to_string(&config).unwrap()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    assert_eq!(
+        settings(&store.db.lock().unwrap()).unwrap().rename_shortcut,
+        "Control+Shift+R"
+    );
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn snapshot_identifies_existing_directories_and_preserves_captured_type() {
     let store = test_store();
     let dir = store.dir.join("archive.txt");
@@ -93,6 +133,7 @@ fn old_records_keep_creation_time_empty_after_migration() {
     let store = initialize(dir.clone()).unwrap();
     let records = snapshot(&store).unwrap().records;
     assert_eq!(records[0].created_at, None);
+    assert_eq!(records[0].title, "");
     store.db.lock().unwrap().execute(
             "INSERT INTO records(id,digest,kind,used_at,created_at) VALUES('new','new','text',2000,2000)",
             [],

@@ -95,7 +95,7 @@ export class PreviewController {
       this.previewId = id;
       this.previewPlacement = { x, rowY, width, scale, top: area.position.y, bottom: area.position.y + area.size.height };
       await emitTo("preview", "preview-content", {
-        id, kind: record.kind, body: record.body, files: previewPaths(record),
+        id, kind: record.kind, body: record.body, title: record.title, files: previewPaths(record),
       groupName: this.history.value.snapshot?.groups.find(group => group.id === record.groupId)?.name ?? null,
         preview: record.preview, status: record.status,
         search: this.history.value.search,

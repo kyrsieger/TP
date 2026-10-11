@@ -4,6 +4,90 @@ use super::*;
 use std::fs;
 
 #[test]
+fn record_titles_persist_for_every_kind_without_changing_original_content_or_metadata() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let conn = store.db.lock().unwrap();
+        conn.execute("INSERT INTO groups(id,name) VALUES(1,'项目')", [])
+            .unwrap();
+        for kind in ["text", "link", "file", "color", "image", "video"] {
+            conn.execute(
+                "INSERT INTO records(id,digest,kind,body,files,favorite,pinned_at,group_id,used_at,expires_at) VALUES(?1,?1,?1,'original','[]',1,100,1,200,300)",
+                [kind],
+            ).unwrap();
+            set_title(&conn, kind, "  自定义标题  ").unwrap();
+            let metadata: (String, String, String, bool, i64, i64, i64, i64) = conn.query_row(
+                "SELECT digest,body,files,favorite,pinned_at,group_id,used_at,expires_at FROM records WHERE id=?1", [kind],
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?)),
+            ).unwrap();
+            assert_eq!(
+                metadata,
+                (
+                    kind.into(),
+                    "original".into(),
+                    "[]".into(),
+                    true,
+                    100,
+                    1,
+                    200,
+                    300
+                )
+            );
+        }
+    }
+    drop(store);
+    let store = super::super::storage::initialize(dir.clone()).unwrap();
+    assert!(snapshot(&store)
+        .unwrap()
+        .records
+        .iter()
+        .all(|record| record.title == "自定义标题"));
+    set_title(&store.db.lock().unwrap(), "text", "   ").unwrap();
+    assert_eq!(
+        snapshot(&store)
+            .unwrap()
+            .records
+            .iter()
+            .find(|record| record.id == "text")
+            .unwrap()
+            .title,
+        ""
+    );
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn invalid_record_titles_and_missing_records_report_errors_without_overwriting_title() {
+    let store = test_store();
+    {
+        let conn = store.db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO records(id,digest,kind,used_at,title) VALUES('a','a','text',1,'original')",
+            [],
+        )
+        .unwrap();
+        for title in ["中".repeat(101), "two\nlines".into(), "two\rlines".into()] {
+            assert!(set_title(&conn, "a", &title).is_err());
+        }
+        assert_eq!(
+            conn.query_row("SELECT title FROM records WHERE id='a'", [], |row| row
+                .get::<_, String>(
+                0
+            ))
+            .unwrap(),
+            "original"
+        );
+        assert!(set_title(&conn, "missing", "title").is_err());
+        set_title(&conn, "a", &"😀".repeat(100)).unwrap();
+    }
+    let dir = store.dir.clone();
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn batch_actions_change_only_selected_records_and_protect_them_before_cleanup() {
     let store = test_store();
     let ids = vec!["a".to_string(), "b".to_string()];

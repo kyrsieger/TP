@@ -18,6 +18,12 @@ test("mixed media and text rows retain their full scroll height", () => {
   assert.deepEqual({ ...visibleRange(offsets, 227, 50, 0) }, { start: 1, end: 4 });
 });
 
+test("named media adds title space without changing ordinary row heights", () => {
+  const offsets = listOffsets([{ kind: "text", title: "标题" }, { kind: "image", title: "图片标题" }, { kind: "video" }, { kind: "video", title: "视频标题" }]);
+  assert.deepEqual([...offsets], [0, 48, 260, 440, 652]);
+  assert.equal(rowScrollTop(offsets, 3, 0, 400), 252);
+});
+
 test("a long history creates only viewport rows and the small overscan", () => {
   const offsets = listOffsets(Array.from({ length: 5000 }, () => ({ kind: "text" })));
   for (const scrollTop of [0, 240, 120000, 239520]) {

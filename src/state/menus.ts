@@ -4,7 +4,7 @@ import { Observable } from "./observable";
 export type Point = { x: number; y: number };
 type MoveMenu = { ids: string[]; triggerId: string; anchor: { top: number; bottom: number; right: number } };
 export class MenuController extends Observable<{
-  group: ({ id: number } & Point) | null; record: ({ id: string } & Point) | null; move: MoveMenu | null;
+  group: ({ id: number } & Point) | null; record: ({ id: string; scrollTop?: number } & Point) | null; move: MoveMenu | null;
   filter: boolean; retention: boolean; fixedPosition: boolean;
 }> {
   constructor() { super({ group: null, record: null, move: null, filter: false, retention: false, fixedPosition: false }); }

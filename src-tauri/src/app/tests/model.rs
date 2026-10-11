@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn rename_shortcut_defaults_and_rejects_invalid_or_conflicting_keys() {
+    let mut value = serde_json::to_value(Settings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("renameShortcut");
+    let restored: Settings = serde_json::from_value(value).unwrap();
+    assert_eq!(restored.rename_shortcut, "F2");
+    let mut config = Settings::default();
+    for shortcut in ["", "F2", "F24", "Shift+F3", "Control+Shift+R", "Super+R"] {
+        config.rename_shortcut = shortcut.into();
+        assert!(config.validate().is_ok(), "{shortcut}");
+    }
+    for shortcut in [
+        "F0",
+        "F25",
+        "F02",
+        "A",
+        "Enter",
+        "Control+D",
+        "Control+1",
+        "Alt+Control+R",
+        "Control+Control+R",
+    ] {
+        config.rename_shortcut = shortcut.into();
+        assert!(config.validate().is_err(), "{shortcut}");
+    }
+    config.shortcut = "Control+Shift+R".into();
+    config.rename_shortcut = config.shortcut.clone();
+    assert!(config.validate().is_err());
+}
+
+#[test]
 fn older_settings_show_taskbar_icon_without_resetting_preferences() {
     let mut config = Settings::default();
     config.max_ordinary = 100;

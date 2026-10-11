@@ -19,6 +19,13 @@ test("hover file preview loads the single text file and keeps its original path"
   await expect(page.locator(".file-text-content")).toContainText("中文文本"); await expect(page.locator(".path strong")).toHaveText("中文.md");
   await send(page, "preview-clear", null); await expect(page.locator(".card")).toHaveCount(0);
 });
+
+test("renamed hover preview displays and searches title separately from the full original body", async ({ page }) => {
+  await openPreview(page);
+  await send(page, "preview-content", { ...payload("named", "text", "第一行\n第二行"), title: "中文标题" });
+  await expect(page.locator(".record-preview-title .search-hit")).toHaveText("中文");
+  await expect(page.locator(".text-content")).toHaveText("第一行\n第二行");
+});
 test("hover color and single image preview preserve their visuals and image lifetime", async ({ page }) => {
   await openPreview(page); await send(page, "preview-content", payload("color", "color", "#4f46e5"));
   await expect(page.locator(".color-disc")).toHaveCSS("background-color", "rgb(79, 70, 229)");

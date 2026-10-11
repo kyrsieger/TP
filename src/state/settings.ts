@@ -2,6 +2,7 @@ import type { Settings, SettingsSaveResult } from "../domain/types";
 import type { CommandCall } from "../services/desktop";
 import type { PanelController } from "./panel";
 import { Observable } from "./observable";
+import { recordRenameShortcutFromKey, recordRenameShortcutError } from "../domain/shortcuts";
 
 export const displayShortcut = (shortcut: string) => shortcut.split("+").map(part => part === "Control" ? "Ctrl" : part).join("+");
 export function shortcutFromKey(event: KeyboardEvent): string | null {
@@ -20,6 +21,7 @@ export function formatCacheSize(bytes: number) {
 type SettingsValue = {
   open: boolean; clearingCache: boolean; cacheSizeText: string;
   shortcutDraft: string | null; shortcutError: string | null;
+  renameShortcutDraft: string | null; renameShortcutError: string | null;
   autostartEnabled: boolean | null; autostartSaving: boolean;
   confirmationCount: number | null; revision: number;
 };
@@ -37,7 +39,7 @@ export class SettingsController extends Observable<SettingsValue> {
   private resolveConfirmation: ((confirmed: boolean) => void) | null = null;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
     super({ open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
-      shortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, revision: 0 });
+      shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, revision: 0 });
   }
   ready(error: string | null) {
     this.update({ shortcutError: error });
@@ -96,10 +98,23 @@ export class SettingsController extends Observable<SettingsValue> {
     this.activeShortcut = shortcut;
   }
   captureShortcut(event: KeyboardEvent) {
+    if (event.repeat || event.isComposing || event.keyCode === 229) return;
     const shortcut = event.key === "Backspace" || event.key === "Delete" ? "" : shortcutFromKey(event);
     if (shortcut === null) return;
+    if (shortcut && shortcut === (this.history.value.settings?.renameShortcut ?? "F2")) {
+      this.update({ shortcutDraft: shortcut, shortcutError: "此快捷键已用于记录重命名，请更换组合键。" });
+      return;
+    }
     this.update({ shortcutDraft: shortcut, shortcutError: null });
     void this.save({ shortcut });
+  }
+  captureRenameShortcut(event: KeyboardEvent) {
+    if (event.repeat || event.isComposing || event.keyCode === 229) return;
+    const shortcut = event.key === "Backspace" || event.key === "Delete" ? "" : recordRenameShortcutFromKey(event);
+    if (shortcut === null) return;
+    const error = recordRenameShortcutError(shortcut, this.history.value.settings?.shortcut ?? "");
+    this.update({ renameShortcutDraft: shortcut, renameShortcutError: error });
+    if (!error) void this.save({ renameShortcut: shortcut });
   }
   save(patch: Partial<Settings>, reposition = false): Promise<void> {
     if (this.pending && (patch.maxOrdinary !== undefined || patch.retentionDays !== undefined)
@@ -111,6 +126,7 @@ export class SettingsController extends Observable<SettingsValue> {
       if (Object.keys(patch).every(key => previous[key as keyof Settings] === next[key as keyof Settings])
         && (patch.shortcut === undefined || patch.shortcut === this.activeShortcut)) {
         if (patch.shortcut !== undefined && this.value.shortcutDraft === next.shortcut) this.update({ shortcutDraft: null });
+        if (patch.renameShortcut !== undefined && this.value.renameShortcutDraft === next.renameShortcut) this.update({ renameShortcutDraft: null, renameShortcutError: null });
         return;
       }
       try {
@@ -130,9 +146,19 @@ export class SettingsController extends Observable<SettingsValue> {
         if (patch.shortcut !== undefined) this.update({
           shortcutDraft: this.value.shortcutDraft === next.shortcut ? null : this.value.shortcutDraft, shortcutError: null,
         });
+        if (patch.renameShortcut !== undefined) this.update({
+          renameShortcutDraft: this.value.renameShortcutDraft === next.renameShortcut ? null : this.value.renameShortcutDraft,
+          renameShortcutError: this.value.renameShortcutDraft === next.renameShortcut ? null : this.value.renameShortcutError,
+        });
         if (reposition) await this.effects.place().catch(error => this.effects.toast(String(error)));
       } catch (error) {
         if (patch.shortcut !== undefined) await this.registerShortcut(previous.shortcut).catch(() => {});
+        if (patch.renameShortcut !== undefined) {
+          const message = `无法保存重命名快捷键：${String(error)}`;
+          if (this.value.renameShortcutDraft === next.renameShortcut) this.update({ renameShortcutError: message });
+          this.effects.toast(message);
+          return;
+        }
         let shortcutError = this.value.shortcutError;
         if (patch.shortcut !== undefined && this.value.shortcutDraft === next.shortcut) {
           const detail = String(error);

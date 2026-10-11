@@ -4,8 +4,9 @@ import type { GroupController } from "../state/groups";
 import type { MenuController } from "../state/menus";
 import type { PanelController } from "../state/panel";
 import { useObservable } from "./use-observable";
+import { displayShortcut } from "../state/settings";
 
-export function PopupMenus({ menus, history, groups, toast }: { menus: MenuController; history: PanelController; groups: GroupController; toast: (message: string) => void }) {
+export function PopupMenus({ menus, history, groups, toast, renameRecord }: { menus: MenuController; history: PanelController; groups: GroupController; toast: (message: string) => void; renameRecord: (id: string) => void }) {
   const menu = useObservable(menus), panel = useObservable(history);
   const groupRef = useRef<HTMLDivElement>(null), recordRef = useRef<HTMLDivElement>(null), moveRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -14,8 +15,8 @@ export function PopupMenus({ menus, history, groups, toast }: { menus: MenuContr
       if (!value || !element) continue;
       element.style.left = `${Math.max(8, Math.min(value.x - bounds.left, shell.clientWidth - element.offsetWidth - 8))}px`;
       element.style.top = `${Math.max(8, Math.min(value.y - bounds.top, shell.clientHeight - element.offsetHeight - 8))}px`;
+      element.focus({ preventScroll: true });
     }
-    if (menu.record) recordRef.current!.querySelector("button")!.focus();
     if (menu.move) {
       const element = moveRef.current!, anchor = menu.move.anchor;
       element.style.left = `${Math.max(8, Math.min(anchor.right - bounds.left - element.offsetWidth, shell.clientWidth - element.offsetWidth - 8))}px`;
@@ -38,13 +39,18 @@ export function PopupMenus({ menus, history, groups, toast }: { menus: MenuContr
     try { await call(name, { id }); } catch (error) { toast(String(error)); }
   };
   const moveRecords = panel.snapshot?.records.filter(record => menu.move?.ids.includes(record.id)) ?? [];
+  const contextRecord = panel.snapshot?.records.find(record => record.id === menu.record?.id);
+  const fileActions = contextRecord && ((contextRecord.kind === "image" && contextRecord.files.length === 0)
+    || (contextRecord.files.length > 0 && contextRecord.files.every(file => !file.isDirectory)));
   return <>
-    <div id="group-menu" ref={groupRef} role="menu" hidden={!menu.group}>
+    <div id="group-menu" ref={groupRef} role="menu" tabIndex={-1} hidden={!menu.group} data-group-id={menu.group?.id}>
       <button type="button" data-group-action="rename" role="menuitem" onClick={() => { void groupAction(true); }}>重命名</button>
       <button type="button" data-group-action="delete" role="menuitem" onClick={() => { void groupAction(false); }}>删除</button>
     </div>
-    <div id="record-menu" ref={recordRef} role="menu" aria-label="记录操作" hidden={!menu.record} data-record-id={menu.record?.id}>
-      {[["copy-paths", "复制路径", "copy_record_paths"], ["open-directory", "打开所在目录", "open_record_directory"], ["save-as", "另存为", "save_record_files"]].map(([id, label, command]) =>
+    <div id="record-menu" ref={recordRef} role="menu" tabIndex={-1} aria-label="记录操作" hidden={!menu.record} data-record-id={menu.record?.id}>
+      <button type="button" data-record-action="rename" role="menuitem" onClick={() => { if (menu.record) renameRecord(menu.record.id); }}><span>重命名</span>
+        {panel.settings?.renameShortcut && <span className="menu-shortcut" aria-hidden="true">{displayShortcut(panel.settings.renameShortcut)}</span>}</button>
+      {fileActions && [["copy-paths", "复制路径", "copy_record_paths"], ["open-directory", "打开所在目录", "open_record_directory"], ["save-as", "另存为", "save_record_files"]].map(([id, label, command]) =>
         <button key={id} type="button" data-record-action={id} role="menuitem" onClick={() => { void recordAction(command); }}>{label}</button>)}
     </div>
     <div id="move-group-menu" ref={moveRef} role="menu" aria-label="移动到分组" hidden={!menu.move} data-record-id={menu.move?.triggerId}>

@@ -29,8 +29,23 @@ function setup(save, confirm = () => false) {
     revision=controller.value.revision;
   });
   context.saveSetting = (...args) => { context.settingsSave = controller.save(...args); };
-  return { context, effects, original, elements };
+  return { context, effects, original, elements, controller };
 }
+
+test("local rename shortcut saves without global registration and failed saves preserve the active key and draft", async () => {
+  const event = { key: "F3", repeat: false, isComposing: false, keyCode: 0, ctrlKey: false, altKey: false,
+    shiftKey: false, metaKey: false, getModifierState: () => false };
+  const good = setup(() => true); good.original.renameShortcut = "F2";
+  good.controller.captureRenameShortcut(event); await good.controller.save({});
+  assert.equal(good.context.state.settings.renameShortcut, "F3");
+  assert.equal(good.controller.value.renameShortcutDraft, null);
+  assert.ok(good.effects.every(effect => effect[0] !== "register_panel_shortcut"));
+  const bad = setup(() => { throw new Error("write failed"); }); bad.original.renameShortcut = "F2";
+  bad.controller.captureRenameShortcut(event); await bad.controller.save({});
+  assert.equal(bad.context.state.settings.renameShortcut, "F2");
+  assert.equal(bad.controller.value.renameShortcutDraft, "F3");
+  assert.match(bad.controller.value.renameShortcutError, /write failed/);
+});
 test("retention saved after the panel hides clears and saves the hidden search", async () => {
   let resolve;
   const saved = new Promise(done => { resolve = done; });

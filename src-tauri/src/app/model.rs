@@ -7,6 +7,8 @@ pub(super) struct Settings {
     pub(super) retention_days: u16,
     pub(super) sensitive_seconds: u32,
     pub(super) shortcut: String,
+    #[serde(default = "default_rename_shortcut")]
+    pub(super) rename_shortcut: String,
     pub(super) position_mode: String,
     pub(super) fixed_position: String,
     pub(super) remember_position: bool,
@@ -26,6 +28,56 @@ fn default_show_taskbar_icon() -> bool {
     true
 }
 
+fn default_rename_shortcut() -> String {
+    "F2".into()
+}
+
+fn valid_rename_shortcut(shortcut: &str) -> bool {
+    if shortcut.is_empty() {
+        return true;
+    }
+    let parts: Vec<_> = shortcut.split('+').collect();
+    let key = parts[parts.len() - 1];
+    let mut previous = None;
+    for part in &parts[..parts.len() - 1] {
+        let Some(index) = ["Control", "Alt", "Shift", "Super"]
+            .iter()
+            .position(|name| name == part)
+        else {
+            return false;
+        };
+        if previous.is_some_and(|previous| index <= previous) {
+            return false;
+        }
+        previous = Some(index);
+    }
+    let function_key = key
+        .strip_prefix('F')
+        .and_then(|number| number.parse::<u8>().ok())
+        .is_some_and(|number| (1..=24).contains(&number) && key == format!("F{number}"));
+    let modified_character = parts.len() > 1
+        && key.len() == 1
+        && (key.as_bytes()[0].is_ascii_uppercase() || key.as_bytes()[0].is_ascii_digit());
+    (function_key || modified_character)
+        && ![
+            "Control+A",
+            "Control+D",
+            "Control+F",
+            "Control+G",
+            "Control+P",
+            "Control+1",
+            "Control+2",
+            "Control+3",
+            "Control+4",
+            "Control+5",
+            "Control+6",
+            "Control+7",
+            "Control+8",
+            "Control+9",
+        ]
+        .contains(&shortcut)
+}
+
 fn default_retain_search_input() -> bool {
     true
 }
@@ -37,6 +89,7 @@ impl Default for Settings {
             retention_days: 7,
             sensitive_seconds: 90,
             shortcut: String::new(),
+            rename_shortcut: default_rename_shortcut(),
             position_mode: "fixed".into(),
             fixed_position: "right".into(),
             remember_position: false,
@@ -53,6 +106,11 @@ impl Default for Settings {
 
 impl Settings {
     pub(super) fn validate(&self) -> Result<()> {
+        if !valid_rename_shortcut(&self.rename_shortcut)
+            || (!self.rename_shortcut.is_empty() && self.rename_shortcut == self.shortcut)
+        {
+            return Err("重命名快捷键无效或与其他操作冲突".into());
+        }
         if !(1..=500).contains(&self.max_ordinary)
             || ![1, 3, 5, 7, 30].contains(&self.retention_days)
             || self.sensitive_seconds == 0
@@ -82,6 +140,7 @@ pub(super) struct Record {
     pub(super) id: String,
     pub(super) kind: String,
     pub(super) body: String,
+    pub(super) title: String,
     pub(super) files: Vec<FileItem>,
     pub(super) favorite: bool,
     pub(super) pinned_at: Option<i64>,

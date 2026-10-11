@@ -9,7 +9,7 @@ type PanelValue = PanelSession & {
 };
 type PanelEffects = {
   reset: () => void; beforeRefresh: () => void; afterRefresh: () => void; afterBrowse: () => void;
-  place: () => Promise<void>; isVisible: () => Promise<boolean>; error: (message: string) => void;
+  place: () => Promise<void>; afterOpen: () => void; isVisible: () => Promise<boolean>; error: (message: string) => void;
 };
 
 /** Owns the visible snapshot/session. Hidden panels never fetch or retain records. */
@@ -116,6 +116,8 @@ export class PanelController extends Observable<PanelValue> {
       await this.effects.place();
       if (!this.value.active || generation !== this.generation) return;
       await this.call("show_panel");
+      if (!this.value.active || generation !== this.generation) return;
+      this.effects.afterOpen();
     })().finally(() => { this.opening = null; });
     return this.opening;
   }

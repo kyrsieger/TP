@@ -1,4 +1,5 @@
 import type { KeyboardContext } from "./types";
+import { recordRenameShortcutFromKey } from "../domain/shortcuts";
 export function createPanelKeydown(context: KeyboardContext) {
   return (event: KeyboardEvent) => {
     const { history, previews, menus, settings, list, clearSearch, cycleGroup, closeSettings, moveSelection, isMacOS } = context;
@@ -23,21 +24,35 @@ export function createPanelKeydown(context: KeyboardContext) {
       return;
     if (document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.open)
       return;
-    const recordMenu = document.querySelector<HTMLElement>("#record-menu")!;
-    if (!recordMenu.hidden && recordMenu.contains(event.target as Node)) {
+    // 记录标题编辑保留输入法、数字、方向键和 Ctrl 组合键的文字编辑行为。
+    if ((event.target as HTMLElement).matches(".record-rename-input")) return;
+    for (const menuId of ["record", "group"] as const) {
+      const contextMenu = document.querySelector<HTMLElement>(`#${menuId}-menu`)!;
+      if (contextMenu.hidden || !contextMenu.contains(event.target as Node)) continue;
+      const closeContextMenu = menuId === "record" ? closeRecordMenu : closeGroupMenu;
       if (event.key === "Escape") {
         event.preventDefault();
-        const row = document.querySelector<HTMLElement>(`.record[data-id="${recordMenu.dataset.recordId}"]`);
-        closeRecordMenu();
-        row?.focus();
+        const trigger = document.querySelector<HTMLElement>(menuId === "record"
+          ? `.record[data-id="${contextMenu.dataset.recordId}"]` : `.group[data-view="group:${contextMenu.dataset.groupId}"]`);
+        closeContextMenu();
+        trigger?.focus({ preventScroll: true });
         return;
       }
+      const options = [...contextMenu.querySelectorAll<HTMLButtonElement>("button")];
+      const index = options.indexOf(event.target as HTMLButtonElement);
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        (event.target as HTMLButtonElement).click();
+        if (index >= 0) options[index].click();
         return;
       }
-      closeRecordMenu();
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const next = index < 0 ? (event.key === "ArrowUp" ? options.length - 1 : 0)
+          : (index + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length;
+        options[next]?.focus({ preventScroll: true });
+        return;
+      }
+      closeContextMenu();
     }
     if ((event.target as HTMLElement).matches("[data-move-group-trigger]") && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
@@ -69,11 +84,6 @@ export function createPanelKeydown(context: KeyboardContext) {
       }
       return;
     }
-    if (event.key === "Escape" && !document.querySelector<HTMLElement>("#group-menu")!.hidden) {
-      event.preventDefault();
-      closeGroupMenu();
-      return;
-    }
     const filterMenu = document.querySelector<HTMLElement>("#filter-menu")!;
     if (event.key === "Escape" && !filterMenu.hidden) {
       event.preventDefault();
@@ -95,6 +105,14 @@ export function createPanelKeydown(context: KeyboardContext) {
     }
     if (event.isComposing || event.keyCode === 229)
       return;
+    const renameTarget = event.target as HTMLElement;
+    const renameShortcut = history.value.settings?.renameShortcut ?? "F2";
+    if (renameShortcut && recordRenameShortcutFromKey(event) === renameShortcut
+      && renameTarget.closest("#list") && !renameTarget.closest("input, textarea, [contenteditable='true']")) {
+      event.preventDefault();
+      if (!event.repeat && selectedId && filtered().some(record => record.id === selectedId)) context.startRecordRename(selectedId);
+      return;
+    }
     if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !event.getModifierState("AltGraph") && event.code === "KeyF") {
       event.preventDefault();
       document.querySelector<HTMLInputElement>("#search")!.focus();

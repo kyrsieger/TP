@@ -38,13 +38,27 @@ pub(super) fn initialize(dir: PathBuf) -> Result<Store> {
         CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
         CREATE TABLE IF NOT EXISTS records (
             id TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
-            body TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
+            body TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', files TEXT NOT NULL DEFAULT '[]',
             favorite INTEGER NOT NULL DEFAULT 0, pinned_at INTEGER, group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
             used_at INTEGER NOT NULL, created_at INTEGER, expires_at INTEGER, storage_mode TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'ready', preview INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS records_used ON records(used_at DESC);
         PRAGMA foreign_keys=ON;").map_err(err)?;
+    let has_title: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='title')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(err)?;
+    if !has_title {
+        conn.execute(
+            "ALTER TABLE records ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(err)?;
+    }
     let has_pinned_at: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='pinned_at')",
@@ -181,7 +195,7 @@ fn remove_numbered_dirs(files_dir: &Path) {
 
 pub(super) fn snapshot(store: &Store) -> Result<Snapshot> {
     let conn = store.db.lock().map_err(err)?;
-    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,created_at,expires_at,storage_mode,status,preview FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
+    let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,created_at,expires_at,storage_mode,status,preview,title FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
     let mut records = stmt
         .query_map([], |r| {
             let files: String = r.get(3)?;
@@ -189,6 +203,7 @@ pub(super) fn snapshot(store: &Store) -> Result<Snapshot> {
                 id: r.get(0)?,
                 kind: r.get(1)?,
                 body: r.get(2)?,
+                title: r.get(13)?,
                 files: serde_json::from_str(&files).unwrap_or_default(),
                 favorite: r.get::<_, i64>(4)? != 0,
                 pinned_at: r.get(5)?,

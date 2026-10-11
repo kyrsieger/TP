@@ -5,6 +5,7 @@ import { GeometryController } from "./services/geometry";
 import { PreviewController } from "./services/previews";
 import { SettingsFocus } from "./services/focus";
 import { GroupController } from "./state/groups";
+import { RecordRenameController } from "./state/record-rename";
 import { MenuController } from "./state/menus";
 import { PanelController } from "./state/panel";
 import { SettingsController } from "./state/settings";
@@ -18,14 +19,19 @@ export function createApplication(list: ListHandle) {
   const toasts = new ToastController(), menus = new MenuController(), focus = new SettingsFocus();
   const toast = toasts.show;
   const history = new PanelController(call, {
-    reset: () => { previews.reset(); menus.reset(); groups.reset(); settings.reset(); focus.reset(); list.reset(); },
+    reset: () => { previews.reset(); menus.reset(); groups.reset(); rename.reset(); settings.reset(); focus.reset(); list.reset(); },
     beforeRefresh: () => { previews.closePreview(); menus.update({ record: null, move: null }); list.cancelScroll(); },
-    afterRefresh: () => { previews.reconcile(); if (settings.value.open) void settings.refreshCacheSize(); },
-    afterBrowse: () => previews.reconcile(),
+    afterRefresh: () => { previews.reconcile(); rename.reconcile(); if (settings.value.open) void settings.refreshCacheSize(); },
+    afterBrowse: () => { rename.cancel(false); previews.reconcile(); },
     place: async () => { settings.syncShortcut(); await geometry.placePanel(); },
+    afterOpen: () => {
+      const id = history.value.selectedId;
+      if (id) list.ensure(id)?.focus({ preventScroll: true });
+    },
     isVisible: () => panelWindow.isVisible(), error: toast,
   });
   const groups = new GroupController(history, call, toast);
+  const rename = new RecordRenameController(history, call, toast, id => list.row(id)?.focus({ preventScroll: true }));
   const settings = new SettingsController(history, call, { toast, place: () => geometry.placePanel(), position: () => panelWindow.outerPosition() });
   const geometry = new GeometryController(history, panelWindow, toast);
   const previews = new PreviewController(history, panelWindow, list, toast);
@@ -53,13 +59,18 @@ export function createApplication(list: ListHandle) {
     const row = list.ensure(id); row?.scrollIntoView({ block: "nearest" }); row?.focus({ preventScroll: true });
   }
   function closeSettings() { flushSync(() => settings.update({ open: false })); focus.restore(list); }
-  const keydown = createPanelKeydown({ history, settings, menus, previews, list, clearSearch, cycleGroup, moveSelection, closeSettings, isMacOS });
+  function startRecordRename(id: string) {
+    groups.cancel(); menus.closePopups(); previews.closePreview();
+    list.ensure(id);
+    flushSync(() => rename.start(id));
+  }
+  const keydown = createPanelKeydown({ history, settings, menus, previews, list, clearSearch, cycleGroup, moveSelection, closeSettings, startRecordRename, isMacOS });
   let disposed = false;
   let startGeneration = 0;
   let blurTimer: number | undefined;
   const disposers: (() => void)[] = [];
   const onBlur = () => {
-    groups.cancel(); menus.closePopups();
+    groups.cancel(); rename.cancel(false); menus.closePopups();
     window.clearTimeout(blurTimer);
     blurTimer = window.setTimeout(() => { if (!disposed) void call<boolean>("preview_focused").catch(() => false).then(focused => { if (!disposed && !focused) previews.closePreview(); }); }, 120);
   };
@@ -91,7 +102,7 @@ export function createApplication(list: ListHandle) {
       if (!disposed && generation === startGeneration) settings.ready(error);
     } catch (error) { if (!disposed && generation === startGeneration) toast(`启动失败：${String(error)}`); }
   }
-  return { history, groups, settings, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, start,
+  return { history, groups, rename, settings, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, startRecordRename, start,
     dispose() { disposed = true; startGeneration++; window.clearTimeout(blurTimer); disposers.splice(0).forEach(dispose => dispose()); geometry.dispose(); settings.reset(); toasts.dispose(); } };
 }
 export type Application = ReturnType<typeof createApplication>;

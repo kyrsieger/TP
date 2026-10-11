@@ -34,9 +34,9 @@ export function App() {
     const row = (event.target as HTMLElement).closest<HTMLElement>(".record"), record = panel.snapshot?.records.find(record => record.id === row?.dataset.id);
     if (!record) return;
     event.preventDefault(); app.menus.update({ group: null, move: null });
-    if (["text", "link", "color"].includes(record.kind)) return;
-    if (!(record.kind === "image" && record.files.length === 0) && !(record.files.length > 0 && record.files.every(file => !file.isDirectory))) return;
-    app.previews.closePreview(); app.menus.update({ record: { id: record.id, x: event.clientX, y: event.clientY } });
+    if (app.rename.value.saving) return;
+    app.rename.cancel(false);
+    app.previews.closePreview(); app.menus.update({ record: { id: record.id, x: event.clientX, y: event.clientY, scrollTop: event.currentTarget.scrollTop } });
   };
   return <>
     <div className="shell" onPointerDownCapture={event => {
@@ -60,8 +60,8 @@ export function App() {
       <Toolbar history={app.history} menus={app.menus} settingsOpen={settings.open} toggleSettings={() => { if (settings.open) app.closeSettings(); else void app.settings.open(); }}
         clearSearch={() => app.clearSearch()} captureFocus={() => { if (!settings.open) app.focus.capture(); }} />
       <GroupTabs history={app.history} groups={app.groups} backToTop={backToTop} selectGroup={app.selectGroup} scrollBackToTop={() => listRef.current?.scrollBackToTop()} contextMenu={groupContextMenu} />
-      <RecordList history={app.history} previews={app.previews} menus={app.menus} listRef={listRef} onBackToTop={setBackToTop} onContextMenu={recordContextMenu} />
-      <PopupMenus menus={app.menus} history={app.history} groups={app.groups} toast={app.toasts.show} />
+      <RecordList history={app.history} rename={app.rename} previews={app.previews} menus={app.menus} listRef={listRef} onBackToTop={setBackToTop} onContextMenu={recordContextMenu} />
+      <PopupMenus menus={app.menus} history={app.history} groups={app.groups} toast={app.toasts.show} renameRecord={app.startRecordRename} />
       <section id="settings" hidden={!settings.open}>{panel.active && settings.open && <SettingsPanel controller={app.settings} history={app.history} menus={app.menus} toast={app.toasts.show} />}</section>
       <div id="toast" role="status" className={toast.visible ? "visible" : ""}>{toast.message}</div>
     </div>
