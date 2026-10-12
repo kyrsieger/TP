@@ -181,7 +181,7 @@ pub(super) fn release_idle_panel(app: &tauri::AppHandle) {
         .is_ok_and(|state| {
             state
                 .hidden_at
-                .is_some_and(|at| at.elapsed() >= Duration::from_secs(30))
+                .is_some_and(|at| at.elapsed() >= Duration::from_secs(60))
         });
     if !due {
         return;
@@ -194,7 +194,7 @@ pub(super) fn release_idle_panel(app: &tauri::AppHandle) {
         };
         if !state
             .hidden_at
-            .is_some_and(|at| at.elapsed() >= Duration::from_secs(30))
+            .is_some_and(|at| at.elapsed() >= Duration::from_secs(60))
         {
             return;
         }
