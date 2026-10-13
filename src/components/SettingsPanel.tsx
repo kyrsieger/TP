@@ -73,7 +73,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <label>1Password 记录保留秒数<NumberSetting id="sensitive" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></label>
     <p className="hint">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
     <fieldset><legend>面板位置</legend>{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="inline"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
-      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }, true); }} />{label}</label>)}
+      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }); }} />{label}</label>)}
       <fieldset className="fixed-position-settings" aria-label="固定位置设置" disabled={s.positionMode !== "fixed"}>
         <div className="setting-field"><span className="setting-label">固定位置</span><div className="setting-select fixed-position-select">
           <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.fixedPosition && s.positionMode === "fixed"} onClick={() => menus.update({ fixedPosition: !menu.fixedPosition })}><span className="fixed-position-value">{positionOptions.find(([value]) => value === s.fixedPosition)![1]}</span><Icon name="chevron" /></button>
