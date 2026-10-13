@@ -40,5 +40,5 @@ export function ThemeSetting({ value, open, toggle, choose }: {
       onClick={() => { choose(theme.id); close(); }}>
       <span className="theme-name">{theme.name}</span><span className="theme-strip" aria-hidden="true">{themeSwatches(theme).map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}</span>
     </button>)}</div>
-  </div><p className="hint">悬停到主题上即可切换，自动记住最后选择。</p></div>;
+  </div></div>;
 }
