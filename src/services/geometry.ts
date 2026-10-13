@@ -1,4 +1,4 @@
-import { cursorPosition, currentMonitor, monitorFromPoint, PhysicalPosition, PhysicalSize, type Window } from "@tauri-apps/api/window";
+import { PhysicalPosition, PhysicalSize, type Window } from "@tauri-apps/api/window";
 import type { SettingsSaveResult } from "../domain/types";
 import type { PanelController } from "../state/panel";
 import { call, isMacOS } from "./desktop";
@@ -15,31 +15,8 @@ export class GeometryController {
   async placePanel() {
     const s = this.history.value.settings!;
     this.placing = true;
-    await this.panel.setSize(new PhysicalSize(s.panelWidth, s.panelHeight));
-    const size = await this.panel.outerSize();
-    const cursor = await cursorPosition();
-    const monitor = s.positionMode === "cursor" ? await monitorFromPoint(cursor.x, cursor.y) : await currentMonitor();
-    if (monitor) {
-      const area = monitor.workArea;
-      let x = area.position.x + area.size.width - size.width - 18;
-      let y = area.position.y + area.size.height - size.height - 18;
-      if (s.positionMode === "cursor") {
-        x = Math.min(cursor.x + 12, x);
-        y = Math.min(cursor.y + 12, y);
-      }
-      else if (s.rememberPosition && s.panelX !== null && s.panelY !== null) {
-        x = s.panelX;
-        y = s.panelY;
-      }
-      else if (s.fixedPosition === "left") {
-        x = area.position.x + 18;
-      }
-      else if (s.fixedPosition === "center") {
-        x = area.position.x + Math.round((area.size.width - size.width) / 2);
-      }
-      await this.panel.setPosition(new PhysicalPosition(x, y));
-    }
-    window.setTimeout(() => this.placing = false, 350);
+    try { await call("place_panel", { value: s }); }
+    finally { window.setTimeout(() => this.placing = false, 350); }
   }
   scheduleGeometrySave() {
     if (this.placing || !this.history.value.settings || !this.history.value.active)

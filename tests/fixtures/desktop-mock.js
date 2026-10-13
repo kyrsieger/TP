@@ -1,6 +1,6 @@
 // Browser-only IPC fixture. Loaded explicitly by test pages, never by application entries.
 const callbacks = new Map(), listeners = new Map();
-let nextId = 1, visible = false, confirmationCount = 0;
+let nextId = 1, visible = false, confirmationCount = 0, generation = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
@@ -24,7 +24,10 @@ function emit(event, payload = null) {
 window.__TP_TEST__ = {
   state, calls, emit, image, makeRecord,
   setConfirmationCount(count) { confirmationCount = count; },
-  show() { emit("open-requested"); }, hide() { emit("panel-hidden"); visible = false; },
+  get visible() { return visible; }, get generation() { return generation; },
+  show() { emit("open-requested", ++generation); },
+  hide() { visible = false; emit("panel-hidden", ++generation); },
+  idle(token = generation) { emit("panel-idle-release", token); },
   change(records) { state.records = records; emit("history-changed"); },
   listeners,
 };
@@ -44,11 +47,15 @@ window.__TAURI_INTERNALS__ = {
     }
     if (name === "get_panel_session") return structuredClone(session);
     if (name === "save_panel_session") { session = { ...args.session }; return; }
-    if (name === "panel_ready") { setTimeout(() => emit("open-requested"), 0); return null; }
+    if (name === "panel_ready") { setTimeout(() => window.__TP_TEST__.show(), 0); return null; }
     if (name === "get_state") return structuredClone(state);
     if (name === "show_panel") { visible = true; return; }
-    if (name === "hide_panel") { visible = false; emit("panel-hidden"); return; }
-    if (name === "apply_record") { if (!state.settings.alwaysOnTop) { visible = false; emit("panel-hidden"); } return; }
+    if (name === "hide_panel") { window.__TP_TEST__.hide(); return; }
+    if (name === "apply_record") { if (!state.settings.alwaysOnTop) window.__TP_TEST__.hide(); return; }
+    if (name === "panel_content_released") {
+      window.__TP_TEST__.released = { generation: args.generation, rows: document.querySelectorAll('.record').length, images: document.querySelectorAll('img[src]').length };
+      return;
+    }
     if (name === "save_settings") {
       if ((args.value.maxOrdinary !== state.settings.maxOrdinary || args.value.retentionDays !== state.settings.retentionDays) && confirmationCount > (args.confirmedCount ?? 0))
         return { status: "confirmation_required", count: confirmationCount };

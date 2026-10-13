@@ -89,7 +89,7 @@ export function RecordList({ history, rename, previews, menus, listRef, onBackTo
     }}
     onWheel={cancelScroll} onPointerDown={cancelScroll}
     onMouseDown={event => { if (event.button === 0 && event.shiftKey && (event.target as HTMLElement).closest(".record") && !(event.target as HTMLElement).closest("button,input")) event.preventDefault(); }}>
-    {state.active && (records.length ? <>
+    {state.snapshot !== null && (records.length ? <>
       <div className="list-spacer" style={{ height: offsets[range.start] }} aria-hidden="true" />
       {records.slice(range.start, range.end).map((record, i) => <RecordRow key={record.id} record={record} index={range.start + i} last={range.start + i === records.length - 1}
         selected={state.selectedIds.has(record.id)} beforeSelected={state.selectedIds.has(records[range.start + i + 1]?.id ?? "")}

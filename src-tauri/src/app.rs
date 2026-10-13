@@ -8,6 +8,8 @@ mod filesystem;
 mod media;
 mod model;
 mod panel;
+mod panel_geometry;
+mod panel_runtime;
 mod preview;
 mod records;
 mod runtime;
@@ -75,8 +77,9 @@ pub fn run() {
                 let lifecycle = window.app_handle().state::<PanelLifecycle>();
                 if let Ok(mut state) = lifecycle.state.lock() {
                     state.ready = false;
-                    state.releasing = false;
+                    state.cancel_idle();
                 };
+                panel_runtime::forget_panel();
             }
             if matches!(event, tauri::WindowEvent::Destroyed)
                 && matches!(window.label(), "preview" | "large-preview")
@@ -123,7 +126,9 @@ pub fn run() {
             panel::get_panel_session,
             panel::save_panel_session,
             panel::panel_ready,
+            panel::panel_content_released,
             panel::show_panel,
+            panel_geometry::place_panel,
             panel::hide_panel,
             preview::ensure_preview_window,
             preview::release_preview_window,
@@ -147,7 +152,7 @@ pub fn run() {
                     .state
                     .lock()
                     .is_ok_and(|state| {
-                        state.open_requested && !state.releasing && (state.ready || main_absent)
+                        state.open_requested && (state.ready || main_absent)
                     });
                 if reopen {
                     if let Err(error) = open_panel(app) {

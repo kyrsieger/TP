@@ -1,6 +1,6 @@
 [package]
 name = "tp"
-version = "1.0.8"
+version = "1.0.9"
 description = "Local clipboard history for Windows and macOS"
 edition = "2021"
 
@@ -40,8 +40,10 @@ clipboard-win = "5.4.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
+objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["block2"] }
 objc2-foundation = "0.3"
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

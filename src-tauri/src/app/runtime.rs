@@ -2,7 +2,7 @@ use super::{
     cleanup::clean,
     clipboard::Watcher,
     events::changed,
-    panel::{release_idle_panel, request_panel},
+    panel::{request_panel, suspend_idle_panel},
     storage::Store,
 };
 use crate::platform;
@@ -27,7 +27,7 @@ pub(super) fn start(app: &tauri::AppHandle) {
                 changed(&handle);
             }
         }
-        release_idle_panel(&handle);
+        suspend_idle_panel(&handle);
     });
     let handle = app.clone();
     thread::spawn(move || loop {

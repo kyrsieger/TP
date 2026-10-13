@@ -12,9 +12,10 @@ type PanelEffects = {
   place: () => Promise<void>; afterOpen: () => void; isVisible: () => Promise<boolean>; error: (message: string) => void;
 };
 
-/** Owns the visible snapshot/session. Hidden panels never fetch or retain records. */
+/** Hidden panels stop fetching but retain their rendered snapshot until idle release. */
 export class PanelController extends Observable<PanelValue> {
   generation = 0;
+  private nativeGeneration = -1;
   private opening: Promise<void> | null = null;
   private refreshing: Promise<void> | null = null;
   private refreshAgain = false;
@@ -96,17 +97,32 @@ export class PanelController extends Observable<PanelValue> {
     })().finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
-  release() {
+  private acceptNotice(generation?: number) {
+    if (generation === undefined) return true;
+    if (generation < this.nativeGeneration) return false;
+    this.nativeGeneration = generation;
+    return true;
+  }
+  hide(nativeGeneration?: number) {
+    if (!this.acceptNotice(nativeGeneration)) return;
     if (!this.value.active) return;
     this.generation++;
     this.refreshAgain = false;
-    this.update({ active: false, snapshot: null, selectedId: null, selectedIds: new Set(), anchorId: null });
+    this.update({ active: false });
     this.clearHiddenSearch();
     this.saveSession();
     this.effects.reset();
   }
-  open(): Promise<void> {
-    if (this.opening) return this.value.active ? this.opening : this.opening.then(() => this.open());
+  release(nativeGeneration?: number) {
+    if (this.value.active || (nativeGeneration !== undefined && nativeGeneration !== this.nativeGeneration)) return false;
+    this.generation++;
+    this.refreshAgain = false;
+    this.update({ snapshot: null, selectedId: null, selectedIds: new Set(), anchorId: null });
+    return true;
+  }
+  open(nativeGeneration?: number): Promise<void> {
+    if (!this.acceptNotice(nativeGeneration)) return Promise.resolve();
+    if (this.opening) return this.value.active ? this.opening : this.opening.then(() => this.open(nativeGeneration));
     this.effects.reset();
     this.update({ active: true, view: "default", selectedId: null, selectedIds: new Set(), anchorId: null });
     const generation = ++this.generation;
@@ -122,16 +138,23 @@ export class PanelController extends Observable<PanelValue> {
     return this.opening;
   }
   async action(name: string, args: Record<string, unknown> = {}) {
+    const generation = this.generation;
     try {
       await this.call(name, args);
-      if (name === "hide_panel") this.release();
+      // Replies from a previous visibility cycle must not clear a reopened panel.
+      if (generation !== this.generation) return;
+      if (name === "hide_panel") this.hide();
       await this.refresh();
     } catch (error) { this.effects.error(String(error)); }
   }
   async apply(id: string) {
+    const generation = this.generation;
     try {
       await this.call("apply_record", { id });
-      if (!await this.effects.isVisible()) this.release();
+      if (generation !== this.generation) return;
+      const visible = await this.effects.isVisible();
+      if (generation !== this.generation) return;
+      if (!visible) this.hide();
       await this.refresh();
     } catch (error) { this.effects.error(String(error)); }
   }

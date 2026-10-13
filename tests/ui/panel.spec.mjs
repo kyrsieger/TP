@@ -10,12 +10,38 @@ test("closing from another group reopens the default group and focuses its first
     await page.locator(`[data-view="${view}"]`).click();
     await expect(page.locator(`[data-view="${view}"]`)).toHaveClass(/active/);
     await page.locator("#close").click();
-    await expect(page.locator(".record")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__TP_TEST__.visible)).toBe(false);
     await page.evaluate(() => window.__TP_TEST__.show());
     await expect(page.locator('[data-view="default"]')).toHaveClass(/active/);
     await expect(page.locator('.record[data-id="text"]')).toBeFocused();
     await expect(page.locator('.record[data-id="link"]')).toBeVisible();
   }
+});
+
+for (const close of ["button", "Escape"]) test(`first reopen survives a delayed ${close} hide reply`, async ({ page }) => {
+  await page.evaluate(() => {
+    const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (name, args) => {
+      const result = await invoke(name, args);
+      if (name === "hide_panel") await new Promise(resolve => { window.__TP_TEST__.finishHide = resolve; });
+      return result;
+    };
+  });
+  if (close === "button") await page.locator("#close").click();
+  else await page.keyboard.press("Escape");
+  await page.evaluate(() => window.__TP_TEST__.idle());
+  await expect(page.locator("#groups button")).toHaveCount(0);
+  await expect(page.locator(".record")).toHaveCount(0);
+  await page.evaluate(() => window.__TP_TEST__.show());
+  await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+  await page.evaluate(async () => {
+    window.__TP_TEST__.finishHide();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await expect(page.locator('[data-view="default"]')).toHaveClass(/active/);
+  await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+  await page.keyboard.press("F2");
+  await expect(page.locator(".record-rename-input")).toBeFocused();
 });
 
 test("renders all original record kinds with matching row heights and lazy images", async ({ page }) => {
@@ -56,7 +82,10 @@ test("Ctrl+G opens after a distant virtual row is mounted", async ({ page }) => 
 for (const shortcut of ["1", "Control+1"]) test(`${shortcut} applies the matching scrolled visible ordinal`, async ({ page }) => {
   await page.locator("#list").evaluate(list => { list.scrollTop = 1000; });
   await expect(page.locator(".ordinal").filter({ hasText: /^1$/ })).toHaveCount(1);
-  const id = await page.locator(".record").filter({ has: page.locator(".ordinal").filter({ hasText: /^1$/ }) }).getAttribute("data-id");
+  const firstVisible = page.locator(".record").filter({ has: page.locator(".ordinal").filter({ hasText: /^1$/ }) });
+  // The scroll event updates ordinals asynchronously; wait until the old first row is replaced.
+  await expect(firstVisible).not.toHaveAttribute("data-id", "text");
+  const id = await firstVisible.getAttribute("data-id");
   await page.locator("#list").click({ position: { x: 20, y: 20 } }); await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.name === "apply_record")?.args.id)).toBe(id);
 });
@@ -98,15 +127,42 @@ test("digit shortcuts preserve group editing and settings input", async ({ page 
   expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "apply_record"))).toEqual([]);
 });
 
-test("Esc clears search and focus, then hides and releases rendered records", async ({ page }) => {
+test("Esc hides without background refresh; idle release clears DOM before acknowledging", async ({ page }) => {
   await page.locator("#search").fill("React"); await page.keyboard.press("Escape");
   await expect(page.locator("#search")).toHaveValue(""); await expect(page.locator("#search")).not.toBeFocused();
   await expect(page.locator(".record").first()).toBeVisible(); await page.keyboard.press("Escape");
-  await expect(page.locator(".record")).toHaveCount(0); await expect(page.locator("#groups button")).toHaveCount(0);
+  await expect(page.locator(".record").first()).toBeAttached();
   const before = await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "get_state").length);
   await page.evaluate(() => window.__TP_TEST__.emit("history-changed"));
   expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "get_state").length)).toBe(before);
+  await page.evaluate(() => window.__TP_TEST__.idle());
+  await expect(page.locator(".record")).toHaveCount(0); await expect(page.locator("#groups button")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__TP_TEST__.released)).toMatchObject({ rows: 0, images: 0 });
   await page.evaluate(() => window.__TP_TEST__.show()); await expect(page.locator(".record").first()).toBeVisible();
+});
+
+test("warm reopen retains decoded image nodes without source changes or another thumbnail request", async ({ page }) => {
+  await expect(page.locator('img[data-preview="image"]')).toHaveJSProperty("naturalWidth", 320);
+  await page.evaluate(() => {
+    const node = document.querySelector('img[data-preview="image"]');
+    window.__TP_TEST__.cachedImage = node;
+    window.__TP_TEST__.imageChanges = [];
+    new MutationObserver(records => window.__TP_TEST__.imageChanges.push(...records.map(record => record.attributeName)))
+      .observe(node, { attributes: true, attributeFilter: ["src"] });
+    window.__TP_TEST__.imageReads = window.__TP_TEST__.calls.filter(call => call.name === "preview_data" && call.args.id === "image").length;
+  });
+  for (let i = 0; i < 3; i++) {
+    await page.locator("#close").click();
+    const hidden = await page.evaluate(() => window.__TP_TEST__.generation);
+    await page.evaluate(() => window.__TP_TEST__.show());
+    await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+    await page.evaluate(token => { window.__TP_TEST__.emit("panel-hidden", token); window.__TP_TEST__.idle(token); }, hidden);
+    expect(await page.evaluate(() => {
+      const t = window.__TP_TEST__, node = document.querySelector('img[data-preview="image"]');
+      return { same: node === t.cachedImage, complete: node.complete, width: node.naturalWidth, changes: t.imageChanges.length,
+        reads: t.calls.filter(call => call.name === "preview_data" && call.args.id === "image").length - t.imageReads };
+    })).toEqual({ same: true, complete: true, width: 320, changes: 0, reads: 0 });
+  }
 });
 test("taskbar icon preference defaults on, saves immediately and survives page recreation", async ({ page }) => {
   await page.locator("#settings-button").click();

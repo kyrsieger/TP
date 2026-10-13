@@ -1,5 +1,18 @@
 use serde::{Deserialize, Serialize};
-use std::{sync::Mutex, time::Instant};
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
+
+#[derive(Default, Debug, PartialEq, Eq)]
+pub(super) enum PanelIdlePhase {
+    #[default]
+    Awake,
+    Clearing,
+    Suspending,
+    Suspended,
+    Retained,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct PanelSession {
@@ -22,13 +35,97 @@ impl Default for PanelSession {
 pub(super) struct PanelState {
     pub(super) ready: bool,
     pub(super) open_requested: bool,
-    pub(super) releasing: bool,
+    pub(super) idle_phase: PanelIdlePhase,
+    pub(super) generation: u64,
     pub(super) hidden_at: Option<Instant>,
     pub(super) session: PanelSession,
     pub(super) shortcut_error: Option<String>,
 }
 
 impl PanelState {
+    pub(super) fn document_loading(&mut self, visible: bool) {
+        self.ready = false;
+        self.open_requested |= visible;
+        // A new document cannot acknowledge an old document's release request.
+        self.generation = self.generation.wrapping_add(1);
+        if self.hidden_at.is_some() {
+            self.idle_phase = PanelIdlePhase::Awake;
+        }
+    }
+
+    pub(super) fn document_ready(&mut self, visible: bool) -> Option<u64> {
+        self.ready = true;
+        let opening = self.open_requested || visible;
+        self.open_requested = false;
+        if opening {
+            self.cancel_idle();
+            Some(self.generation)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn cancel_idle(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.hidden_at = None;
+        self.idle_phase = PanelIdlePhase::Awake;
+    }
+
+    pub(super) fn mark_hidden(&mut self) -> bool {
+        if self.hidden_at.is_some() {
+            return false;
+        }
+        self.generation = self.generation.wrapping_add(1);
+        self.hidden_at = Some(Instant::now());
+        self.idle_phase = PanelIdlePhase::Awake;
+        true
+    }
+
+    pub(super) fn idle_due(&self, now: Instant) -> bool {
+        self.ready
+            && !self.open_requested
+            && self.idle_phase == PanelIdlePhase::Awake
+            && self
+                .hidden_at
+                .is_some_and(|at| now.saturating_duration_since(at) >= Duration::from_secs(60))
+    }
+
+    pub(super) fn begin_release(&mut self, now: Instant) -> Option<u64> {
+        if !self.idle_due(now) {
+            return None;
+        }
+        self.idle_phase = PanelIdlePhase::Clearing;
+        Some(self.generation)
+    }
+
+    pub(super) fn begin_suspend(&mut self, generation: u64) -> bool {
+        if generation != self.generation
+            || self.idle_phase != PanelIdlePhase::Clearing
+            || self.hidden_at.is_none()
+            || self.open_requested
+        {
+            return false;
+        }
+        self.idle_phase = PanelIdlePhase::Suspending;
+        true
+    }
+
+    pub(super) fn finish_suspend(&mut self, generation: u64, succeeded: bool) -> bool {
+        if generation != self.generation || self.idle_phase != PanelIdlePhase::Suspending {
+            return false;
+        }
+        self.idle_phase = if succeeded {
+            PanelIdlePhase::Suspended
+        } else {
+            PanelIdlePhase::Retained
+        };
+        true
+    }
+
+    pub(super) fn accepts_history_events(&self) -> bool {
+        self.ready && self.hidden_at.is_none() && self.idle_phase == PanelIdlePhase::Awake
+    }
+
     pub(super) fn clear_hidden_search(&mut self, retain_search_input: bool) {
         if self.hidden_at.is_some() && !retain_search_input {
             self.session.search.clear();

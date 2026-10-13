@@ -20,7 +20,7 @@ export function createPanelKeydown(context: KeyboardContext) {
     const openMoveGroupMenu = (trigger: HTMLElement, anchor: HTMLElement, records: import("../domain/types").RecordItem[]) => menus.openMove(trigger, anchor, records);
     const openLargePreview = (id: string) => previews.openLargePreview(id);
     const showHoverPreview = (id: string) => previews.showHoverPreview(id);
-    if (!state || (event.target as HTMLElement).id === "shortcut")
+    if (!state || history.value.active === false || (event.target as HTMLElement).id === "shortcut")
       return;
     if (document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.open)
       return;

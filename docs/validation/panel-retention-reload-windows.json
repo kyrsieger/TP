@@ -1,0 +1,475 @@
+{
+  "date": "2026-10-13",
+  "platform": "Windows 11, current machine only; macOS not compiled or run",
+  "behavior": "Keep hidden snapshot, list and loaded image nodes for one minute. Then flush DOM cleanup, acknowledge the matching native visibility generation, and suspend. Stale events/acknowledgements are ignored. Reloaded visible documents automatically reopen after readiness.",
+  "workload": "300 synthetic text records plus one 3840x2160 image, isolated SQLite and WebView2 profile. Temporary Ctrl+Alt+F10 registered through production code and sent using Windows SendInput. Close button, preview and F2 actions use real page handlers via test scripts.",
+  "host_scope": "Independent production-source copies with diagnostic probes. Debug host uses actual Vite server (not embedded assets) to reproduce dev reload; release host uses LTO and embedded production Vite assets. Clipboard watcher, autostart and tray setup disabled only in test copies; cleanup, idle checks and paste target thread retained. No user clipboard/data modified.",
+  "timing_scope": "Input submission to native show/unminimize/focus completed; two-frame timing waits two requestAnimationFrame callbacks and is not a physical pixel-on-screen measurement. Five warm cycles per mode and two actual suspend cycles for release; one actual 180-second dev suspension. Small samples are diagnostic, not latency guarantees.",
+  "before_fix_dev": {
+    "actual_hidden_seconds": 180,
+    "shortcut_presses": 1,
+    "first_show_ms": 164.7,
+    "new_document_start_ms": 278.8,
+    "new_document_ready_ms": 291.7,
+    "reopen_timeout_ms": 15035.4,
+    "cause": "Vite WebSocket disconnect/reconnect causes location.reload(); new inactive controller was not reopened when the native window was already visible."
+  },
+  "dev": {
+    "warm_native_show_ms": {
+      "samples": [
+        54.3,
+        84.2,
+        85.7,
+        96.9,
+        77.8
+      ],
+      "median": 84.2,
+      "min": 54.3,
+      "max": 96.9
+    },
+    "warm_image_checks": {
+      "cycles": 5,
+      "same_loaded_image_node": true,
+      "image_source_mutations": 0,
+      "additional_thumbnail_requests": 0
+    },
+    "resume_native_show_events_ms": [
+      127.2,
+      137.3,
+      282.3
+    ],
+    "resume_two_frames_ms": {
+      "samples": [
+        293.6
+      ],
+      "median": 293.6,
+      "min": 293.6,
+      "max": 293.6
+    },
+    "followup_observation_seconds": 15,
+    "checks": [
+      {
+        "elapsedMs": 862.1183,
+        "event": "check",
+        "label": "initial",
+        "metrics": {
+          "boot": 1791874411961,
+          "event": "document-start"
+        }
+      },
+      {
+        "elapsedMs": 280.9794,
+        "event": "capture",
+        "label": "warm-4",
+        "path": "D:\\Workspace\\project\\TP\\src-tauri\\target\\reopen-bench\\retention-dev\\dev-after\\warm.png"
+      },
+      {
+        "elapsedMs": 5440.416,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "active": false,
+          "boot": 1791874411961,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "hidden-retained-5s",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 1
+        }
+      },
+      {
+        "elapsedMs": 53592.1803,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "active": false,
+          "boot": 1791874411961,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "hidden-retained-53s",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 1
+        }
+      },
+      {
+        "elapsedMs": 60985.265400000004,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "event": "released-before-ack",
+          "images": 0,
+          "rows": 0,
+          "snapshot": true
+        }
+      },
+      {
+        "elapsedMs": 61021.8046,
+        "event": "native-suspended",
+        "label": "warm-4",
+        "ok": true
+      },
+      {
+        "elapsedMs": 0.7443000000000001,
+        "event": "native-suspended",
+        "label": "resume-3min",
+        "ok": true
+      },
+      {
+        "elapsedMs": 28.9021,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "boot": 1791874411961,
+          "event": "vite-disconnect"
+        }
+      },
+      {
+        "elapsedMs": 241.5358,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "boot": 1791874597979,
+          "event": "document-start"
+        }
+      },
+      {
+        "elapsedMs": 15301.3743,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "active": true,
+          "boot": 1791874597979,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "stable-after-3min",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 1
+        }
+      },
+      {
+        "elapsedMs": 15486.5434,
+        "event": "capture",
+        "label": "resume-3min",
+        "path": "D:\\Workspace\\project\\TP\\src-tauri\\target\\reopen-bench\\retention-dev\\dev-after\\resumed-3min.png"
+      },
+      {
+        "elapsedMs": 15692.4514,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "event": "editor",
+          "open": true
+        }
+      },
+      {
+        "elapsedMs": 15841.7544,
+        "event": "verified",
+        "label": "resume-3min",
+        "ok": true
+      }
+    ]
+  },
+  "release": {
+    "warm_native_show_ms": {
+      "samples": [
+        53.5,
+        65.5,
+        76.4,
+        55.0,
+        64.9
+      ],
+      "median": 64.9,
+      "min": 53.5,
+      "max": 76.4
+    },
+    "warm_two_frames_ms": {
+      "samples": [
+        64.2,
+        76.8,
+        92.3,
+        70.9,
+        76.3
+      ],
+      "median": 76.3,
+      "min": 64.2,
+      "max": 92.3
+    },
+    "warm_image_checks": {
+      "cycles": 5,
+      "same_loaded_image_node": true,
+      "image_source_mutations": 0,
+      "additional_thumbnail_requests": 0
+    },
+    "resume_native_show_ms": {
+      "samples": [
+        105.1,
+        80.0
+      ],
+      "median": 92.5,
+      "min": 80.0,
+      "max": 105.1
+    },
+    "resume_two_frames_ms": {
+      "samples": [
+        124.1,
+        100.7
+      ],
+      "median": 112.4,
+      "min": 100.7,
+      "max": 124.1
+    },
+    "actual_hidden_seconds": [
+      180,
+      65
+    ],
+    "checks": [
+      {
+        "elapsedMs": 449.3768,
+        "event": "check",
+        "label": "initial",
+        "metrics": {
+          "boot": 1791875140253,
+          "event": "document-start"
+        }
+      },
+      {
+        "elapsedMs": 257.8626,
+        "event": "capture",
+        "label": "warm-4",
+        "path": "D:\\Workspace\\project\\TP\\src-tauri\\target\\reopen-bench\\retention-release\\release-after2\\warm.png"
+      },
+      {
+        "elapsedMs": 8697.757599999999,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "active": false,
+          "boot": 1791875140253,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "hidden-retained-5s",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 1
+        }
+      },
+      {
+        "elapsedMs": 57084.4868,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "active": false,
+          "boot": 1791875140253,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "hidden-retained-53s",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 1
+        }
+      },
+      {
+        "elapsedMs": 63798.0225,
+        "event": "check",
+        "label": "warm-4",
+        "metrics": {
+          "event": "released-before-ack",
+          "images": 0,
+          "rows": 0,
+          "snapshot": true
+        }
+      },
+      {
+        "elapsedMs": 63814.5922,
+        "event": "native-suspended",
+        "label": "warm-4",
+        "ok": true
+      },
+      {
+        "elapsedMs": 183780.7827,
+        "event": "native-suspended",
+        "label": "warm-4",
+        "ok": true
+      },
+      {
+        "elapsedMs": 15130.7227,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "active": true,
+          "boot": 1791875140253,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "stable-after-3min",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 2
+        }
+      },
+      {
+        "elapsedMs": 15320.125,
+        "event": "capture",
+        "label": "resume-3min",
+        "path": "D:\\Workspace\\project\\TP\\src-tauri\\target\\reopen-bench\\retention-release\\release-after2\\resumed-3min.png"
+      },
+      {
+        "elapsedMs": 15522.342999999999,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "event": "editor",
+          "open": true
+        }
+      },
+      {
+        "elapsedMs": 75871.7126,
+        "event": "check",
+        "label": "resume-3min",
+        "metrics": {
+          "event": "released-before-ack",
+          "images": 0,
+          "rows": 0,
+          "snapshot": true
+        }
+      },
+      {
+        "elapsedMs": 75900.29939999999,
+        "event": "native-suspended",
+        "label": "resume-3min",
+        "ok": true
+      },
+      {
+        "elapsedMs": 1108.2138,
+        "event": "check",
+        "label": "resume-65s",
+        "metrics": {
+          "active": true,
+          "boot": 1791875140253,
+          "changes": 0,
+          "event": "probe",
+          "focus": "bench-image",
+          "groups": 3,
+          "images": 1,
+          "label": "stable-after-65s",
+          "loaded": true,
+          "rows": 11,
+          "sameImage": false,
+          "snapshot": true,
+          "thumbnailReads": 3
+        }
+      },
+      {
+        "elapsedMs": 1508.1186,
+        "event": "verified",
+        "label": "resume-65s",
+        "ok": true
+      }
+    ]
+  },
+  "memory_scope": "Sum of host and all descendants using Windows process memory counters. Private working set is private resident physical RAM; private commit is allocation charge and can stay high after physical memory is reclaimed. One release run; browser reclamation is delayed and workload dependent.",
+  "memory": [
+    {
+      "stage": "startup",
+      "private_resident_mib": 2.0,
+      "private_commit_mib": 2.6,
+      "processes": 1
+    },
+    {
+      "stage": "visible-main",
+      "private_resident_mib": 134.2,
+      "private_commit_mib": 235.9,
+      "processes": 8
+    },
+    {
+      "stage": "with-image-previews",
+      "private_resident_mib": 207.0,
+      "private_commit_mib": 399.4,
+      "processes": 9
+    },
+    {
+      "stage": "hidden-retained-5s",
+      "private_resident_mib": 164.5,
+      "private_commit_mib": 384.1,
+      "processes": 9
+    },
+    {
+      "stage": "hidden-retained-53s",
+      "private_resident_mib": 144.8,
+      "private_commit_mib": 294.7,
+      "processes": 7
+    },
+    {
+      "stage": "cleared-suspended-65s",
+      "private_resident_mib": 98.5,
+      "private_commit_mib": 176.7,
+      "processes": 7
+    },
+    {
+      "stage": "cleared-suspended-180s",
+      "private_resident_mib": 14.2,
+      "private_commit_mib": 175.1,
+      "processes": 7
+    },
+    {
+      "stage": "visible-final",
+      "private_resident_mib": 105.2,
+      "private_commit_mib": 244.1,
+      "processes": 8
+    }
+  ],
+  "automated_checks": {
+    "frontend_unit_tests": 145,
+    "rust_unit_tests": 54,
+    "edge_ui_tests": 38,
+    "ui_note": "37 passed in full run; remaining test expected old immediate clearing, updated to idle release and passed in targeted rerun.",
+    "frontend_build": "passed",
+    "production_windows_release_build": "passed"
+  },
+  "visual_scope": "Page.captureScreenshot through WebView2 DevTools protocol after warm reopen and 15 seconds after 180-second resume. Inspected complete group/list/image rendering; not a video of every display frame. Warm image-node/source/request probes additionally verify no reload caused by hide/reopen.",
+  "visual_files": [
+    {
+      "file": "panel-retention-dev-resumed.png",
+      "sha256": "479154ae7b57ed9c4f3f0bbad2fe2d107756cac47ea6f5fbcdba8f47ca438a89",
+      "same_as_warm_capture": true
+    },
+    {
+      "file": "panel-retention-release-resumed.png",
+      "sha256": "a72267962b8fddc3546fc706add4398605d13130589f241c76b5e75c93337741",
+      "same_as_warm_capture": false
+    }
+  ],
+  "limitations": "Development mode can briefly repaint while Vite reloads. Retained-image reuse covers unchanged visible records; after one-minute cleanup, changed records or view changes require image loading. No macOS build or runtime validation."
+}

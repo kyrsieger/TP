@@ -44,7 +44,7 @@ export function GroupTabs({ history, groups, backToTop, selectGroup, scrollBackT
     onBlur={event => { const element = event.currentTarget; setTimeout(() => { if (document.activeElement !== element) groups.cancel(); }, 0); }}
     onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); void groups.commit(); } if (event.key === "Escape") { event.preventDefault(); groups.cancel(); } }} />;
   return <nav id="groups" ref={ref} aria-label="分组" onContextMenu={contextMenu}>
-    {state.active && <>{[{ id: "default", name: "默认" }, { id: "favorite", name: "收藏" }, ...(state.snapshot?.groups ?? []).map(group => ({ id: `group:${group.id}`, name: group.name }))]
+    {state.snapshot !== null && <>{[{ id: "default", name: "默认" }, { id: "favorite", name: "收藏" }, ...(state.snapshot?.groups ?? []).map(group => ({ id: `group:${group.id}`, name: group.name }))]
       .map(group => editing.edit?.mode === "rename" && group.id === `group:${editing.edit.id}` ? <span key={group.id} style={{ display: "contents" }}>{groupInput}</span>
         : <GroupTab key={group.id} {...group} active={state.view === group.id} backToTop={backToTop && state.view === group.id}
           select={() => { if (backToTop && state.view === group.id) scrollBackToTop(); else selectGroup(group.id); }}

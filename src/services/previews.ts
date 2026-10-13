@@ -1,6 +1,7 @@
-import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { monitorFromPoint, type Window } from "@tauri-apps/api/window";
 import { call } from "./desktop";
+import { subscribeAll } from "./subscriptions";
 import { ensurePreviewWindow, initPreviewWindows } from "../preview-windows";
 import { previewPaths } from "../domain/records";
 import type { PanelController } from "../state/panel";
@@ -170,91 +171,92 @@ export class PreviewController {
     }
   }
   async start() {
-    const disposeWindows = await initPreviewWindows();
-    const unlisteners: UnlistenFn[] = [];
-    unlisteners.push(await listen<{
-      id: string;
-      fixed: boolean;
-      width: number;
-      height: number;
-    }>("large-preview-loaded", async (event) => {
-      const request = ++this.largePreviewSizeRequest;
-      const { id, fixed, width: imageWidth, height: imageHeight } = event.payload;
-      if (this.largePreviewId !== id)
-        return;
-      if (this.history.value.selectedId !== id) {
-        this.largePreviewId = null;
-        void emitTo("large-preview", "large-preview-clear");
-        return;
-      }
-      try {
-        const [position, size, scale] = await Promise.all([this.panel.outerPosition(), this.panel.outerSize(), this.panel.scaleFactor()]);
-        const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
-        if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest)
-          return;
-        if (!monitor)
-          throw new Error("无法确定当前屏幕");
-        const area = monitor.workArea;
-        const maxWidth = Math.max(1, Math.round(Math.min(area.size.width * .9, 1600 * scale)));
-        const maxHeight = Math.max(1, Math.round(Math.min(area.size.height * .9, 1000 * scale)));
-        const imageScale = fixed ? 1 : Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
-        const width = fixed ? maxWidth : Math.max(1, Math.round(imageWidth * scale * imageScale));
-        const height = fixed ? maxHeight : Math.max(1, Math.round(imageHeight * scale * imageScale));
-        const x = Math.round(area.position.x + (area.size.width - width) / 2);
-        const y = Math.round(area.position.y + (area.size.height - height) / 2);
-        if (request !== this.largePreviewSizeRequest)
-          return;
-        await call("show_large_preview", { x, y, width, height });
+    const disposeSubscriptions = await subscribeAll([
+      initPreviewWindows(),
+      listen<{
+        id: string;
+        fixed: boolean;
+        width: number;
+        height: number;
+      }>("large-preview-loaded", async (event) => {
+        const request = ++this.largePreviewSizeRequest;
+        const { id, fixed, width: imageWidth, height: imageHeight } = event.payload;
         if (this.largePreviewId !== id)
-          await call("hide_large_preview");
-      }
-      catch (error) {
-        if (request !== this.largePreviewSizeRequest)
           return;
-        this.largePreviewId = null;
-        void emitTo("large-preview", "large-preview-clear");
-        this.toast(`预览失败：${String(error)}`);
-      }
-    }));
-    unlisteners.push(await listen("large-preview-closed", () => { this.largePreviewId = null; }));
-    unlisteners.push(await listen<{
-      id: string;
-      generation: number;
-      height: number;
-    }>("preview-measured", event => {
-      const { id, generation, height: measured } = event.payload;
-      const placement = this.previewPlacement;
-      if (id !== this.previewId || generation !== this.previewGeneration || !placement || (!this.hoveredId && !this.previewHovered))
-        return;
-      const margin = Math.round(12 * placement.scale);
-      const height = Math.max(1, Math.min(Math.ceil(measured * placement.scale), placement.bottom - placement.top - 2 * margin));
-      const y = Math.max(placement.top + margin, Math.min(placement.rowY, placement.bottom - margin - height));
-      const token = this.previewGeneration;
-      void call("show_preview", { x: placement.x, y, width: placement.width, height }).then(() => {
-        if (token !== this.previewGeneration)
-          void call("hide_preview").catch(() => { });
-      }).catch(error => this.toast(`预览失败：${String(error)}`));
-    }));
-    unlisteners.push(await listen<string>("preview-enter", event => {
-      if (event.payload !== this.previewId)
-        return;
-      this.previewHovered = true;
-      window.clearTimeout(this.previewCloseTimer);
-    }));
-    unlisteners.push(await listen<string>("preview-leave", event => {
-      if (event.payload !== this.previewId)
-        return;
-      this.previewHovered = false;
-      this.schedulePreviewClose();
-    }));
-    unlisteners.push(await listen<string>("preview-blur", event => {
-      if (event.payload === this.previewId)
-        this.closePreview();
-    }));
-    unlisteners.push(await listen<string>("preview-space", event => {
-      if (event.payload === this.history.value.selectedId)
-        void this.openLargePreview(event.payload);
-    }));
-    return () => { unlisteners.forEach(unlisten => unlisten()); disposeWindows(); this.reset(); };
+        if (this.history.value.selectedId !== id) {
+          this.largePreviewId = null;
+          void emitTo("large-preview", "large-preview-clear");
+          return;
+        }
+        try {
+          const [position, size, scale] = await Promise.all([this.panel.outerPosition(), this.panel.outerSize(), this.panel.scaleFactor()]);
+          const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
+          if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest)
+            return;
+          if (!monitor)
+            throw new Error("无法确定当前屏幕");
+          const area = monitor.workArea;
+          const maxWidth = Math.max(1, Math.round(Math.min(area.size.width * .9, 1600 * scale)));
+          const maxHeight = Math.max(1, Math.round(Math.min(area.size.height * .9, 1000 * scale)));
+          const imageScale = fixed ? 1 : Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
+          const width = fixed ? maxWidth : Math.max(1, Math.round(imageWidth * scale * imageScale));
+          const height = fixed ? maxHeight : Math.max(1, Math.round(imageHeight * scale * imageScale));
+          const x = Math.round(area.position.x + (area.size.width - width) / 2);
+          const y = Math.round(area.position.y + (area.size.height - height) / 2);
+          if (request !== this.largePreviewSizeRequest)
+            return;
+          await call("show_large_preview", { x, y, width, height });
+          if (this.largePreviewId !== id)
+            await call("hide_large_preview");
+        }
+        catch (error) {
+          if (request !== this.largePreviewSizeRequest)
+            return;
+          this.largePreviewId = null;
+          void emitTo("large-preview", "large-preview-clear");
+          this.toast(`预览失败：${String(error)}`);
+        }
+      }),
+      listen("large-preview-closed", () => { this.largePreviewId = null; }),
+      listen<{
+        id: string;
+        generation: number;
+        height: number;
+      }>("preview-measured", event => {
+        const { id, generation, height: measured } = event.payload;
+        const placement = this.previewPlacement;
+        if (id !== this.previewId || generation !== this.previewGeneration || !placement || (!this.hoveredId && !this.previewHovered))
+          return;
+        const margin = Math.round(12 * placement.scale);
+        const height = Math.max(1, Math.min(Math.ceil(measured * placement.scale), placement.bottom - placement.top - 2 * margin));
+        const y = Math.max(placement.top + margin, Math.min(placement.rowY, placement.bottom - margin - height));
+        const token = this.previewGeneration;
+        void call("show_preview", { x: placement.x, y, width: placement.width, height }).then(() => {
+          if (token !== this.previewGeneration)
+            void call("hide_preview").catch(() => { });
+        }).catch(error => this.toast(`预览失败：${String(error)}`));
+      }),
+      listen<string>("preview-enter", event => {
+        if (event.payload !== this.previewId)
+          return;
+        this.previewHovered = true;
+        window.clearTimeout(this.previewCloseTimer);
+      }),
+      listen<string>("preview-leave", event => {
+        if (event.payload !== this.previewId)
+          return;
+        this.previewHovered = false;
+        this.schedulePreviewClose();
+      }),
+      listen<string>("preview-blur", event => {
+        if (event.payload === this.previewId)
+          this.closePreview();
+      }),
+      listen<string>("preview-space", event => {
+        if (event.payload === this.history.value.selectedId)
+          void this.openLargePreview(event.payload);
+      }),
+      ]);
+    return () => { disposeSubscriptions(); this.reset(); };
   }
 }

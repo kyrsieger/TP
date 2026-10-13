@@ -115,7 +115,7 @@ test("opening the panel makes the selected first record ready for immediate rena
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.renameShortcut)).toBe("Control+Shift+R");
   await page.locator("#settings-button").click();
   await page.locator("#search").fill("React");
-  await page.evaluate(() => window.__TP_TEST__.hide()); await expect(page.locator(".record")).toHaveCount(0);
+  await page.evaluate(() => { window.__TP_TEST__.hide(); window.__TP_TEST__.idle(); }); await expect(page.locator(".record")).toHaveCount(0);
   await page.evaluate(() => window.__TP_TEST__.show());
   await expect(first).toHaveClass(/selected/); await expect(first).toBeFocused();
   await page.keyboard.press("Control+Shift+r"); await expect(page.getByLabel("记录标题", { exact: true })).toBeFocused();

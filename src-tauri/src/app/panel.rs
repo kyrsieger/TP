@@ -2,17 +2,14 @@
 use super::webview::filter_browser_context_menu;
 use super::{
     common::{err, Result},
+    panel_runtime::{resume_panel, suspend_panel},
     preview::hide_preview_window,
-    session::{PanelLifecycle, PanelSession},
+    session::{PanelIdlePhase, PanelLifecycle, PanelSession},
     storage::{settings, Store},
     targets::remember_paste_target,
-    webview::set_window_memory_mode,
 };
 use crate::platform;
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::{thread, time::Instant};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 fn create_panel(app: &tauri::AppHandle) -> Result<()> {
@@ -33,6 +30,14 @@ fn create_panel(app: &tauri::AppHandle) -> Result<()> {
     let builder = builder.skip_taskbar(!settings.show_taskbar_icon);
     let window = builder
         .always_on_top(settings.always_on_top)
+        .on_page_load(|window, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                let visible = window.is_visible().unwrap_or(false);
+                if let Ok(mut state) = window.state::<PanelLifecycle>().state.lock() {
+                    state.document_loading(visible);
+                }
+            }
+        })
         .build()
         .map_err(err)?;
     #[cfg(windows)]
@@ -65,10 +70,8 @@ fn create_panel(app: &tauri::AppHandle) -> Result<()> {
 pub(super) fn open_panel(app: &tauri::AppHandle) -> Result<()> {
     let lifecycle = app.state::<PanelLifecycle>();
     let mut state = lifecycle.state.lock().map_err(err)?;
-    if state.releasing {
-        return Ok(());
-    }
     let ready = state.ready;
+    let generation = state.generation;
     if ready {
         state.open_requested = false;
     }
@@ -79,7 +82,10 @@ pub(super) fn open_panel(app: &tauri::AppHandle) -> Result<()> {
             return Err(error);
         }
     } else if ready {
-        app.emit_to("main", "open-requested", ()).map_err(err)?;
+        let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
+        resume_panel(&window).map_err(err)?;
+        app.emit_to("main", "open-requested", generation)
+            .map_err(err)?;
     }
     Ok(())
 }
@@ -88,7 +94,7 @@ pub(super) fn request_panel(app: &tauri::AppHandle) {
     let _ = remember_paste_target(app.state::<Store>());
     let wake = if let Ok(mut state) = app.state::<PanelLifecycle>().state.lock() {
         let wake = !state.open_requested;
-        state.hidden_at = None;
+        state.cancel_idle();
         state.open_requested = true;
         wake
     } else {
@@ -161,28 +167,31 @@ pub(super) fn panel_ready(
     app: tauri::AppHandle,
     lifecycle: tauri::State<PanelLifecycle>,
 ) -> Result<Option<String>> {
+    let visible = app
+        .get_webview_window("main")
+        .is_some_and(|window| window.is_visible().unwrap_or(false));
     let mut state = lifecycle.state.lock().map_err(err)?;
-    state.ready = true;
-    let opening = state.open_requested;
-    state.open_requested = false;
+    let opening = state.document_ready(visible);
+    let generation = state.generation;
     let error = state.shortcut_error.clone();
     drop(state);
-    if opening {
-        app.emit_to("main", "open-requested", ()).map_err(err)?;
+    if let Some(generation) = opening {
+        app.emit_to("main", "open-requested", generation)
+            .map_err(err)?;
+    } else {
+        // Synchronize a page reloaded while hidden before it receives idle-release.
+        app.emit_to("main", "panel-hidden", generation)
+            .map_err(err)?;
     }
     Ok(error)
 }
 
-pub(super) fn release_idle_panel(app: &tauri::AppHandle) {
+pub(super) fn suspend_idle_panel(app: &tauri::AppHandle) {
     let due = app
         .state::<PanelLifecycle>()
         .state
         .lock()
-        .is_ok_and(|state| {
-            state
-                .hidden_at
-                .is_some_and(|at| at.elapsed() >= Duration::from_secs(60))
-        });
+        .is_ok_and(|state| state.idle_due(Instant::now()));
     if !due {
         return;
     }
@@ -192,21 +201,79 @@ pub(super) fn release_idle_panel(app: &tauri::AppHandle) {
         let Ok(mut state) = lifecycle.state.lock() else {
             return;
         };
-        if !state
-            .hidden_at
-            .is_some_and(|at| at.elapsed() >= Duration::from_secs(60))
-        {
+        let Some(window) = handle.get_webview_window("main") else {
+            return;
+        };
+        if window.is_visible().unwrap_or(true) {
             return;
         }
-        state.hidden_at = None;
-        state.releasing = true;
-        state.ready = false;
+        let Some(generation) = state.begin_release(Instant::now()) else {
+            return;
+        };
         drop(state);
-        for label in ["preview", "large-preview", "main"] {
-            if let Some(window) = handle.get_webview_window(label) {
-                if let Err(error) = window.destroy() {
-                    eprintln!("Failed to release {label}: {error}");
+        if let Err(error) = handle.emit_to("main", "panel-idle-release", generation) {
+            eprintln!("Failed to request panel content release: {error}");
+            if let Ok(mut state) = lifecycle.state.lock() {
+                if state.generation == generation && state.idle_phase == PanelIdlePhase::Clearing {
+                    state.idle_phase = PanelIdlePhase::Awake;
                 }
+            }
+        }
+    });
+}
+
+#[tauri::command]
+pub(super) fn panel_content_released(app: tauri::AppHandle, generation: u64) -> Result<()> {
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let Some(window) = handle.get_webview_window("main") else {
+            return;
+        };
+        if window.is_visible().unwrap_or(true) {
+            return;
+        }
+        let lifecycle = handle.state::<PanelLifecycle>();
+        let Ok(mut state) = lifecycle.state.lock() else {
+            return;
+        };
+        if !state.begin_suspend(generation) {
+            return;
+        }
+        drop(state);
+        for label in ["preview", "large-preview"] {
+            if let Some(window) = handle.get_webview_window(label) {
+                if window.is_visible().is_ok_and(|visible| !visible) {
+                    if let Err(error) = window.destroy() {
+                        eprintln!("Failed to release {label}: {error}");
+                    }
+                }
+            }
+        }
+        let callback = handle.clone();
+        if let Err(error) = suspend_panel(&window, move |succeeded| {
+            finish_panel_suspend(&callback, generation, succeeded);
+        }) {
+            eprintln!("Failed to access panel for suspension: {error}");
+            finish_panel_suspend(&handle, generation, false);
+        }
+    })
+    .map_err(err)
+}
+
+fn finish_panel_suspend(app: &tauri::AppHandle, generation: u64, succeeded: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let lifecycle = handle.state::<PanelLifecycle>();
+        let Ok(mut state) = lifecycle.state.lock() else {
+            return;
+        };
+        let accepted = state.finish_suspend(generation, succeeded);
+        let resume = !accepted && state.idle_phase == PanelIdlePhase::Awake;
+        drop(state);
+        // A shortcut can arrive while the native suspend request is still completing.
+        if resume {
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = resume_panel(&window);
             }
         }
     });
@@ -219,10 +286,10 @@ pub(super) fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> R
     {
         let lifecycle = app.state::<PanelLifecycle>();
         let mut state = lifecycle.state.lock().map_err(err)?;
-        state.hidden_at = None;
+        state.cancel_idle();
         state.open_requested = false;
     }
-    set_window_memory_mode(&window, false);
+    resume_panel(&window).map_err(err)?;
     window.show().map_err(err)?;
     window.unminimize().map_err(err)?;
     window.set_focus().map_err(err)?;
@@ -238,16 +305,19 @@ pub(super) fn hide_panel(app: tauri::AppHandle) -> Result<()> {
         let conn = store.db.lock().map_err(err)?;
         let retain_search_input = settings(&conn)?.retain_search_input;
         window.hide().map_err(err)?;
-        {
+        let (newly_hidden, generation) = {
             let lifecycle = app.state::<PanelLifecycle>();
             let mut state = lifecycle.state.lock().map_err(err)?;
             state.open_requested = false;
-            state.hidden_at.get_or_insert_with(Instant::now);
+            let newly_hidden = state.mark_hidden();
             state.clear_hidden_search(retain_search_input);
-        }
+            (newly_hidden, state.generation)
+        };
         drop(conn);
-        app.emit_to("main", "panel-hidden", ()).map_err(err)?;
-        set_window_memory_mode(&window, true);
+        if newly_hidden {
+            app.emit_to("main", "panel-hidden", generation)
+                .map_err(err)?;
+        }
     }
     Ok(())
 }

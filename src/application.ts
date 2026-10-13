@@ -4,6 +4,7 @@ import { call, isMacOS, panelWindow } from "./services/desktop";
 import { GeometryController } from "./services/geometry";
 import { PreviewController } from "./services/previews";
 import { SettingsFocus } from "./services/focus";
+import { subscribeAll } from "./services/subscriptions";
 import { GroupController } from "./state/groups";
 import { RecordRenameController } from "./state/record-rename";
 import { MenuController } from "./state/menus";
@@ -89,13 +90,22 @@ export function createApplication(list: ListHandle) {
       window.removeEventListener("blur", onBlur); window.removeEventListener("resize", onResize);
     });
     try {
-      track(await previews.start());
-      track(await listen("history-changed", () => { void history.refresh().catch(error => toast(String(error))); }));
-      track(await listen("panel-hidden", () => history.release()));
-      track(await listen("open-requested", () => { void history.open().catch(error => toast(String(error))); }));
-      track(await panelWindow.onMoved(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }));
-      track(await panelWindow.onResized(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }));
-      const session = await call<PanelSession>("get_panel_session");
+      const [session] = await Promise.all([
+        call<PanelSession>("get_panel_session"),
+        subscribeAll([
+          previews.start(),
+          listen("history-changed", () => { void history.refresh().catch(error => toast(String(error))); }),
+          listen<number>("panel-hidden", event => history.hide(event.payload)),
+          listen<number>("panel-idle-release", event => {
+            let released = false;
+            flushSync(() => { released = history.release(event.payload); });
+            if (released) void call("panel_content_released", { generation: event.payload }).catch(error => toast(String(error)));
+          }),
+          listen<number>("open-requested", event => { void history.open(event.payload).catch(error => toast(String(error))); }),
+          panelWindow.onMoved(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }),
+          panelWindow.onResized(() => { previews.closePreview(); geometry.scheduleGeometrySave(); }),
+        ]).then(track),
+      ]);
       if (disposed || generation !== startGeneration) return;
       history.restore(session);
       const error = await call<string | null>("panel_ready");
