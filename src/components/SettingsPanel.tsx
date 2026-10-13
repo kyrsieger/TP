@@ -73,13 +73,16 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <label>1Password 记录保留秒数<NumberSetting id="sensitive" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></label>
     <p className="hint">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
     <fieldset><legend>面板位置</legend>{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="inline"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
-      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }, true); }} />{label}</label>)}</fieldset>
-    <div className="setting-field"><span className="setting-label">固定位置</span><div className="setting-select fixed-position-select">
-      <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.fixedPosition} disabled={s.positionMode === "cursor"} onClick={() => menus.update({ fixedPosition: !menu.fixedPosition })}><span className="fixed-position-value">{positionOptions.find(([value]) => value === s.fixedPosition)![1]}</span><Icon name="chevron" /></button>
-      <div id="fixed-position-menu" role="listbox" hidden={!menu.fixedPosition}>{positionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-fixed-position={value} aria-selected={s.fixedPosition === value}
-        onClick={() => { menus.update({ fixedPosition: false }); save({ fixedPosition: value }, true); }}>{label}</button>)}</div>
-    </div></div>
-    <label className="inline"><input id="remember" type="checkbox" checked={s.rememberPosition} disabled={s.positionMode === "cursor"} onChange={event => save({ rememberPosition: event.target.checked }, !event.target.checked)} />记忆拖拽位置</label>
+      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }, true); }} />{label}</label>)}
+      <fieldset className="fixed-position-settings" aria-label="固定位置设置" disabled={s.positionMode !== "fixed"}>
+        <div className="setting-field"><span className="setting-label">固定位置</span><div className="setting-select fixed-position-select">
+          <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.fixedPosition && s.positionMode === "fixed"} onClick={() => menus.update({ fixedPosition: !menu.fixedPosition })}><span className="fixed-position-value">{positionOptions.find(([value]) => value === s.fixedPosition)![1]}</span><Icon name="chevron" /></button>
+          <div id="fixed-position-menu" role="listbox" hidden={!menu.fixedPosition || s.positionMode !== "fixed"}>{positionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-fixed-position={value} aria-selected={s.fixedPosition === value}
+            onClick={() => { menus.update({ fixedPosition: false }); save({ fixedPosition: value }, true); }}>{label}</button>)}</div>
+        </div></div>
+        <label className="inline"><input id="remember" type="checkbox" checked={s.rememberPosition} onChange={event => save({ rememberPosition: event.target.checked }, !event.target.checked)} />记忆拖拽位置</label>
+      </fieldset>
+    </fieldset>
     <p className="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     <ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} />
     <section className="cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
