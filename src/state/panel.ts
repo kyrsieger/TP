@@ -19,6 +19,7 @@ export class PanelController extends Observable<PanelValue> {
   private opening: Promise<void> | null = null;
   private refreshing: Promise<void> | null = null;
   private refreshAgain = false;
+  private settingsRevision = 0;
   constructor(private call: CommandCall, private effects: PanelEffects) {
     super({ active: false, snapshot: null, settings: null, view: "default", kindFilter: "all", search: "",
       selectedId: null, selectedIds: new Set(), anchorId: null });
@@ -70,6 +71,7 @@ export class PanelController extends Observable<PanelValue> {
     this.update({ selectedId, selectedIds, anchorId });
   }
   commitSettings(settings: Settings) {
+    this.settingsRevision++;
     this.update({ settings, snapshot: this.value.snapshot ? { ...this.value.snapshot, settings } : null });
     if (!this.value.active) { this.clearHiddenSearch(); this.saveSession(); }
   }
@@ -84,9 +86,11 @@ export class PanelController extends Observable<PanelValue> {
       while (this.refreshAgain && this.value.active) {
         this.refreshAgain = false;
         const generation = this.generation;
+        const settingsRevision = this.settingsRevision;
         const snapshot = await this.call<Snapshot>("get_state");
         if (!this.value.active || generation !== this.generation) continue;
         this.effects.beforeRefresh();
+        if (settingsRevision !== this.settingsRevision && this.value.settings) snapshot.settings = this.value.settings;
         this.update({ snapshot, settings: snapshot.settings });
         if (this.value.view.startsWith("group:") && !snapshot.groups.some(group => `group:${group.id}` === this.value.view)) {
           this.update({ view: "default" }); this.saveSession();

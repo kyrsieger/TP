@@ -3,6 +3,7 @@ const callbacks = new Map(), listeners = new Map();
 let nextId = 1, visible = false, confirmationCount = 0, generation = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
+  theme: window.__TP_TEST_INITIAL_THEME__ ?? "indigo",
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
 const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, title: "", files: [], favorite: false, pinnedAt: null, groupId: null,
   usedAt: 1, createdAt: null, expiresAt: null, status: "ready", preview: false, assetPath: null, ...overrides });
@@ -49,6 +50,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "save_panel_session") { session = { ...args.session }; return; }
     if (name === "panel_ready") { setTimeout(() => window.__TP_TEST__.show(), 0); return null; }
     if (name === "get_state") return structuredClone(state);
+    if (name === "get_theme") return state.settings.theme ?? "indigo";
     if (name === "show_panel") { visible = true; return; }
     if (name === "hide_panel") { window.__TP_TEST__.hide(); return; }
     if (name === "apply_record") { if (!state.settings.alwaysOnTop) window.__TP_TEST__.hide(); return; }
@@ -57,6 +59,8 @@ window.__TAURI_INTERNALS__ = {
       return;
     }
     if (name === "save_settings") {
+      if (window.__TP_TEST__.themeSaveDelay) await new Promise(resolve => setTimeout(resolve, window.__TP_TEST__.themeSaveDelay));
+      if (window.__TP_TEST__.settingsError) throw new Error(window.__TP_TEST__.settingsError);
       if ((args.value.maxOrdinary !== state.settings.maxOrdinary || args.value.retentionDays !== state.settings.retentionDays) && confirmationCount > (args.confirmedCount ?? 0))
         return { status: "confirmation_required", count: confirmationCount };
       state.settings = { ...args.value }; return { status: "saved" };

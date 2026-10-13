@@ -59,7 +59,7 @@ export function createApplication(list: ListHandle) {
     if (!id) return;
     const row = list.ensure(id); row?.scrollIntoView({ block: "nearest" }); row?.focus({ preventScroll: true });
   }
-  function closeSettings() { flushSync(() => settings.update({ open: false })); focus.restore(list); }
+  function closeSettings() { settings.flushTheme(); menus.update({ theme: false }); flushSync(() => settings.update({ open: false })); focus.restore(list); }
   function startRecordRename(id: string) {
     groups.cancel(); menus.closePopups(); previews.closePreview();
     list.ensure(id);

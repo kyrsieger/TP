@@ -1,3 +1,4 @@
+import type { ThemeId } from "./themes";
 export type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 export type FileItem = { original: string; stored: string | null; isDirectory: boolean };
 export type RecordItem = {
@@ -8,6 +9,7 @@ export type RecordItem = {
 };
 export type Group = { id: number; name: string };
 export type Settings = {
+  theme?: ThemeId;
   maxOrdinary: number; retentionDays: number; sensitiveSeconds: number; shortcut: string; renameShortcut: string;
   positionMode: "fixed" | "cursor"; fixedPosition: "left" | "right" | "center";
   rememberPosition: boolean; panelWidth: number; panelHeight: number;
@@ -17,8 +19,9 @@ export type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Setti
 export type SettingsSaveResult = { status: "saved" } | { status: "confirmation_required"; count: number };
 export type PanelSession = { view: string; kindFilter: string; search: string };
 export type PreviewPayload = {
+  theme?: ThemeId;
   id: string; kind: Kind; body: string; title?: string; files: { original: string }[];
   groupName: string | null; preview: boolean; status: string;
   width: number; maxHeight: number; generation: number; search: string;
 };
-export type LargePreviewPayload = { id: string; kind: "image" | "video"; count: number };
+export type LargePreviewPayload = { id: string; kind: "image" | "video"; count: number; theme?: ThemeId };

@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-13",
+  "platform": "Windows",
+  "feature": "主题配色下拉与悬浮切换",
+  "themeCount": 11,
+  "newThemeCount": 10,
+  "order": ["墨绿", "橄榄", "燕麦", "陶土", "莓灰", "靛蓝", "靛青", "石墨", "暮紫", "炭黑", "森林"],
+  "sorting": {
+    "metric": "CIEDE2000",
+    "colors": ["accent", "bg", "surface", "control", "soft", "text", "muted"],
+    "weights": [3, 1, 1, 1, 1, 1, 1],
+    "path": "nearest remaining neighbor; light before dark; forest-mist fixed first",
+    "referencePairsPassed": 34,
+    "reference": "https://hajim.rochester.edu/ece/sites/gsharma/ciede2000/"
+  },
+  "checks": {
+    "frontendBuild": "passed",
+    "frontendUnitTests": {"passed": 153, "failed": 0},
+    "rustLibraryTests": {"passed": 56, "failed": 0},
+    "browserRegression": {"passed": 42, "failed": 0, "environment": "local Chromium; real React components and simulated Tauri IPC"},
+    "finalThemeBrowserTests": {"passed": 5, "failed": 0, "includesAdditionalShortWindowKeyboardCase": true},
+    "builtInBrowserInspection": "actual SettingsPanel and theme dropdown opened",
+    "snapshots": ["../../design-demos/theme-review/implemented-light.png", "../../design-demos/theme-review/implemented-dark.png"]
+  },
+  "covered": ["seven-color strips", "short labels", "hover without clicks", "light and dark ordering", "coalesced saves", "slow earlier saves", "other concurrent settings writes", "failed-save restoration", "hide/reopen", "old JSON defaults", "SQLite restart persistence", "preview startup and live theme events", "small-window keyboard scrolling", "Escape after Tab"],
+  "limitations": ["Windows WebView2 desktop theme switching has not been run end to end", "macOS has not been compiled or run", "browser fixture uses demonstration records and does not read or modify the user's clipboard"]
+}

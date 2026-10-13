@@ -96,6 +96,7 @@ export class PreviewController {
       this.previewId = id;
       this.previewPlacement = { x, rowY, width, scale, top: area.position.y, bottom: area.position.y + area.size.height };
       await emitTo("preview", "preview-content", {
+        theme: this.history.value.settings?.theme,
         id, kind: record.kind, body: record.body, title: record.title, files: previewPaths(record),
       groupName: this.history.value.snapshot?.groups.find(group => group.id === record.groupId)?.name ?? null,
         preview: record.preview, status: record.status,
@@ -160,7 +161,7 @@ export class PreviewController {
           void call("hide_large_preview").catch(() => { });
         return;
       }
-      await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length) });
+      await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length), theme: this.history.value.settings?.theme });
     }
     catch (error) {
       if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest)

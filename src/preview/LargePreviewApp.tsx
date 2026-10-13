@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { LargePreviewPayload } from "../domain/types";
 import { call } from "../services/desktop";
 import { MediaCarousel, type CarouselHandle } from "../components/MediaCarousel";
+import { applyTheme } from "../services/theme";
 
 export function LargePreviewApp() {
   const [payload, setPayload] = useState<LargePreviewPayload | null>(null), [loaded, setLoaded] = useState(false), [failed, setFailed] = useState(false);
@@ -19,6 +20,7 @@ export function LargePreviewApp() {
     const track = (dispose: UnlistenFn) => { if (disposed) dispose(); else unlisteners.push(dispose); };
     void (async () => {
       track(await listen<LargePreviewPayload>("large-preview-content", event => {
+        if (event.payload.theme) applyTheme(event.payload.theme);
         version.current++; lastWheel.current = 0; current.current = event.payload;
         setLoaded(false); setFailed(false); setPayload(event.payload);
       }));

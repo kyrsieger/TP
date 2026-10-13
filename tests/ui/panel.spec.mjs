@@ -233,5 +233,5 @@ test("file context actions and both preview triggers retain command payloads", a
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.name === "copy_record_paths")?.args.id)).toBe("file");
   await page.locator('.record[data-id="image"]').click(); await page.keyboard.press("ArrowRight");
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "preview-content")?.args.payload.id)).toBe("image");
-  await page.keyboard.press("ArrowLeft"); await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "large-preview-content")?.args.payload)).toEqual({ id: "image", kind: "image", count: 1 });
+  await page.keyboard.press("ArrowLeft"); await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "large-preview-content")?.args.payload)).toEqual({ id: "image", kind: "image", count: 1, theme: "indigo" });
 });

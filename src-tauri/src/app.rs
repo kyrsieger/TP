@@ -108,6 +108,7 @@ pub fn run() {
             settings::autostart_enabled,
             settings::set_autostart,
             settings::save_settings,
+            settings::get_theme,
             records::add_group,
             records::rename_group,
             records::rename_record,
@@ -151,9 +152,7 @@ pub fn run() {
                     .state::<PanelLifecycle>()
                     .state
                     .lock()
-                    .is_ok_and(|state| {
-                        state.open_requested && (state.ready || main_absent)
-                    });
+                    .is_ok_and(|state| state.open_requested && (state.ready || main_absent));
                 if reopen {
                     if let Err(error) = open_panel(app) {
                         eprintln!("Failed to reopen panel: {error}");

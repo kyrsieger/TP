@@ -3,6 +3,7 @@ import type { CommandCall } from "../services/desktop";
 import type { PanelController } from "./panel";
 import { Observable } from "./observable";
 import { recordRenameShortcutFromKey, recordRenameShortcutError } from "../domain/shortcuts";
+import { getTheme, defaultTheme, type ThemeId } from "../domain/themes";
 
 export const displayShortcut = (shortcut: string) => shortcut.split("+").map(part => part === "Control" ? "Ctrl" : part).join("+");
 export function shortcutFromKey(event: KeyboardEvent): string | null {
@@ -19,6 +20,7 @@ export function formatCacheSize(bytes: number) {
   return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
 }
 type SettingsValue = {
+  themeDraft: ThemeId | null;
   open: boolean; clearingCache: boolean; cacheSizeText: string;
   shortcutDraft: string | null; shortcutError: string | null;
   renameShortcutDraft: string | null; renameShortcutError: string | null;
@@ -37,8 +39,10 @@ export class SettingsController extends Observable<SettingsValue> {
   private queue: Promise<void> = Promise.resolve();
   private pending: Settings | null = null;
   private resolveConfirmation: ((confirmed: boolean) => void) | null = null;
+  private themeTimer: ReturnType<typeof setTimeout> | undefined;
+  private themeGeneration = 0;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
-    super({ open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
+    super({ themeDraft: null, open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
       shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, revision: 0 });
   }
   ready(error: string | null) {
@@ -46,7 +50,24 @@ export class SettingsController extends Observable<SettingsValue> {
     if (error) this.effects.toast(error);
   }
   syncShortcut() { this.activeShortcut = this.value.shortcutError ? "" : this.history.value.settings?.shortcut ?? ""; }
-  reset() { this.confirm(false); this.update({ open: false }); this.cacheRequest++; }
+  reset() { this.flushTheme(); this.confirm(false); this.update({ open: false }); this.cacheRequest++; }
+  selectTheme(id: ThemeId) {
+    const theme = getTheme(id).id;
+    if (theme === (this.value.themeDraft ?? this.history.value.settings?.theme ?? defaultTheme)) return;
+    this.themeGeneration++;
+    this.update({ themeDraft: theme });
+    clearTimeout(this.themeTimer);
+    this.themeTimer = setTimeout(() => this.flushTheme(), 160);
+  }
+  flushTheme() {
+    if (this.themeTimer === undefined) return;
+    clearTimeout(this.themeTimer); this.themeTimer = undefined;
+    const theme = this.value.themeDraft, generation = this.themeGeneration;
+    if (theme) void this.save({ theme }).then(() => {
+      // A slow earlier write must never overwrite the theme currently under the pointer.
+      if (generation === this.themeGeneration) this.update({ themeDraft: null });
+    });
+  }
   async open() {
     this.update({ open: true, cacheSizeText: "计算中…" });
     void this.refreshCacheSize();

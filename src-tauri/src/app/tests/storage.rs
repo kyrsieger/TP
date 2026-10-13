@@ -4,6 +4,45 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn theme_migrates_old_settings_and_survives_restart() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut old = serde_json::to_value(settings(&conn).unwrap()).unwrap();
+        old.as_object_mut().unwrap().remove("theme");
+        old["maxOrdinary"] = 100.into();
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [old.to_string()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut config = settings(&conn).unwrap();
+        assert_eq!(config.theme, "indigo");
+        assert_eq!(config.max_ordinary, 100);
+        config.theme = "forest-night".into();
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [serde_json::to_string(&config).unwrap()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    assert_eq!(
+        settings(&store.db.lock().unwrap()).unwrap().theme,
+        "forest-night"
+    );
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn rename_shortcut_migrates_old_settings_and_survives_restart() {
     let store = test_store();
     let dir = store.dir.clone();

@@ -106,6 +106,12 @@ pub(super) enum SettingsSaveResult {
 }
 
 #[tauri::command]
+pub(super) fn get_theme(store: tauri::State<Store>) -> Result<String> {
+    let conn = store.db.lock().map_err(err)?;
+    Ok(settings(&conn)?.theme)
+}
+
+#[tauri::command]
 pub(super) fn save_settings(
     app: tauri::AppHandle,
     store: tauri::State<Store>,

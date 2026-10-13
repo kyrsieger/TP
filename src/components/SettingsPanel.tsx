@@ -8,6 +8,7 @@ import type { PanelController } from "../state/panel";
 import type { MenuController } from "../state/menus";
 import { Icon } from "./Icon";
 import { useObservable } from "./use-observable";
+import { ThemeSetting } from "./ThemeSetting";
 
 function NumberSetting({ id, value, max, revision, save, toast }: { id: string; value: number; max: number; revision: number; save: (value: number) => void; toast: (message: string) => void }) {
   const [draft, setDraft] = useState(String(value));
@@ -51,7 +52,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   }
   if (!s) return null;
   return <>
-    <h2>设置</h2><label className="inline"><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
+    <h2>设置</h2><ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
+    <label className="inline"><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
       onChange={event => { void controller.setAutostart(event.target.checked); }} />开机启动</label>
     {!isMacOS && <><label className="inline"><input id="show-taskbar-icon" type="checkbox" checked={s.showTaskbarIcon}
       onChange={event => save({ showTaskbarIcon: event.target.checked })} />在任务栏显示图标</label>

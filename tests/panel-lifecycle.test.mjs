@@ -39,6 +39,18 @@ test("retention disabled after hiding clears the late search without retaining a
   const { panel } = setup(); panel.commitSettings({ retainSearchInput: false });
   assert.equal(panel.value.search, ""); assert.equal(panel.value.snapshot, null);
 });
+
+test("an old snapshot response cannot undo a theme saved while it was loading", async () => {
+  const { panel, requests } = setup();
+  panel.update({ active: true, settings: { theme: "indigo" } });
+  const refresh = panel.refresh();
+  panel.commitSettings({ theme: "forest-mist" });
+  const stale = snapshot("fresh-record"); stale.settings.theme = "indigo";
+  requests[0].resolve(stale); await refresh;
+  assert.equal(panel.value.settings.theme, "forest-mist");
+  assert.equal(panel.value.snapshot.settings.theme, "forest-mist");
+  assert.equal(panel.value.snapshot.records[0].id, "fresh-record");
+});
 test("reopening waits for the latest snapshot before positioning and showing", async () => {
   const { panel, requests, effects } = setup();
   panel.restore({ view: "default", kindFilter: "all", search: "" });

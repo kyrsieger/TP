@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { emit } from "@tauri-apps/api/event";
+import { applyTheme } from "./services/theme";
+import { defaultTheme } from "./domain/themes";
 import { createApplication } from "./application";
 import { panelWindow } from "./services/desktop";
 import { Icon, IconDefinitions } from "./components/Icon";
@@ -20,6 +23,8 @@ export function App() {
   }));
   const panel = useObservable(app.history), settings = useObservable(app.settings), toast = useObservable(app.toasts);
   const [backToTop, setBackToTop] = useState(false);
+  const theme = settings.themeDraft ?? panel.settings?.theme ?? defaultTheme;
+  useLayoutEffect(() => { applyTheme(theme); void emit("theme-changed", theme).catch(() => {}); }, [theme]);
   useEffect(() => { void app.start(); return () => app.dispose(); }, [app]);
   const groupContextMenu = (event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
@@ -46,13 +51,14 @@ export function App() {
       if (!element.closest("#filter-wrap")) patch.filter = false;
       if (!element.closest(".retention-select")) patch.retention = false;
       if (!element.closest(".fixed-position-select")) patch.fixedPosition = false;
+      if (!element.closest(".theme-select")) patch.theme = false;
       if (!element.closest("#move-group-menu,[data-move-group-trigger]")) patch.move = null;
       app.menus.update(patch);
     }}>
       {["left", "right", "top", "bottom"].map(edge => <div key={edge} className={`resize-edge ${edge}`} data-resize-edge={edge} onPointerDown={event => { void app.geometry.resize(event.nativeEvent, event.currentTarget); }} />)}
       <IconDefinitions />
       <header className="titlebar" onPointerDown={event => { if (event.button === 0 && !(event.target as HTMLElement).closest("button")) void panelWindow.startDragging().catch(error => app.toasts.show(String(error))); }}>
-        <svg className="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="#4f46e5" strokeWidth="2" /><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="#4f46e5" /></svg><span className="appname">TP</span>
+        <svg className="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="var(--accent)" strokeWidth="2" /><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="var(--accent)" /></svg><span className="appname">TP</span>
         <div className="winbtns"><button id="minimize" className="winbtn" title="最小化" aria-label="最小化" onClick={() => { void panelWindow.minimize().catch(error => app.toasts.show(String(error))); }}><Icon name="minus" size={13} /></button>
           <button id="maximize" className="winbtn" title="最大化或还原" aria-label="最大化或还原" onClick={() => { void panelWindow.toggleMaximize().catch(error => app.toasts.show(String(error))); }}><Icon name="square" size={11} /></button>
           <button id="close" className="winbtn close" title="隐藏面板" aria-label="隐藏面板" onClick={() => { app.previews.largePreviewId = null; void app.history.action("hide_panel"); }}><Icon name="x" size={13} /></button></div>

@@ -1,37 +1,37 @@
-:root{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:#171c28;background:#fff;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;--accent:#4f46e5}
+:root{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:var(--text-1);background:var(--surface);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
 html,body,#app{width:100%;height:100%;margin:0}
 body{overflow:hidden}
-#app{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#d4d9e4 transparent}
+#app{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
 /* 卡片与预览窗口四边贴合，圆角取系统窗口半径，避免与系统圆角形成两条弧线。 */
-.card{padding:18px;border:1px solid #e7eaf1;border-radius:8px;background:#fff;box-shadow:0 8px 26px rgba(23,28,40,.12)}
+.card{padding:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 8px 26px rgba(23,28,40,.12)}
 .details{display:grid;gap:8px;margin:14px 0 0}
 .details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:12px;line-height:18px}
-.details dt{color:#8a93a3}
+.details dt{color:var(--text-3)}
 .details dd{min-width:0;margin:0;overflow-wrap:anywhere}
-.status-note{margin-top:12px;color:#a16207;font-size:12px;line-height:18px}
-.text-content{margin:0;padding:12px;border-radius:7px;background:#f6f7fb;font-family:inherit;font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
-.search-hit{background:var(--accent);color:#fff}
+.status-note{margin-top:12px;color:var(--warning);font-size:12px;line-height:18px}
+.text-content{margin:0;padding:12px;border-radius:7px;background:var(--control-bg);font-family:inherit;font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.search-hit{background:var(--accent);color:var(--on-accent)}
 .text-card{display:flex;flex-direction:column}
-.record-preview-title{flex:none;margin-bottom:12px;color:#171c28;font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.record-preview-title{flex:none;margin-bottom:12px;color:var(--text-1);font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
 .text-card .details{flex:none}
-.text-card .text-content{min-height:0;max-height:320px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c4cad6 transparent}
-.media{position:relative;display:grid;place-items:center;min-height:120px;margin-bottom:14px;padding:8px;border-radius:7px;background:#f6f7fb}
+.text-card .text-content{min-height:0;max-height:320px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+.media{position:relative;display:grid;place-items:center;min-height:120px;margin-bottom:14px;padding:8px;border-radius:7px;background:var(--control-bg)}
 .media.multi{display:block;height:320px;padding:0;overflow:hidden}
 .media.multi > .page-indicators{visibility:hidden}
 .media.multi:hover > .page-indicators{visibility:visible}
 .media > img{display:block;max-width:100%;max-height:520px;object-fit:contain}
-.unavailable{margin:0;padding:20px;text-align:center;color:#8a93a3;font-size:12px}
+.unavailable{margin:0;padding:20px;text-align:center;color:var(--text-3);font-size:12px}
 .unavailable + .details{margin-top:0}
-.files{margin:0;padding:10px 12px 10px 29px;border-radius:7px;background:#f6f7fb}
+.files{margin:0;padding:10px 12px 10px 29px;border-radius:7px;background:var(--control-bg)}
 .files.single-file{padding-left:12px;list-style:none}
 .file{padding:0;font-size:12px}
 .file + .file{margin-top:10px}
-.file::marker{color:#5b6472}
-.path{color:#5b6472;line-height:1.5;overflow-wrap:anywhere;user-select:text}
-.path strong{font-weight:600;color:#171c28}
-.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:#fff;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:#c4cad6 transparent}
-.file-text-error{margin:8px 0 0;color:#8a93a3;font-size:12px}
+.file::marker{color:var(--text-2)}
+.path{color:var(--text-2);line-height:1.5;overflow-wrap:anywhere;user-select:text}
+.path strong{font-weight:600;color:var(--text-1)}
+.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:var(--surface);font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+.file-text-error{margin:8px 0 0;color:var(--text-3);font-size:12px}
 .color-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0 20px;font-size:13px;user-select:text}
 .color-disc{display:block;width:112px;height:112px;border-radius:50%;outline:1px solid rgba(23,28,40,.12)}
 [hidden]{display:none!important}

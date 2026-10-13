@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Settings {
+    #[serde(default = "default_theme", deserialize_with = "deserialize_theme")]
+    pub(super) theme: String,
     pub(super) max_ordinary: u16,
     pub(super) retention_days: u16,
     pub(super) sensitive_seconds: u32,
@@ -22,6 +24,33 @@ pub(super) struct Settings {
     pub(super) retain_search_input: bool,
     #[serde(default = "default_show_taskbar_icon")]
     pub(super) show_taskbar_icon: bool,
+}
+
+pub(super) const THEMES: [&str; 11] = [
+    "indigo",
+    "forest-mist",
+    "forest-night",
+    "oat",
+    "graphite",
+    "clay",
+    "olive",
+    "ice",
+    "berry",
+    "violet",
+    "charcoal",
+];
+fn default_theme() -> String {
+    "indigo".into()
+}
+fn deserialize_theme<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<String, D::Error> {
+    let theme = String::deserialize(deserializer)?;
+    Ok(if THEMES.contains(&theme.as_str()) {
+        theme
+    } else {
+        default_theme()
+    })
 }
 
 fn default_show_taskbar_icon() -> bool {
@@ -85,6 +114,7 @@ fn default_retain_search_input() -> bool {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            theme: default_theme(),
             max_ordinary: 300,
             retention_days: 7,
             sensitive_seconds: 90,
@@ -106,6 +136,9 @@ impl Default for Settings {
 
 impl Settings {
     pub(super) fn validate(&self) -> Result<()> {
+        if !THEMES.contains(&self.theme.as_str()) {
+            return Err("无效的主题配色".into());
+        }
         if !valid_rename_shortcut(&self.rename_shortcut)
             || (!self.rename_shortcut.is_empty() && self.rename_shortcut == self.shortcut)
         {

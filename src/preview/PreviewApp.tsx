@@ -3,6 +3,7 @@ import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { PreviewPayload } from "../domain/types";
 import type { CarouselHandle } from "../components/MediaCarousel";
 import { PreviewCard } from "./PreviewCard";
+import { applyTheme } from "../services/theme";
 
 export function PreviewApp() {
   const [payload, setPayload] = useState<PreviewPayload | null>(null);
@@ -22,6 +23,7 @@ export function PreviewApp() {
     const track = (dispose: UnlistenFn) => { if (disposed) dispose(); else unlisteners.push(dispose); };
     void (async () => {
       track(await listen<PreviewPayload>("preview-content", event => {
+        if (event.payload.theme) applyTheme(event.payload.theme);
         version.current++; lastWheel.current = 0; current.current = event.payload; setPayload(event.payload);
       }));
       track(await listen<number | null>("preview-clear", event => {

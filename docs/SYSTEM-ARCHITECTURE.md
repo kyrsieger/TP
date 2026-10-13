@@ -67,6 +67,7 @@ flowchart TB
 | 面板状态 | 完整快照读取与请求合并、拒绝过期响应、浏览会话、选中范围、隐藏后释放快照 | [src/state/panel.ts](../src/state/panel.ts) |
 | 记录标题编辑 | 原地编辑、标题校验、保存与失败恢复、取消及异步生命周期保护 | [src/state/record-rename.ts](../src/state/record-rename.ts) |
 | 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑和名称校验 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
+| 主题配色 | 已审核色板、七色色条、CIEDE2000 排序、悬浮即时切换与预览窗口同步 | [domain/themes.ts](../src/domain/themes.ts)、[domain/color-distance.ts](../src/domain/color-distance.ts)、[components/ThemeSetting.tsx](../src/components/ThemeSetting.tsx)、[services/theme.ts](../src/services/theme.ts)、[theme.css](../src/theme.css) |
 | 前端系统服务 | Tauri 命令、窗口定位调用和平台缩放、预览协调和就绪握手、焦点还原；独立事件监听并行注册及失败清理 | [src/services](../src/services)、[src/preview-windows.ts](../src/preview-windows.ts) |
 | 前端领域与键盘 | 数据契约、过滤、显示文本和连续选择的纯计算；键盘操作规则 | [src/domain](../src/domain)、[src/input](../src/input)、[src/list-layout.ts](../src/list-layout.ts) |
 | 预览页面 | React 渲染文本、路径、颜色、图片和视频首帧；测量尺寸、读取单文件文本与清空内容 | [src/preview](../src/preview)、[src/preview.ts](../src/preview.ts)、[src/large-preview.ts](../src/large-preview.ts) |
@@ -124,6 +125,7 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 | 页面 → Rust | `get_state` | 返回全部记录、分组与设置；数据库已完成置顶与使用时间排序 |
 | 页面 → Rust | `rename_record`、`apply_record`、`set_favorite`、`set_record_pinned`、`move_group`、`delete_record`、`batch_records` | 执行单条或批量记录操作，返回结果或错误 |
 | 页面 → Rust | `save_settings`、分组命令、缓存命令、`set_autostart` | 保存配置、整理记录或调用系统配置 |
+| 页面 → Rust | `get_theme` | 预览页面就绪前只读取已保存的主题，不加载完整历史记录 |
 | 页面 → Rust | `register_panel_shortcut` | 在 Rust 中替换快捷键绑定，界面销毁后绑定仍有效；注册失败保留原绑定 |
 | 页面 → Rust | `panel_ready`、`get_panel_session`、`save_panel_session` | 确认主页面监听已就绪，恢复或保存本次运行的浏览状态；每次唤出由前端将分组重置为默认，搜索和类型筛选沿用各自规则 |
 | 页面 → Rust | `panel_content_released` | 确认指定隐藏序号的内容已卸载；Rust 再核对窗口与序号，随后挂起 |
@@ -134,6 +136,7 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 | Rust → 主页面 | `open-requested`、`panel-hidden`、`panel-idle-release` | 携带原生生命周期序号，分别通知唤出、隐藏保留内容、满一分钟清空内容；前端拒绝过期通知 |
 | Rust → 主页面 | `preview-window-used`、`preview-window-hidden`、`preview-destroyed`、`large-preview-destroyed` | 取消或开始闲置释放计时，并确认窗口销毁完成 |
 | 主页面 ↔ 预览页面 | `preview-*`、`large-preview-*` | 传递预览内容、就绪与尺寸信息、关闭和鼠标交互事件 |
+| 主页面 → 预览页面 | `theme-changed` | 悬浮切换时广播主题 ID，两个预览立即同步；预览内容载荷也携带主题 ID |
 
 全局快捷键在 Rust 注册和处理，主面板唤出定位通过 Rust 命令批量执行，拖拽与部分预览窗口操作仍使用 Tauri 前端 API。普通设置保存由前端串行提交、Rust 校验并写入 SQLite；全局唤出快捷键先注册成功再保存，失败时尝试恢复原绑定。记录重命名快捷键属于前端局部按键，不调用全局注册命令。登录启动状态通过插件查询操作系统，不作为 `Settings` JSON 的字段保存。窗口移动和缩放后的几何信息另有延迟保存逻辑。
 
@@ -144,6 +147,10 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 “在任务栏显示图标”对应 `Settings.showTaskbarIcon`，默认及旧 JSON 缺失值均为 `true`。Windows 主面板创建时读取 SQLite 设置，用 `skip_taskbar(!show_taskbar_icon)` 覆盖固定窗口配置；保存变更时对已存在的主窗口调用 `set_skip_taskbar`，写入失败时尝试恢复原值。主窗口尚未创建时只保存设置，下一次创建时应用。预览窗口保留 `skipTaskbar: true`。此设置仅在 Windows 界面提供，macOS 共用设置序列化但不调用不受支持的任务栏接口，菜单栏及 Dock 行为沿用原实现。桌面任务栏实际显示、最小化及窗口重建行为仍需在 Windows 运行验证；macOS 未运行验证。
 
 设置页底部的当前版本号通过 Tauri 前端 API `getVersion()` 读取运行中应用的版本信息，不在界面中写死版本号。
+
+主题设置对应 `Settings.theme` / Rust `theme`，使用稳定 ID 存入现有 SQLite 设置 JSON，缺失或未知值回退到原有 `indigo`。Windows 和 macOS 共用十一套色板、CSS 变量、列表控件与持久化代码，无平台专用主题分支。`ThemeSetting` 左侧显示简称，右侧按审核稿顺序拼接七色色条；浅色和深色分别排序，墨绿固定开头，后续采用最近邻。相似度为七个对应色块的 CIEDE2000 加权平均，强调色权重为 3、其余各为 1；算法实现按 [Sharma/Wu/Dalal 的说明与 34 组参考数据](https://hajim.rochester.edu/ece/sites/gsharma/ciede2000/)验证，不宣称最近邻得到全局最优路径。
+
+设置控制器通过 `themeDraft` 立即更新外观，停留 160 毫秒后复用串行设置队列保存，关闭设置或隐藏时提交待保存的最后选择；保存完成仅在选择序号仍一致时清除草稿，失败恢复最后已保存主题。`PanelController` 用设置修订序号保护保存期间的旧快照响应，避免快照将新主题覆盖。主面板在布局阶段设置 CSS 变量并广播主题，预览入口先注册主题监听，再读取 `get_theme`，读取期间收到新主题时忽略旧的启动响应，然后挂载预览组件并报告就绪。未改变原始图片或视频首帧的像素，大图关闭按钮保留对明暗图片均可辨认的深色背景和浅色描边。
 
 2026-10-11 记录重命名：131 项前端单元测试、43 项 Rust 测试、32 项浏览器界面回归和前端构建通过。Rust 测试覆盖旧数据库补充标题、六种类型持久化及重启恢复、原内容和整理状态不变、空标题与错误处理；界面测试使用本机 Edge、演示记录和模拟 IPC，覆盖菜单顺序、路径操作、六类显示和行高、标题搜索、输入法与快捷键保护、失败草稿恢复。Codex 内置浏览器另通过实际组件测试页检查右键重命名和最终显示。未验证用户真实数据库、桌面跨应用粘贴或 macOS 实机运行。
 
@@ -366,6 +373,7 @@ Rust 单元测试按职责位于 [app/tests](../src-tauri/src/app/tests)，从�
 | Windows 保留内容一分钟与开发模式重载恢复 | 2026-10-13：145 项前端测试、54 项 Rust 测试、38 项 Edge 界面回归（完整运行通过 37 项，剩余旧清空预期调整后单独通过）、前端及 Windows 发布构建通过。使用独立数据及运行环境、300 条合成文字与一张 4K 图片，调试模式接入实际 Vite 开发服务器，发布模式使用打包资源；每种模式各五轮快速关闭与单次真实全局快捷键唤起，同一图片节点始终已加载，图片地址变化与额外缩略图请求均为零。发布模式唤起至原生显示与聚焦耗时 53.5～76.4 毫秒，中位 64.9 毫秒；实际关闭约 65 秒及 180 秒后各一次恢复分别为 80.0、105.1 毫秒，对应两帧回调完成为 100.7、124.1 毫秒。调试模式实际隐藏 180 秒后捕获 Vite 连接断开与页面重载，单次快捷键即可恢复，15 秒后仍有列表、图片及焦点；发布模式同样稳定且无页面重载，F2 编辑通过，恢复后的完整页面截图已检查。发布模式进程组私有工作集：主面板约 134.2 MiB、使用两个预览约 207.0 MiB、隐藏 5 秒 164.5 MiB、53 秒 144.8 MiB、清空挂起约 65 秒 98.5 MiB、180 秒 14.2 MiB；180 秒时私有提交量仍为 175.1 MiB。53 秒时内容保留，随后确认 DOM 与快照清空才挂起，两种预览已销毁。未改写用户剪贴板；当前机器的少量样本不保证固定耗时或占用，macOS 未编译或运行验证。详见 [保留与重载验证](validation/panel-retention-reload-windows.json)、[开发模式恢复截图](validation/panel-retention-dev-resumed.png)、[发布模式恢复截图](validation/panel-retention-release-resumed.png) |
 | Windows 登录启动选择的重装恢复 | 2026-10-10：41 项 Rust 测试通过，其中新增 5 项覆盖数据库重新打开后恢复开启与关闭、开启时刷新启动项、旧版状态迁移、普通设置保存不覆盖选择、数据库及系统失败回退与恢复重试。系统操作使用替身，尚未实际卸载重装或登录 Windows 验证；已检查 NSIS 卸载脚本，普通卸载删除启动项而更新模式保留 |
 | Windows 静默启动 | 已用 `cargo build` 的调试构建配合 Vite 开发服务器运行验证：启动后主面板保持隐藏，唤出快捷键可显示并聚焦面板；托盘单击与登录启动仍未运行验证 |
+| Windows 主题配色与悬浮切换 | 2026-10-13：153 项前端单元测试、56 项 Rust 测试及前端构建通过；本地 Chromium 使用实际 React 组件和模拟 IPC 完整通过 42 项界面回归，最终主题用例 5 项通过（含新增的小窗口键盘滚动与 Tab 后 Esc 场景）。色差公式匹配 34 组公开参考数据；旧 JSON 默认与 SQLite 重启恢复由 Rust 测试验证。Codex 内置浏览器已打开实际设置和十一项主题列表，420×600 浅色及深色截图已检查。尚未在 Windows WebView2 桌面宿主中端到端验证主题切换；macOS 未编译或运行。详见 [主题验证记录](validation/theme-settings-windows.json) |
 | macOS | 已有适配代码；当前无 Mac 环境，编译、权限和运行行为均待验证 |
 
 系统验收需要逐项确认以下结果，并记录具体平台与测试条件：

@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn old_or_unknown_themes_keep_other_preferences_and_default_to_indigo() {
+    let mut config = Settings::default();
+    config.max_ordinary = 100;
+    config.retain_search_input = false;
+    let mut value = serde_json::to_value(&config).unwrap();
+    value.as_object_mut().unwrap().remove("theme");
+    let restored: Settings = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(restored.theme, "indigo");
+    assert_eq!(restored.max_ordinary, 100);
+    assert!(!restored.retain_search_input);
+    value["theme"] = "future-theme".into();
+    assert_eq!(
+        serde_json::from_value::<Settings>(value).unwrap().theme,
+        "indigo"
+    );
+    for theme in THEMES {
+        config.theme = theme.into();
+        assert!(config.validate().is_ok());
+    }
+    config.theme = "invalid".into();
+    assert!(config.validate().is_err());
+}
+
+#[test]
 fn rename_shortcut_defaults_and_rejects_invalid_or_conflicting_keys() {
     let mut value = serde_json::to_value(Settings::default()).unwrap();
     value.as_object_mut().unwrap().remove("renameShortcut");
