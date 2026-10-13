@@ -38,11 +38,26 @@ pub(super) struct PanelState {
     pub(super) idle_phase: PanelIdlePhase,
     pub(super) generation: u64,
     pub(super) hidden_at: Option<Instant>,
+    pub(super) background_resident: bool,
     pub(super) session: PanelSession,
     pub(super) shortcut_error: Option<String>,
 }
 
 impl PanelState {
+    pub(super) fn set_background_resident(&mut self, enabled: bool) {
+        if self.background_resident == enabled {
+            return;
+        }
+        self.background_resident = enabled;
+        // Invalidate queued release acknowledgements and native suspend callbacks.
+        self.generation = self.generation.wrapping_add(1);
+        self.idle_phase = PanelIdlePhase::Awake;
+        if self.hidden_at.is_some() {
+            // Turning residency off starts a fresh one-minute retention period.
+            self.hidden_at = Some(Instant::now());
+        }
+    }
+
     pub(super) fn document_loading(&mut self, visible: bool) {
         self.ready = false;
         self.open_requested |= visible;
@@ -83,6 +98,7 @@ impl PanelState {
 
     pub(super) fn idle_due(&self, now: Instant) -> bool {
         self.ready
+            && !self.background_resident
             && !self.open_requested
             && self.idle_phase == PanelIdlePhase::Awake
             && self
@@ -100,6 +116,7 @@ impl PanelState {
 
     pub(super) fn begin_suspend(&mut self, generation: u64) -> bool {
         if generation != self.generation
+            || self.background_resident
             || self.idle_phase != PanelIdlePhase::Clearing
             || self.hidden_at.is_none()
             || self.open_requested

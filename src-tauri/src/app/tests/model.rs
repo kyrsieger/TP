@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn background_residency_defaults_off_and_round_trips_without_resetting_preferences() {
+    let mut config = Settings::default();
+    assert!(!config.background_resident);
+    config.max_ordinary = 100;
+    let mut value = serde_json::to_value(&config).unwrap();
+    value.as_object_mut().unwrap().remove("backgroundResident");
+    let restored: Settings = serde_json::from_value(value).unwrap();
+    assert!(!restored.background_resident);
+    assert_eq!(restored.max_ordinary, 100);
+    for enabled in [true, false] {
+        config.background_resident = enabled;
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(value["backgroundResident"], enabled);
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.background_resident, enabled);
+    }
+}
+
+#[test]
 fn old_or_unknown_themes_keep_other_preferences_and_default_to_indigo() {
     let mut config = Settings::default();
     config.max_ordinary = 100;

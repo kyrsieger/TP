@@ -19,6 +19,63 @@ function setup(show = () => Promise.resolve(), command = () => Promise.resolve()
 test("hidden clipboard changes do not fetch or render the snapshot", async () => {
   const { panel, effects } = setup(); await panel.refresh(); await panel.refresh(); assert.deepEqual(effects, []);
 });
+
+test("resident panels keep content through idle notices and show before fetching fresh history", async () => {
+  const { panel, requests, effects } = setup();
+  panel.restore({ view: "default", kindFilter: "all", search: "" });
+  const cached = snapshot("cached"); cached.settings.backgroundResident = true;
+  const first = panel.open(1); requests[0].resolve(cached); await first;
+  panel.hide(2);
+  assert.equal(panel.release(2), false);
+  assert.equal(panel.value.snapshot, cached);
+  await panel.refresh(); assert.equal(requests.length, 1);
+  effects.length = 0;
+  const reopened = panel.open(3);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(effects.indexOf("show_panel") < effects.indexOf("get_state"));
+  assert.deepEqual(effects.find(effect => Array.isArray(effect)), ["focus", "cached"]);
+  assert.equal(panel.value.snapshot, cached);
+  requests[1].resolve({ ...snapshot("fresh"), settings: cached.settings }); await reopened;
+  assert.equal(panel.value.snapshot.records[0].id, "fresh");
+  panel.commitSettings({ ...cached.settings, backgroundResident: false });
+  panel.hide(4); assert.equal(panel.release(4), true);
+});
+
+test("resident cold opens still load history and late refreshes cannot repopulate a released panel", async () => {
+  const { panel, requests, effects } = setup();
+  panel.restore({ view: "default", kindFilter: "all", search: "" });
+  panel.commitSettings({ backgroundResident: true });
+  const opening = panel.open(1);
+  assert.ok(!effects.includes("show_panel"));
+  const cached = snapshot("cached"); cached.settings.backgroundResident = true;
+  requests[0].resolve(cached); await opening;
+  panel.hide(2);
+  const reopened = panel.open(3);
+  await new Promise(resolve => setImmediate(resolve));
+  panel.hide(4);
+  panel.commitSettings({ ...cached.settings, backgroundResident: false });
+  assert.equal(panel.release(4), true);
+  requests[1].resolve(cached); await reopened;
+  assert.equal(panel.value.snapshot, null);
+  assert.equal(panel.value.active, false);
+});
+
+test("a slow resident refresh does not block another quick hide and reopen", async () => {
+  const { panel, requests, effects } = setup();
+  panel.restore({ view: "default", kindFilter: "all", search: "" });
+  const cached = snapshot("cached"); cached.settings.backgroundResident = true;
+  const first = panel.open(1); requests[0].resolve(cached); await first;
+  panel.hide(2); await panel.open(3);
+  assert.equal(requests.length, 2);
+  panel.hide(4); await panel.open(5);
+  assert.equal(effects.filter(effect => effect === "show_panel").length, 3);
+  requests[1].resolve(snapshot("outdated"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(panel.value.snapshot, cached);
+  requests[2].resolve({ ...snapshot("fresh"), settings: cached.settings });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(panel.value.snapshot.records[0].id, "fresh");
+});
 test("hiding retains records, rejects in-flight refresh, and idle release drops the snapshot", async () => {
   const { panel, requests, effects } = setup(); panel.update({ active: true, snapshot: snapshot("old") });
   const refresh = panel.refresh(); panel.hide(2); requests[0].resolve(snapshot("late")); await refresh;

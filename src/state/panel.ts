@@ -118,7 +118,8 @@ export class PanelController extends Observable<PanelValue> {
     this.effects.reset();
   }
   release(nativeGeneration?: number) {
-    if (this.value.active || (nativeGeneration !== undefined && nativeGeneration !== this.nativeGeneration)) return false;
+    if (this.value.active || this.value.settings?.backgroundResident
+      || (nativeGeneration !== undefined && nativeGeneration !== this.nativeGeneration)) return false;
     this.generation++;
     this.refreshAgain = false;
     this.update({ snapshot: null, selectedId: null, selectedIds: new Set(), anchorId: null });
@@ -129,15 +130,19 @@ export class PanelController extends Observable<PanelValue> {
     if (this.opening) return this.value.active ? this.opening : this.opening.then(() => this.open(nativeGeneration));
     this.effects.reset();
     this.update({ active: true, view: "default", selectedId: null, selectedIds: new Set(), anchorId: null });
+    const retained = this.value.settings?.backgroundResident && this.value.snapshot !== null;
+    if (retained) this.reconcileSelection();
     const generation = ++this.generation;
     this.opening = (async () => {
-      await this.refresh();
+      if (!retained) await this.refresh();
       if (!this.value.active || generation !== this.generation) return;
       await this.effects.place();
       if (!this.value.active || generation !== this.generation) return;
       await this.call("show_panel");
       if (!this.value.active || generation !== this.generation) return;
       this.effects.afterOpen();
+      // Show retained content immediately; fetching the latest history must not delay opening.
+      if (retained) void this.refresh().catch(error => this.effects.error(String(error)));
     })().finally(() => { this.opening = null; });
     return this.opening;
   }

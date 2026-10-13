@@ -32,6 +32,15 @@ function setup(save, confirm = () => false) {
   return { context, effects, original, elements, controller };
 }
 
+test("background residency is saved immediately and a failed save preserves the prior choice", async () => {
+  const good = setup(() => true); good.original.backgroundResident = false;
+  await good.controller.save({ backgroundResident: true });
+  assert.equal(good.context.state.settings.backgroundResident, true);
+  const bad = setup(() => { throw new Error("save failed"); }); bad.original.backgroundResident = true;
+  await bad.controller.save({ backgroundResident: false });
+  assert.equal(bad.context.state.settings.backgroundResident, true);
+});
+
 test("local rename shortcut saves without global registration and failed saves preserve the active key and draft", async () => {
   const event = { key: "F3", repeat: false, isComposing: false, keyCode: 0, ctrlKey: false, altKey: false,
     shiftKey: false, metaKey: false, getModifierState: () => false };

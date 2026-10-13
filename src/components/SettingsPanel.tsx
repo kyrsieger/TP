@@ -55,6 +55,9 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <h2>设置</h2><ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
     <label className="inline"><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
       onChange={event => { void controller.setAutostart(event.target.checked); }} />开机启动</label>
+    <label className="inline"><input id="background-resident" type="checkbox" checked={!!s.backgroundResident}
+      onChange={event => save({ backgroundResident: event.target.checked })} />后台常驻</label>
+    <p className="hint">开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。</p>
     {!isMacOS && <><label className="inline"><input id="show-taskbar-icon" type="checkbox" checked={s.showTaskbarIcon}
       onChange={event => save({ showTaskbarIcon: event.target.checked })} />在任务栏显示图标</label>
       <p className="hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</p></>}

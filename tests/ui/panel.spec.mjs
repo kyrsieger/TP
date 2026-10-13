@@ -164,6 +164,41 @@ test("warm reopen retains decoded image nodes without source changes or another 
     })).toEqual({ same: true, complete: true, width: 320, changes: 0, reads: 0 });
   }
 });
+test("background residency below autostart keeps image nodes and shows before a delayed refresh", async ({ page }) => {
+  await expect(page.locator('img[data-preview="image"]')).toHaveAttribute("src", /data:image/);
+  await page.evaluate(() => { window.__TP_TEST__.cachedImage = document.querySelector('img[data-preview="image"]'); });
+  await page.locator("#settings-button").click();
+  const toggle = page.getByLabel("后台常驻", { exact: true });
+  await expect(toggle).not.toBeChecked();
+  expect(await page.locator('#settings input[type="checkbox"]').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.id))).toEqual(["autostart", "background-resident"]);
+  await toggle.check();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.backgroundResident)).toBe(true);
+  await page.keyboard.press("Escape");
+  await page.locator("#close").click();
+  await page.evaluate(() => window.__TP_TEST__.idle());
+  expect(await page.evaluate(() => document.querySelector('img[data-preview="image"]') === window.__TP_TEST__.cachedImage)).toBe(true);
+  expect(await page.evaluate(() => window.__TP_TEST__.released)).toBeUndefined();
+  await page.evaluate(() => {
+    const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (name, args) => {
+      if (name === "get_state") await new Promise(resolve => { window.__TP_TEST__.finishRefresh = resolve; });
+      return invoke(name, args);
+    };
+    window.__TP_TEST__.originalInvoke = invoke;
+    window.__TP_TEST__.show();
+  });
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.visible && !!window.__TP_TEST__.finishRefresh)).toBe(true);
+  await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+  expect(await page.evaluate(() => document.querySelector('img[data-preview="image"]') === window.__TP_TEST__.cachedImage)).toBe(true);
+  await page.evaluate(() => { window.__TAURI_INTERNALS__.invoke = window.__TP_TEST__.originalInvoke; window.__TP_TEST__.finishRefresh(); });
+  await page.locator("#settings-button").click();
+  await toggle.uncheck();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.backgroundResident)).toBe(false);
+  await page.keyboard.press("Escape"); await page.locator("#close").click();
+  await page.evaluate(() => window.__TP_TEST__.idle());
+  await expect(page.locator(".record")).toHaveCount(0);
+});
+
 test("taskbar icon preference defaults on, saves immediately and survives page recreation", async ({ page }) => {
   await page.locator("#settings-button").click();
   const toggle = page.getByLabel("在任务栏显示图标", { exact: true });

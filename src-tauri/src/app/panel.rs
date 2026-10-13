@@ -26,6 +26,11 @@ fn create_panel(app: &tauri::AppHandle) -> Result<()> {
         settings(&conn)?
     };
     let builder = tauri::WebviewWindowBuilder::from_config(app, config).map_err(err)?;
+    app.state::<PanelLifecycle>()
+        .state
+        .lock()
+        .map_err(err)?
+        .set_background_resident(settings.background_resident);
     #[cfg(windows)]
     let builder = builder.skip_taskbar(!settings.show_taskbar_icon);
     let window = builder

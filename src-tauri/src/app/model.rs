@@ -24,6 +24,8 @@ pub(super) struct Settings {
     pub(super) retain_search_input: bool,
     #[serde(default = "default_show_taskbar_icon")]
     pub(super) show_taskbar_icon: bool,
+    #[serde(default)]
+    pub(super) background_resident: bool,
 }
 
 pub(super) const THEMES: [&str; 11] = [
@@ -130,6 +132,7 @@ impl Default for Settings {
             always_on_top: false,
             retain_search_input: true,
             show_taskbar_icon: true,
+            background_resident: false,
         }
     }
 }

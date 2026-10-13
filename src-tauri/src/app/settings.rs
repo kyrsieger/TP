@@ -3,12 +3,13 @@ use super::{
     common::{err, now, Result},
     events::changed,
     model::Settings,
+    panel_runtime::resume_panel,
     session::PanelLifecycle,
     storage::{settings, Store},
 };
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 #[tauri::command]
 pub(super) fn autostart_enabled(app: tauri::AppHandle) -> Result<bool> {
@@ -156,14 +157,32 @@ pub(super) fn save_settings(
         }
         return Err(err(error));
     }
+    {
+        let lifecycle = app.state::<PanelLifecycle>();
+        let mut state = lifecycle.state.lock().map_err(err)?;
+        state.clear_hidden_search(value.retain_search_input);
+        state.set_background_resident(value.background_resident);
+        let hidden = state.hidden_at.is_some();
+        let generation = state.generation;
+        drop(state);
+        if previous.background_resident != value.background_resident {
+            if value.background_resident {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = resume_panel(&window) {
+                        eprintln!("Failed to resume resident panel: {error}");
+                    }
+                }
+            }
+            if hidden {
+                if let Err(error) = app.emit_to("main", "panel-hidden", generation) {
+                    eprintln!("Failed to synchronize resident panel: {error}");
+                }
+            }
+        }
+    }
     for id in &ids {
         remove_record(&conn, &store.dir, id)?;
     }
-    app.state::<PanelLifecycle>()
-        .state
-        .lock()
-        .map_err(err)?
-        .clear_hidden_search(value.retain_search_input);
     drop(conn);
     if !ids.is_empty() {
         changed(&app);
