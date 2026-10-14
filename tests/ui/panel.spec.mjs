@@ -214,6 +214,33 @@ test("taskbar icon preference defaults on, saves immediately and survives page r
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.showTaskbarIcon)).toBe(true);
 });
 
+for (const close of ["button", "Escape", "apply"]) test(`type retention defaults on and disabling resets the filter after ${close}`, async ({ page }) => {
+  await page.locator("#kind-filter").click();
+  await page.locator('[data-kind="image"]').click();
+  await page.locator("#close").click(); await page.evaluate(() => window.__TP_TEST__.show());
+  await expect(page.locator('.record[data-id="image"]')).toBeVisible();
+  await expect(page.locator(".record")).toHaveCount(1);
+  await page.locator("#settings-button").click();
+  const toggle = page.getByLabel("保留类型筛选", { exact: true });
+  await expect(toggle).toBeChecked();
+  expect(await page.locator('#settings input[type="checkbox"]').evaluateAll(nodes => {
+    const index = nodes.findIndex(node => node.id === "retain-search-input"); return nodes[index + 1].id;
+  })).toBe("retain-type-filter");
+  await toggle.uncheck();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.retainTypeFilter)).toBe(false);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".record")).toHaveCount(1);
+  if (close === "button") await page.locator("#close").click();
+  else if (close === "Escape") await page.keyboard.press("Escape");
+  else { await page.locator('.record[data-id="image"]').focus(); await page.keyboard.press("Enter"); }
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.visible)).toBe(false);
+  await page.evaluate(() => { window.__TP_TEST__.idle(); window.__TP_TEST__.show(); });
+  await expect(page.locator('.record[data-id="text"]')).toBeVisible();
+  await expect(page.locator("#clear-filter")).toBeHidden();
+  await page.locator("#settings-button").click();
+  await expect(toggle).not.toBeChecked();
+});
+
 test("settings restores the previous focus and saves search retention immediately", async ({ page }) => {
   await page.locator("#search").fill("React"); await page.locator("#settings-button").click();
   await expect(page.locator("#app-version")).toHaveText("1.0.2");

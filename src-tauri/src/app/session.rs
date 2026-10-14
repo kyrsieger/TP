@@ -148,6 +148,12 @@ impl PanelState {
             self.session.search.clear();
         }
     }
+
+    pub(super) fn clear_hidden_type_filter(&mut self, retain_type_filter: bool) {
+        if self.hidden_at.is_some() && !retain_type_filter {
+            self.session.kind_filter = "all".into();
+        }
+    }
 }
 
 #[derive(Default)]

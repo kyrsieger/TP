@@ -63,6 +63,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       <p className="hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</p></>}
     <label className="inline"><input id="retain-search-input" type="checkbox" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} />保留搜索框输入</label>
     <p className="hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</p>
+    <label className="inline"><input id="retain-type-filter" type="checkbox" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} />保留类型筛选</label>
+    <p className="hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</p>
     <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
       {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</label>
     <label>记录重命名快捷键<input id="rename-shortcut" placeholder="点击后按快捷键" value={displayShortcut(state.renameShortcutDraft ?? s.renameShortcut)} readOnly

@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn type_filter_retention_defaults_on_for_older_settings_and_round_trips() {
+    let mut config = Settings::default();
+    assert!(config.retain_type_filter);
+    config.max_ordinary = 100;
+    config.retain_search_input = false;
+    let mut value = serde_json::to_value(&config).unwrap();
+    value.as_object_mut().unwrap().remove("retainTypeFilter");
+    let restored: Settings = serde_json::from_value(value).unwrap();
+    assert!(restored.retain_type_filter);
+    assert_eq!(restored.max_ordinary, 100);
+    assert!(!restored.retain_search_input);
+    for enabled in [true, false] {
+        config.retain_type_filter = enabled;
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(value["retainTypeFilter"], enabled);
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.retain_type_filter, enabled);
+        assert!(restored.validate().is_ok());
+    }
+}
+
+#[test]
 fn background_residency_defaults_off_and_round_trips_without_resetting_preferences() {
     let mut config = Settings::default();
     assert!(!config.background_resident);

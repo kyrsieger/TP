@@ -73,10 +73,11 @@ export class PanelController extends Observable<PanelValue> {
   commitSettings(settings: Settings) {
     this.settingsRevision++;
     this.update({ settings, snapshot: this.value.snapshot ? { ...this.value.snapshot, settings } : null });
-    if (!this.value.active) { this.clearHiddenSearch(); this.saveSession(); }
+    if (!this.value.active) { this.clearHiddenBrowse(); this.saveSession(); }
   }
-  clearHiddenSearch() {
+  private clearHiddenBrowse() {
     if (!this.value.active && this.value.settings?.retainSearchInput === false) this.update({ search: "" });
+    if (!this.value.active && this.value.settings?.retainTypeFilter === false) this.update({ kindFilter: "all" });
   }
   refresh(): Promise<void> {
     if (!this.value.active) return Promise.resolve();
@@ -113,7 +114,7 @@ export class PanelController extends Observable<PanelValue> {
     this.generation++;
     this.refreshAgain = false;
     this.update({ active: false });
-    this.clearHiddenSearch();
+    this.clearHiddenBrowse();
     this.saveSession();
     this.effects.reset();
   }

@@ -14,7 +14,7 @@ export type Settings = {
   positionMode: "fixed" | "cursor"; fixedPosition: "left" | "right" | "center";
   rememberPosition: boolean; panelWidth: number; panelHeight: number;
   panelX: number | null; panelY: number | null; alwaysOnTop: boolean; retainSearchInput: boolean; showTaskbarIcon: boolean;
-  backgroundResident: boolean;
+  backgroundResident: boolean; retainTypeFilter: boolean;
 };
 export type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
 export type SettingsSaveResult = { status: "saved" } | { status: "confirmation_required"; count: number };

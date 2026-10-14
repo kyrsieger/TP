@@ -161,6 +161,7 @@ pub(super) fn save_settings(
         let lifecycle = app.state::<PanelLifecycle>();
         let mut state = lifecycle.state.lock().map_err(err)?;
         state.clear_hidden_search(value.retain_search_input);
+        state.clear_hidden_type_filter(value.retain_type_filter);
         state.set_background_resident(value.background_resident);
         let hidden = state.hidden_at.is_some();
         let generation = state.generation;

@@ -160,10 +160,11 @@ pub(super) fn save_panel_session(
     session: PanelSession,
 ) -> Result<()> {
     let conn = store.db.lock().map_err(err)?;
-    let retain_search_input = settings(&conn)?.retain_search_input;
+    let settings = settings(&conn)?;
     let mut state = lifecycle.state.lock().map_err(err)?;
     state.session = session;
-    state.clear_hidden_search(retain_search_input);
+    state.clear_hidden_search(settings.retain_search_input);
+    state.clear_hidden_type_filter(settings.retain_type_filter);
     Ok(())
 }
 
@@ -308,14 +309,15 @@ pub(super) fn hide_panel(app: tauri::AppHandle) -> Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         let store = app.state::<Store>();
         let conn = store.db.lock().map_err(err)?;
-        let retain_search_input = settings(&conn)?.retain_search_input;
+        let settings = settings(&conn)?;
         window.hide().map_err(err)?;
         let (newly_hidden, generation) = {
             let lifecycle = app.state::<PanelLifecycle>();
             let mut state = lifecycle.state.lock().map_err(err)?;
             state.open_requested = false;
             let newly_hidden = state.mark_hidden();
-            state.clear_hidden_search(retain_search_input);
+            state.clear_hidden_search(settings.retain_search_input);
+            state.clear_hidden_type_filter(settings.retain_type_filter);
             (newly_hidden, state.generation)
         };
         drop(conn);

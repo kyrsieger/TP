@@ -97,6 +97,36 @@ test("retention disabled after hiding clears the late search without retaining a
   assert.equal(panel.value.search, ""); assert.equal(panel.value.snapshot, null);
 });
 
+test("type filter and search retention operate independently through hide, idle release and reopen", async () => {
+  for (const retainTypeFilter of [true, false]) for (const retainSearchInput of [true, false]) {
+    for (const backgroundResident of [true, false]) {
+      const { panel, requests } = setup();
+      const settings = { retainTypeFilter, retainSearchInput, backgroundResident };
+      panel.update({ active: true, settings, snapshot: { ...snapshot("cached"), settings } });
+      panel.hide(1);
+      panel.release(1);
+      const opening = panel.open(2);
+      await new Promise(resolve => setImmediate(resolve));
+      requests[0].resolve({ ...snapshot("fresh"), settings }); await opening;
+      assert.equal(panel.value.kindFilter, retainTypeFilter ? "image" : "all");
+      assert.equal(panel.value.search, retainSearchInput ? "kept" : "");
+      assert.equal(panel.value.view, "default");
+    }
+  }
+});
+
+test("disabling type retention preserves a visible filter and clears it if saving finishes after hide", () => {
+  const { panel } = setup(); panel.update({ active: true });
+  panel.commitSettings({ retainTypeFilter: false, retainSearchInput: true });
+  assert.equal(panel.value.kindFilter, "image");
+  panel.hide(); assert.equal(panel.value.kindFilter, "all");
+  assert.equal(panel.value.search, "kept");
+  panel.update({ kindFilter: "video" });
+  panel.commitSettings({ retainTypeFilter: false, retainSearchInput: true });
+  assert.equal(panel.value.kindFilter, "all");
+  assert.equal(panel.value.search, "kept");
+});
+
 test("an old snapshot response cannot undo a theme saved while it was loading", async () => {
   const { panel, requests } = setup();
   panel.update({ active: true, settings: { theme: "indigo" } });

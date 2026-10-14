@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn type_filter_retention_clears_only_hidden_filters_including_late_session_saves() {
+    for hidden in [true, false] {
+        for retain in [true, false] {
+            for phase in [PanelIdlePhase::Awake, PanelIdlePhase::Suspended] {
+                let mut state = PanelState {
+                    hidden_at: hidden.then(Instant::now),
+                    idle_phase: phase,
+                    session: PanelSession {
+                        view: "favorite".into(),
+                        kind_filter: "image".into(),
+                        search: "keyword".into(),
+                    },
+                    ..PanelState::default()
+                };
+                state.clear_hidden_type_filter(retain);
+                assert_eq!(
+                    state.session.kind_filter,
+                    if hidden && !retain { "all" } else { "image" }
+                );
+                assert_eq!(state.session.search, "keyword");
+                assert_eq!(state.session.view, "favorite");
+                state.session.kind_filter = "video".into();
+                state.clear_hidden_type_filter(retain);
+                assert_eq!(
+                    state.session.kind_filter,
+                    if hidden && !retain { "all" } else { "video" }
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn resident_panel_never_releases_and_disabling_restarts_the_idle_deadline() {
     let mut state = PanelState {
         ready: true,
