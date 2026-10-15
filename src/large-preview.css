@@ -11,6 +11,7 @@ body{overflow:hidden}
 #kind:empty{display:none}
 #close{position:absolute;top:min(8px,10vh);right:min(8px,10vw);z-index:1;display:grid;place-items:center;width:min(32px,80vw,80vh);height:min(32px,80vw,80vh);padding:0;border:0;border-radius:50%;background:rgba(17,24,39,.78);box-shadow:0 0 0 1px rgba(255,255,255,.85),0 2px 8px rgba(0,0,0,.45);color:#fff;font-size:min(24px,60vw,60vh);line-height:1;cursor:pointer}
 #close:hover{background:rgba(17,24,39,.95)}
+#close svg{display:block;max-width:65%;max-height:65%}
 #close:focus-visible{outline:2px solid #fff;outline-offset:2px}
 #error{color:var(--text-2);font-size:14px}
 [hidden]{display:none!important}

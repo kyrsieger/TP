@@ -22,7 +22,7 @@ export function Toolbar({ history, menus, settingsOpen, toggleSettings, clearSea
       <button id="clear-search" type="button" title="清空搜索" aria-label="清空搜索" hidden={!state.search} onClick={clearSearch}><Icon name="x" size={13} /></button></div>
     <div id="filter-wrap" className={`filter-wrap ${selected ? "active" : ""} ${disabled ? "disabled" : ""}`}><div className="filter-control">
       <button id="kind-filter" className={`iconbtn ${selected ? "active" : ""}`} disabled={disabled} title={title} aria-label={title} aria-haspopup="menu" aria-expanded={menu.filter}
-        onClick={() => menus.update({ filter: !menu.filter })}><Icon name={selected ? state.kindFilter : "filter"} /></button>
+        onClick={() => menus.update({ filter: !menu.filter })}><Icon name={selected ? state.kindFilter as Kind : "filter"} /></button>
       <button id="clear-filter" className="clear-filter" title="清除筛选" aria-label="清除筛选" hidden={!selected} onClick={() => filter("all")}><Icon name="x" size={11} /></button></div>
       <div id="filter-menu" className="filter-menu" role="menu" hidden={!menu.filter}>{(["all", "text", "image", "video", "file", "link", "color"] as const).map(kind =>
         <button key={kind} data-kind={kind} role="menuitem" className={kind === state.kindFilter ? "active" : ""} onClick={() => filter(kind)}><Icon name={kind === "all" ? "filter" : kind} /><span>{kind === "all" ? "全部" : labels[kind]}</span></button>)}</div>

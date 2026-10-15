@@ -4,7 +4,7 @@ import { applyTheme } from "./services/theme";
 import { defaultTheme } from "./domain/themes";
 import { createApplication } from "./application";
 import { panelWindow } from "./services/desktop";
-import { Icon, IconDefinitions } from "./components/Icon";
+import { Icon } from "./components/Icon";
 import { Toolbar } from "./components/Toolbar";
 import { GroupTabs } from "./components/GroupTabs";
 import { RecordList } from "./components/RecordList";
@@ -56,9 +56,8 @@ export function App() {
       app.menus.update(patch);
     }}>
       {["left", "right", "top", "bottom"].map(edge => <div key={edge} className={`resize-edge ${edge}`} data-resize-edge={edge} onPointerDown={event => { void app.geometry.resize(event.nativeEvent, event.currentTarget); }} />)}
-      <IconDefinitions />
       <header className="titlebar" onPointerDown={event => { if (event.button === 0 && !(event.target as HTMLElement).closest("button")) void panelWindow.startDragging().catch(error => app.toasts.show(String(error))); }}>
-        <svg className="logo" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3.5" fill="none" stroke="var(--accent)" strokeWidth="2" /><rect x="4.6" y="4.6" width="4.8" height="4.8" rx="1.4" fill="var(--accent)" /></svg><span className="appname">TP</span>
+        <Icon name="clipboard" className="logo" size={13} /><span className="appname">TP</span>
         <div className="winbtns"><button id="minimize" className="winbtn" title="最小化" aria-label="最小化" onClick={() => { void panelWindow.minimize().catch(error => app.toasts.show(String(error))); }}><Icon name="minus" size={13} /></button>
           <button id="maximize" className="winbtn" title="最大化或还原" aria-label="最大化或还原" onClick={() => { void panelWindow.toggleMaximize().catch(error => app.toasts.show(String(error))); }}><Icon name="square" size={11} /></button>
           <button id="close" className="winbtn close" title="隐藏面板" aria-label="隐藏面板" onClick={() => { app.previews.largePreviewId = null; void app.history.action("hide_panel"); }}><Icon name="x" size={13} /></button></div>

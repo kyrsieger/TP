@@ -1,6 +1,6 @@
 # 系统架构
 
-本文描述 TP 的系统边界、运行组成、数据模型、关键流程与平台适配，以截至 2026-10-13 的仓库代码为依据。产品行为以[产品设计](DESIGN.md)为准，术语以[术语表](GLOSSARY.md)为准；本文将当前实现及其限制与产品要求区分开来，不把代码存在等同于平台验收通过。
+本文描述 TP 的系统边界、运行组成、数据模型、关键流程与平台适配，以截至 2026-10-15 的仓库代码为依据。产品行为以[产品设计](DESIGN.md)为准，术语以[术语表](GLOSSARY.md)为准；本文将当前实现及其限制与产品要求区分开来，不把代码存在等同于平台验收通过。
 
 ## 1. 系统定位与边界
 
@@ -64,6 +64,7 @@ flowchart TB
 | --- | --- | --- |
 | 界面组装 | 挂载 React、组合主面板、组装控制器和事件监听 | [src/main.ts](../src/main.ts)、[src/App.tsx](../src/App.tsx)、[src/application.ts](../src/application.ts) |
 | 主面板组件 | 搜索与类型筛选、分组页签、虚拟列表和记录行、设置、弹出菜单与确认弹窗 | [src/components](../src/components) |
+| 界面图标 | `lucide-react` 具名导入经公共 `Icon` 组件映射，统一尺寸、线宽与颜色继承；主面板与两个预览页面复用，收藏保留实心状态，分页指示器使用圆形与短线；许可声明随前端资源打包 | [components/Icon.tsx](../src/components/Icon.tsx)、[media-indicators.css](../src/media-indicators.css)、[third-party-notices.txt](../public/third-party-notices.txt) |
 | 面板状态 | 完整快照读取与请求合并、拒绝过期响应、浏览会话、选中范围、隐藏后释放快照 | [src/state/panel.ts](../src/state/panel.ts) |
 | 记录标题编辑 | 原地编辑、标题校验、保存与失败恢复、取消及异步生命周期保护 | [src/state/record-rename.ts](../src/state/record-rename.ts) |
 | 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑和名称校验 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
@@ -388,6 +389,7 @@ Rust 单元测试按职责位于 [app/tests](../src-tauri/src/app/tests)，从�
 | Windows 登录启动选择的重装恢复 | 2026-10-10：41 项 Rust 测试通过，其中新增 5 项覆盖数据库重新打开后恢复开启与关闭、开启时刷新启动项、旧版状态迁移、普通设置保存不覆盖选择、数据库及系统失败回退与恢复重试。系统操作使用替身，尚未实际卸载重装或登录 Windows 验证；已检查 NSIS 卸载脚本，普通卸载删除启动项而更新模式保留 |
 | Windows 静默启动 | 已用 `cargo build` 的调试构建配合 Vite 开发服务器运行验证：启动后主面板保持隐藏，唤出快捷键可显示并聚焦面板；托盘单击与登录启动仍未运行验证 |
 | Windows 主题配色与悬浮切换 | 2026-10-13：153 项前端单元测试、56 项 Rust 测试及前端构建通过；本地 Chromium 使用实际 React 组件和模拟 IPC 完整通过 42 项界面回归，最终主题用例 5 项通过（含新增的小窗口键盘滚动与 Tab 后 Esc 场景）。色差公式匹配 34 组公开参考数据；旧 JSON 默认与 SQLite 重启恢复由 Rust 测试验证。Codex 内置浏览器已打开实际设置和十一项主题列表，420×600 浅色及深色截图已检查。尚未在 Windows WebView2 桌面宿主中端到端验证主题切换；macOS 未编译或运行。详见 [主题验证记录](validation/theme-settings-windows.json) |
+| Windows Lucide 图标与设置单列布局 | 2026-10-15：161 项前端模块测试、53 项本机 Chrome 界面回归及前端构建通过；另在 1200×800 设置页与 420×600 主面板复验并检查截图。Codex 内置浏览器确认 320、420、760、1200 像素宽度下均无设置左侧导航，设置内容无横向溢出，筛选入口随所选类型切换为 Lucide 图标，主面板 SVG 全部来自 Lucide。浏览器使用演示记录与模拟 IPC，未在 Windows WebView2 原生宿主或 macOS 实机验证此次界面调整 |
 | macOS | 已有适配代码；当前无 Mac 环境，编译、权限和运行行为均待验证 |
 
 系统验收需要逐项确认以下结果，并记录具体平台与测试条件：

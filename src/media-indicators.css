@@ -1,8 +1,9 @@
 .page-indicators{position:absolute;bottom:12px;left:50%;z-index:2;display:flex;align-items:center;flex:none;width:max-content;max-width:calc(100% - 16px);height:22px;padding:1px 3px;border:1px solid rgba(100,116,139,.1);border-radius:999px;background:var(--indicator-bg);box-shadow:0 1px 5px rgba(15,23,42,.08);backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:none;transform:translateX(-50%);transition:bottom .24s ease,max-width .24s ease;cursor:default}
 .page-indicators::-webkit-scrollbar{display:none}
-.page-indicator{display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;cursor:pointer}
-.page-indicator::before{content:"";width:5px;height:5px;border-radius:999px;background:var(--indicator-dot);transition:width .16s ease,background .16s ease}
-.page-indicator.active::before{width:13px;background:var(--indicator-active)}
-.page-indicator:hover::before{background:var(--indicator-active)}
+.page-indicator{display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--indicator-dot);transition:color .16s ease;cursor:pointer}
+.page-indicator svg{display:block}
+.page-indicator .page-current,.page-indicator.active .page-dot{display:none}
+.page-indicator.active .page-current{display:block}
+.page-indicator.active,.page-indicator:hover{color:var(--indicator-active)}
 .page-indicator:focus-visible{outline:2px solid var(--indicator-active);outline-offset:-2px}
-@media(prefers-reduced-motion:reduce){.page-indicators,.page-indicator::before{transition:none}}
+@media(prefers-reduced-motion:reduce){.page-indicators,.page-indicator{transition:none}}

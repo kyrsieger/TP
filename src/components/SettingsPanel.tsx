@@ -37,7 +37,6 @@ function NumberSetting({ id, value, max, revision, save, toast }: { id: string; 
 }
 const retentionOptions = [[1, "24 小时"], [3, "3 天"], [5, "5 天"], [7, "7 天"], [30, "1 个月"]] as const;
 const positionOptions = [["left", "左下角"], ["right", "右下角"], ["center", "下方居中"]] as const;
-const settingSections = [["appearance", "外观", "外"], ["general", "通用", "通"], ["panel", "面板行为", "板"], ["records", "记录", "录"], ["position", "面板位置", "位"], ["storage", "存储", "存"], ["shortcuts", "快捷键", "键"]] as const;
 
 export function SettingsPanel({ controller, history, menus, toast }: { controller: SettingsController; history: PanelController; menus: MenuController; toast: (message: string) => void }) {
   const state = useObservable(controller), panel = useObservable(history), menu = useObservable(menus);
@@ -53,11 +52,6 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   }
   if (!s) return null;
   return <div className="settings-layout">
-    <nav className="settings-sidebar" aria-label="设置分组">
-      {settingSections.map(([id, label, symbol]) => <button key={id} type="button" onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ block: "start" })}>
-        <span className="settings-section-icon" aria-hidden="true">{symbol}</span>{label}
-      </button>)}
-    </nav>
     <div className="settings-content">
     <section className="settings-group" id="settings-appearance" aria-label="外观">
       <div className="settings-card">

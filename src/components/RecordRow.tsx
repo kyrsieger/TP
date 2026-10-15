@@ -40,7 +40,7 @@ function Thumbnail({ record, root }: { record: RecordItem; root: HTMLElement | n
   }, [record.id, root]);
   return failed ? <span className="preview-unavailable">预览图不可用</span>
     : <><img ref={ref} className="preview" data-preview={record.id} src={src} alt={`${labels[record.kind]}预览`} />
-      {record.kind === "video" && <span className="play">▶</span>}</>;
+      {record.kind === "video" && <span className="play"><Icon name="play" size={10} fill="currentColor" /></span>}</>;
 }
 type Props = {
   record: RecordItem; index: number; last: boolean; selected: boolean; beforeSelected: boolean;
@@ -58,7 +58,7 @@ export function RecordRow({ record, index, last, selected, beforeSelected, ordin
   const hasPreview = record.preview || (record.kind === "image" && record.files.length > 0 && record.status !== "pending");
   const text = media && !search ? "" : recordListText(record, search);
   const fileTag = record.kind === "file" ? fileTagText(record.files) : "";
-  const kindIcon = media ? null : swatch ? <span className="swatch" style={{ backgroundColor: record.body.trim() }} title="颜色" />
+  const kindIcon = media ? null : swatch ? <span className="swatch" style={{ color: record.body.trim() }} title="颜色"><Icon name="circle" size={14} fill="currentColor" strokeWidth={0} /></span>
     : record.kind === "text" ? null : record.kind === "file" ? <span className="file-tag" title={fileTag}>{fileTag}</span>
     : <span className={`kind-icon ${record.kind}`}><Icon name={record.kind} size={12} /></span>;
   const note = status || (record.expiresAt ? "敏感记录" : "");

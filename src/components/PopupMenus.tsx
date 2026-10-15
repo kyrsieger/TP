@@ -5,6 +5,7 @@ import type { MenuController } from "../state/menus";
 import type { PanelController } from "../state/panel";
 import { useObservable } from "./use-observable";
 import { displayShortcut } from "../state/settings";
+import { Icon } from "./Icon";
 
 export function PopupMenus({ menus, history, groups, toast, renameRecord }: { menus: MenuController; history: PanelController; groups: GroupController; toast: (message: string) => void; renameRecord: (id: string) => void }) {
   const menu = useObservable(menus), panel = useObservable(history);
@@ -58,7 +59,7 @@ export function PopupMenus({ menus, history, groups, toast, renameRecord }: { me
         aria-checked={moveRecords.every(record => record.groupId === group.id)} onMouseEnter={event => event.currentTarget.focus()} onClick={() => {
           const ids = menu.move!.ids; menus.update({ move: null });
           if (moveRecords.some(record => record.groupId !== group.id)) void history.action("batch_records", { ids, operation: { kind: "move_group", groupId: group.id } });
-        }}><span className="move-group-name">{group.name}</span><span className="move-group-check" aria-hidden="true">✓</span></button>)}
+        }}><span className="move-group-name">{group.name}</span><span className="move-group-check"><Icon name="check" size={15} /></span></button>)}
     </div>
   </>;
 }

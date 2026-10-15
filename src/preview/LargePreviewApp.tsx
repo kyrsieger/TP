@@ -5,6 +5,7 @@ import type { LargePreviewPayload } from "../domain/types";
 import { call } from "../services/desktop";
 import { MediaCarousel, type CarouselHandle } from "../components/MediaCarousel";
 import { applyTheme } from "../services/theme";
+import { Icon } from "../components/Icon";
 
 export function LargePreviewApp() {
   const [payload, setPayload] = useState<LargePreviewPayload | null>(null), [loaded, setLoaded] = useState(false), [failed, setFailed] = useState(false);
@@ -66,7 +67,7 @@ export function LargePreviewApp() {
     root.addEventListener("pointerdown", drag); return () => root.removeEventListener("pointerdown", drag);
   }, []);
   return <>
-    <span id="kind">{payload?.kind === "video" ? "视频首帧" : ""}</span><button id="close" type="button" aria-label="关闭预览" onClick={close}>×</button>
+    <span id="kind">{payload?.kind === "video" ? "视频首帧" : ""}</span><button id="close" type="button" aria-label="关闭预览" onClick={close}><Icon name="x" size={20} /></button>
     <img id="image" ref={image} alt={payload?.kind === "video" ? "视频首帧预览" : "图片预览"} draggable={false} hidden={!loaded || !payload} />
     {payload && payload.count > 1 ? <MediaCarousel key={`${payload.id}:${version.current}`} id="stage" count={payload.count} indicatorsId="indicators" carouselRef={carousel}
       load={index => call("preview_data", { id: payload.id, role: payload.kind === "image" ? "full" : "preview", index })}

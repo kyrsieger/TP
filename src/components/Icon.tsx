@@ -1,24 +1,39 @@
-export function Icon({ name, size = 14 }: { name: string; size?: number }) {
-  return <svg width={size} height={size} aria-hidden="true"><use href={"#lu-" + name} /></svg>;
+import {
+  ArrowUpToLine, Check, ChevronDown, Circle, Clipboard, Copy, File, Funnel, Image,
+  Link, Minus, Palette, Pin, Play, Plus, Search, Settings, Square, Star, Type, Video, X,
+  type LucideProps,
+} from "lucide-react";
+
+const icons = {
+  "arrow-up-to-line": ArrowUpToLine,
+  check: Check,
+  chevron: ChevronDown,
+  circle: Circle,
+  clipboard: Clipboard,
+  color: Palette,
+  file: File,
+  filter: Funnel,
+  gear: Settings,
+  group: Copy,
+  image: Image,
+  link: Link,
+  minus: Minus,
+  pin: Pin,
+  play: Play,
+  plus: Plus,
+  search: Search,
+  square: Square,
+  star: Star,
+  "star-fill": Star,
+  text: Type,
+  video: Video,
+  x: X,
+} as const;
+
+type IconProps = Omit<LucideProps, "name"> & { name: keyof typeof icons };
+
+export function Icon({ name, size = 14, ...props }: IconProps) {
+  const Glyph = icons[name];
+  return <Glyph size={size} strokeWidth={1.8} fill={name === "star-fill" ? "currentColor" : "none"}
+    aria-hidden="true" focusable="false" {...props} />;
 }
-export function IconDefinitions() { return (<svg className="svg-defs" aria-hidden="true"><defs>
-    <symbol id="lu-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.12 2.12 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.12 2.12 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.12 2.12 0 0 0 1.597-1.16z"/></symbol>
-    <symbol id="lu-star-fill" viewBox="0 0 24 24"><path fill="currentColor" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.12 2.12 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.12 2.12 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.12 2.12 0 0 0 1.597-1.16z"/></symbol>
-    <symbol id="lu-pin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4a1 1 0 0 1 1 1z"/></symbol>
-    <symbol id="lu-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0a2.34 2.34 0 0 0 3.319 1.915a2.34 2.34 0 0 1 2.33 4.033a2.34 2.34 0 0 0 0 3.831a2.34 2.34 0 0 1-2.33 4.033a2.34 2.34 0 0 0-3.319 1.915a2.34 2.34 0 0 1-4.659 0a2.34 2.34 0 0 0-3.32-1.915a2.34 2.34 0 0 1-2.33-4.033a2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></g></symbol>
-    <symbol id="lu-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" d="M5 12h14m-7-7v14"/></symbol>
-    <symbol id="lu-arrow-up-to-line" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 19V7m-5 5 5-5 5 5M4 3h16"/></symbol>
-    <symbol id="lu-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" d="M18 6L6 18M6 6l12 12"/></symbol>
-    <symbol id="lu-minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" d="M5 12h14"/></symbol>
-    <symbol id="lu-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8"/></symbol>
-    <symbol id="lu-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></g></symbol>
-    <symbol id="lu-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="m6 9 6 6 6-6"/></symbol>
-    <symbol id="lu-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></g></symbol>
-    <symbol id="lu-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></g></symbol>
-    <symbol id="lu-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></g></symbol>
-    <symbol id="lu-video" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></g></symbol>
-    <symbol id="lu-group" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8"><rect x="3" y="3" width="13" height="13" rx="2"/><rect x="8" y="8" width="13" height="13" rx="2"/></g></symbol>
-    <symbol id="lu-filter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M22 3H2l8 9.46V19l4 2v-8.54Z"/></symbol>
-    <symbol id="lu-text" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" d="M4 6h16M12 6v13M8 19h8"/></symbol>
-    <symbol id="lu-color" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></symbol>
-  </defs></svg>); }
