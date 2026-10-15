@@ -25,22 +25,26 @@ export const themes: readonly Theme[] = [
 ];
 export const defaultTheme: ThemeId = "indigo";
 export function getTheme(id: unknown): Theme { return themes.find(theme => theme.id === id) ?? themes[0]; }
-/** Same order as the seven swatches in the approved review. */
-export function themeSwatches(theme: Theme): string[] {
+/** Keep color roles aligned when comparing two palettes. */
+function themeColors(theme: Theme): string[] {
   return [theme.accent, theme.bg, theme.surface, theme.control, theme.soft, theme.text, theme.muted];
 }
+/** Display the seven colors from darkest to lightest, using CIELAB lightness. */
+export function themeSwatches(theme: Theme): string[] {
+  return themeColors(theme).sort((a, b) => hexToLab(a)[0] - hexToLab(b)[0]);
+}
 export function themeDistance(a: Theme, b: Theme): number {
-  const colors = themeSwatches(b);
+  const colors = themeColors(b);
   // Accent carries 1/3 of the distance; the six supporting colors share the remainder.
-  return themeSwatches(a).reduce((sum, color, i) => sum + (i === 0 ? 3 : 1) * deltaE2000(hexToLab(color), hexToLab(colors[i])), 0) / 9;
+  return themeColors(a).reduce((sum, color, i) => sum + (i === 0 ? 3 : 1) * deltaE2000(hexToLab(color), hexToLab(colors[i])), 0) / 9;
 }
 export function sortThemes(input: readonly Theme[] = themes): Theme[] {
   const remaining = [...input], sorted: Theme[] = [];
-  const first = remaining.findIndex(theme => theme.id === "forest-mist");
+  const first = remaining.findIndex(theme => theme.id === defaultTheme);
   if (first >= 0) sorted.push(...remaining.splice(first, 1));
   for (const dark of [false, true]) {
     while (remaining.some(theme => theme.dark === dark)) {
-      const previous = sorted[sorted.length - 1] ?? getTheme("forest-mist");
+      const previous = sorted[sorted.length - 1] ?? getTheme(defaultTheme);
       const next = remaining.filter(theme => theme.dark === dark).sort((a, b) => themeDistance(previous, a) - themeDistance(previous, b) || a.id.localeCompare(b.id))[0];
       sorted.push(next); remaining.splice(remaining.indexOf(next), 1);
     }

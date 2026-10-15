@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loadTs } from "../load-ts.mjs";
 const { sortedThemes, themeSwatches } = loadTs("src/domain/themes.ts");
+const lastTheme = sortedThemes.at(-1).id;
 
 test.beforeEach(async({page})=>{
   await page.goto("/tests/fixtures/panel.html");
@@ -26,18 +27,18 @@ test("dropdown shows the computed order and seven approved colors; hover changes
     await expect(option).toHaveAttribute('aria-selected','true');
     expect(await page.locator('.shell').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(toRgb(theme.bg));
   }
-  await expect.poll(()=>page.evaluate(()=>window.__TP_TEST__.state.settings.theme)).toBe('forest-night');
+  await expect.poll(()=>page.evaluate(()=>window.__TP_TEST__.state.settings.theme)).toBe(lastTheme);
   await page.mouse.move(5,5);
   await page.keyboard.press('Escape');
   await expect(page.locator('#theme-menu')).toBeHidden();
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme','forest-night');
+  await expect(page.locator('html')).toHaveAttribute('data-theme',lastTheme);
   await page.locator('#settings-button').click();
   await expect(page.locator('#settings')).toBeHidden();
   await expect(page.locator('.record[data-id="text"]')).toBeFocused();
   await page.evaluate(()=>window.__TP_TEST__.hide());
   await page.evaluate(()=>window.__TP_TEST__.show());
-  await expect(page.locator('html')).toHaveAttribute('data-theme','forest-night');
+  await expect(page.locator('html')).toHaveAttribute('data-theme',lastTheme);
 });
 
 test("latest hover survives slow settings saves and other settings writes",async({page})=>{
@@ -64,20 +65,20 @@ test("failed saves restore the previous theme and keyboard selection works",asyn
   await page.mouse.move(5,5);
   await page.locator('[data-theme-option="indigo"]').focus();
   await page.keyboard.press('Home');
-  await expect(page.locator('html')).toHaveAttribute('data-theme','forest-mist');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','indigo');
   await page.keyboard.press('End');
-  await expect(page.locator('html')).toHaveAttribute('data-theme','forest-night');
+  await expect(page.locator('html')).toHaveAttribute('data-theme',lastTheme);
   await page.keyboard.press('Enter');
   await expect(page.locator('#theme-menu')).toBeHidden();
   await expect(page.locator('#theme-trigger')).toBeFocused();
-  await expect.poll(()=>page.evaluate(()=>window.__TP_TEST__.state.settings.theme)).toBe('forest-night');
+  await expect.poll(()=>page.evaluate(()=>window.__TP_TEST__.state.settings.theme)).toBe(lastTheme);
 });
 
 test("short windows keep keyboard options visible and Escape closes the dropdown after Tab",async({page})=>{
   await page.setViewportSize({width:420,height:320});
   await page.locator('[data-theme-option="forest-mist"]').focus();
   await page.keyboard.press('End');
-  const visible=await page.locator('[data-theme-option="forest-night"]').evaluate(el=>{
+  const visible=await page.locator(`[data-theme-option="${lastTheme}"]`).evaluate(el=>{
     const row=el.getBoundingClientRect(),menu=el.parentElement.getBoundingClientRect();
     return row.top>=menu.top && row.bottom<=menu.bottom;
   });

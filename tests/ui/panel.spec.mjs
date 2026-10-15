@@ -267,6 +267,50 @@ test("invalid limits restore on blur and sensitive seconds save after typing", a
   await expect(page.locator("#max-ordinary")).toHaveValue("300"); await expect(page.locator("#toast")).toHaveText("请输入有效的设置值");
   await page.locator("#sensitive").fill("60"); await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.sensitiveSeconds)).toBe(60);
 });
+
+for (const choice of ["confirm", "cancel", "escape", "enter", "hide"]) test(`manual cache dialog ${choice} keeps confirmation and protected records`, async ({ page }) => {
+  let nativeDialogs = 0;
+  page.on("dialog", async dialog => { nativeDialogs++; await dialog.dismiss(); });
+  const before = await page.evaluate(() => window.__TP_TEST__.state.records.map(record => ({ id: record.id, protected: record.favorite || record.groupId !== null })));
+  await page.locator("#settings-button").click();
+  await page.locator("#clear-cache").click();
+  await expect(page.locator("#settings-cleanup-confirmation")).toBeVisible();
+  await expect(page.locator("#cleanup-confirmation-title")).toHaveText("清理缓存？");
+  await expect(page.locator("#settings-cleanup-confirmation [data-cancel]")).toBeFocused();
+  expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "clear_cache").length)).toBe(0);
+  if (choice === "escape") await page.keyboard.press("Escape");
+  else if (choice === "enter") await page.keyboard.press("Enter");
+  else if (choice === "hide") await page.evaluate(() => window.__TP_TEST__.hide());
+  else await page.locator(choice === "confirm" ? "[data-confirm]" : "[data-cancel]").click();
+  await expect(page.locator("#settings-cleanup-confirmation")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "clear_cache").length)).toBe(choice === "confirm" ? 1 : 0);
+  const remaining = await page.evaluate(() => window.__TP_TEST__.state.records.map(record => record.id));
+  expect(remaining).toEqual(before.filter(record => choice !== "confirm" || record.protected).map(record => record.id));
+  expect(nativeDialogs).toBe(0);
+  if (choice !== "hide") {
+    await expect(page.locator("#settings")).toBeVisible();
+    await expect(page.locator("#clear-cache")).toBeFocused();
+  }
+});
+
+test("remembering and forgetting the dragged position do not reposition the current panel", async ({ page }) => {
+  await page.locator("#settings-button").click();
+  const places = () => page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "place_panel").length);
+  const before = await places();
+  await page.locator("#remember").check();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.rememberPosition)).toBe(true);
+  expect(await page.evaluate(() => ({ x: window.__TP_TEST__.state.settings.panelX, y: window.__TP_TEST__.state.settings.panelY }))).toEqual({ x: 1200, y: 200 });
+  expect(await places()).toBe(before);
+  await page.locator("#remember").uncheck();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.rememberPosition)).toBe(false);
+  expect(await places()).toBe(before);
+  await page.locator("#settings-button").click();
+  await page.locator("#close").click();
+  await page.evaluate(() => window.__TP_TEST__.show());
+  await expect(page.locator('.record[data-id="text"]')).toBeVisible();
+  await expect.poll(places).toBe(before + 1);
+  expect(await page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.name === "place_panel").args.value.rememberPosition)).toBe(false);
+});
 test("groups can be created, renamed and removed through the original UI", async ({ page }) => {
   await page.locator("#add-group").click(); await page.locator(".group-input").fill("新分组"); await page.keyboard.press("Enter");
   await expect(page.locator('[data-view="group:3"]')).toHaveText("新分组"); await page.locator('[data-view="group:3"]').dblclick();

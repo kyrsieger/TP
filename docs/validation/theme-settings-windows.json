@@ -20,7 +20,8 @@
     "browserRegression": {"passed": 42, "failed": 0, "environment": "local Chromium; real React components and simulated Tauri IPC"},
     "finalThemeBrowserTests": {"passed": 5, "failed": 0, "includesAdditionalShortWindowKeyboardCase": true},
     "builtInBrowserInspection": "actual SettingsPanel and theme dropdown opened",
-    "snapshots": ["../../design-demos/theme-review/implemented-light.png", "../../design-demos/theme-review/implemented-dark.png"]
+    "snapshots": [],
+    "snapshotNote": "原截图随设计演示目录于 2026-10-15 按要求删除。"
   },
   "covered": ["seven-color strips", "short labels", "hover without clicks", "light and dark ordering", "coalesced saves", "slow earlier saves", "other concurrent settings writes", "failed-save restoration", "hide/reopen", "old JSON defaults", "SQLite restart persistence", "preview startup and live theme events", "small-window keyboard scrolling", "Escape after Tab"],
   "limitations": ["Windows WebView2 desktop theme switching has not been run end to end", "macOS has not been compiled or run", "browser fixture uses demonstration records and does not read or modify the user's clipboard"]

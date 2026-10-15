@@ -27,7 +27,7 @@ export function ThemeSetting({ value, open, toggle, choose }: {
           event.preventDefault(); event.stopPropagation(); toggle(true);
           requestAnimationFrame(() => move(event.key === "ArrowDown" ? 1 : -1));
         }
-      }}><span id="theme-value">{current.name}</span><Icon name="chevron" /></button>
+      }}><span className="theme-trigger-strip theme-strip" aria-hidden="true">{themeSwatches(current).map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}</span><span id="theme-value">{current.name}</span><Icon name="chevron" /></button>
     <div ref={menu} id="theme-menu" role="listbox" aria-labelledby="theme-label" hidden={!open} onKeyDown={event => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
       else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); move(event.key === "ArrowDown" ? 1 : -1, event.target); }

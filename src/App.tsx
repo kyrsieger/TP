@@ -71,6 +71,6 @@ export function App() {
       <section id="settings" hidden={!settings.open}>{panel.active && settings.open && <SettingsPanel controller={app.settings} history={app.history} menus={app.menus} toast={app.toasts.show} />}</section>
       <div id="toast" role="status" className={toast.visible ? "visible" : ""}>{toast.message}</div>
     </div>
-    {settings.confirmationCount !== null && <CleanupConfirmation count={settings.confirmationCount} controller={app.settings} />}
+    {(settings.confirmationCount !== null || settings.cacheConfirmationOpen) && <CleanupConfirmation count={settings.confirmationCount} controller={app.settings} />}
   </>;
 }

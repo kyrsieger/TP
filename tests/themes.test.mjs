@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { loadTs } from "./load-ts.mjs";
 const { hexToLab, deltaE2000 } = loadTs("src/domain/color-distance.ts");
-const { themes, sortedThemes, themeDistance, themeSwatches, getTheme, sortThemes } = loadTs("src/domain/themes.ts");
+const { themes, sortedThemes, themeDistance, themeSwatches, getTheme, sortThemes, defaultTheme } = loadTs("src/domain/themes.ts");
 
 test("CIEDE2000 matches all 34 Sharma/Wu/Dalal reference pairs", () => {
   // https://hajim.rochester.edu/ece/sites/gsharma/ciede2000/dataNprograms/ciede2000testdata.txt
@@ -22,12 +22,23 @@ test("CIEDE2000 matches all 34 Sharma/Wu/Dalal reference pairs", () => {
 test("approved themes retain their seven review swatches and unknown themes fall back safely", () => {
   const selected = JSON.parse(readFileSync("tests/fixtures/approved-theme-palettes.json", "utf8"));
   assert.equal(themes.length, 11);
-  selected.forEach((palette,i)=>assert.deepEqual([...themeSwatches(themes[i+1])], [palette.accent,palette.bg,palette.surface,palette.control,palette.soft,palette.text,palette.muted]));
+  selected.forEach((palette,i)=>assert.deepEqual([...themeSwatches(themes[i+1])].sort(), [palette.accent,palette.bg,palette.surface,palette.control,palette.soft,palette.text,palette.muted].sort()));
   assert.equal(getTheme("missing").id, "indigo");
 });
 
-test("ordering starts at green, keeps dark themes last, and always follows the nearest remaining palette", () => {
-  assert.equal(sortedThemes[0].id,"forest-mist");
+test("all seven swatches run from darkest to lightest without changing palette colors", () => {
+  for (const theme of themes) {
+    const colors = [...themeSwatches(theme)];
+    assert.equal(colors.length, 7);
+    assert.deepEqual([...colors].sort(), [theme.accent,theme.bg,theme.surface,theme.control,theme.soft,theme.text,theme.muted].sort());
+    const lightness = colors.map(color => hexToLab(color)[0]);
+    assert.ok(lightness.every((value, index) => index === 0 || value >= lightness[index - 1]), theme.id);
+  }
+});
+
+test("ordering starts at the default indigo, keeps dark themes last, and always follows the nearest remaining palette", () => {
+  assert.equal(defaultTheme,"indigo");
+  assert.equal(sortedThemes[0].id,defaultTheme);
   assert.equal(new Set(sortedThemes.map(t=>t.id)).size,11);
   let dark=false;
   for(let i=1;i<sortedThemes.length;i++) {

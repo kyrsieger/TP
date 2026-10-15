@@ -25,7 +25,7 @@ type SettingsValue = {
   shortcutDraft: string | null; shortcutError: string | null;
   renameShortcutDraft: string | null; renameShortcutError: string | null;
   autostartEnabled: boolean | null; autostartSaving: boolean;
-  confirmationCount: number | null; revision: number;
+  confirmationCount: number | null; cacheConfirmationOpen: boolean; revision: number;
 };
 type SettingsEffects = {
   toast: (message: string) => void; place: () => Promise<void>;
@@ -36,6 +36,7 @@ type SettingsEffects = {
 export class SettingsController extends Observable<SettingsValue> {
   private activeShortcut = "";
   private cacheRequest = 0;
+  private cacheClearQueued = false;
   private queue: Promise<void> = Promise.resolve();
   private pending: Settings | null = null;
   private resolveConfirmation: ((confirmed: boolean) => void) | null = null;
@@ -43,7 +44,7 @@ export class SettingsController extends Observable<SettingsValue> {
   private themeGeneration = 0;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
     super({ themeDraft: null, open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
-      shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, revision: 0 });
+      shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, cacheConfirmationOpen: false, revision: 0 });
   }
   ready(error: string | null) {
     this.update({ shortcutError: error });
@@ -90,21 +91,34 @@ export class SettingsController extends Observable<SettingsValue> {
     finally { this.update({ autostartSaving: false }); }
   }
   async clearCache() {
-    if (this.value.clearingCache || !window.confirm("清理所有普通记录及其本地文件？收藏和自建分组中的记录会保留。此操作无法撤销。")) return;
-    this.update({ clearingCache: true });
-    try {
-      const count = await this.call<number>("clear_cache");
-      await this.history.refresh();
-      this.effects.toast(`已清理 ${count} 条普通记录及孤立附件`);
-    } catch (error) {
-      await this.history.refresh().catch(() => {});
-      this.effects.toast(`清理缓存失败：${String(error)}`);
-    } finally { this.update({ clearingCache: false }); }
+    if (this.cacheClearQueued || !this.value.open || !this.history.value.active) return;
+    this.cacheClearQueued = true;
+    const generation = this.history.generation;
+    // Share the settings queue so a pending save and cache cleanup cannot replace each other's confirmation.
+    this.queue = this.queue.then(async () => {
+      if (!this.value.open || !this.history.value.active || generation !== this.history.generation) return;
+      const confirmed = await new Promise<boolean>(resolve => {
+        this.resolveConfirmation = resolve;
+        this.update({ cacheConfirmationOpen: true });
+      });
+      if (!confirmed || !this.value.open || !this.history.value.active || generation !== this.history.generation) return;
+      this.update({ clearingCache: true });
+      try {
+        const count = await this.call<number>("clear_cache");
+        await this.history.refresh();
+        this.effects.toast(`已清理 ${count} 条普通记录及孤立附件`);
+      } catch (error) {
+        await this.history.refresh().catch(() => {});
+        this.effects.toast(`清理缓存失败：${String(error)}`);
+      } finally { this.update({ clearingCache: false }); }
+    });
+    try { await this.queue; }
+    finally { this.cacheClearQueued = false; }
   }
   confirm(confirmed: boolean) {
     const resolve = this.resolveConfirmation;
     this.resolveConfirmation = null;
-    this.update({ confirmationCount: null });
+    this.update({ confirmationCount: null, cacheConfirmationOpen: false });
     resolve?.(confirmed);
   }
   private confirmCleanup(count: number) {

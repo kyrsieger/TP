@@ -17,7 +17,7 @@ function setup(save, confirm = () => false) {
     effects.push([name,args.value,args.confirmedCount]);
     const result = await save(args.value,args.confirmedCount);
     return typeof result === "boolean" ? (result ? {status:"saved"} : {status:"confirmation_required",count:50}) : result;
-  }, { toast: error=>effects.push(["toast",error]), place: async()=>effects.push("place-panel") });
+  }, { toast: error=>effects.push(["toast",error]), place: async()=>effects.push("place-panel"), position: async()=>({x:1200,y:200}) });
   let requested = null, revision = 0;
   controller.subscribe(() => {
     const count=controller.value.confirmationCount;
@@ -39,6 +39,19 @@ test("background residency is saved immediately and a failed save preserves the 
   const bad = setup(() => { throw new Error("save failed"); }); bad.original.backgroundResident = true;
   await bad.controller.save({ backgroundResident: false });
   assert.equal(bad.context.state.settings.backgroundResident, true);
+});
+
+test("remember-position changes capture the current coordinates and never move the visible panel", async () => {
+  const { controller, context, effects } = setup(() => true);
+  await controller.save({ rememberPosition: true });
+  assert.equal(context.state.settings.rememberPosition, true);
+  assert.equal(context.state.settings.panelX, 1200);
+  assert.equal(context.state.settings.panelY, 200);
+  await controller.save({ rememberPosition: false });
+  assert.equal(context.state.settings.rememberPosition, false);
+  assert.equal(context.state.settings.panelX, 1200);
+  assert.equal(context.state.settings.panelY, 200);
+  assert.ok(!effects.includes("place-panel"));
 });
 
 test("local rename shortcut saves without global registration and failed saves preserve the active key and draft", async () => {

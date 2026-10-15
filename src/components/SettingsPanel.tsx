@@ -37,6 +37,7 @@ function NumberSetting({ id, value, max, revision, save, toast }: { id: string; 
 }
 const retentionOptions = [[1, "24 小时"], [3, "3 天"], [5, "5 天"], [7, "7 天"], [30, "1 个月"]] as const;
 const positionOptions = [["left", "左下角"], ["right", "右下角"], ["center", "下方居中"]] as const;
+const settingSections = [["appearance", "外观", "外"], ["general", "通用", "通"], ["panel", "面板行为", "板"], ["records", "记录", "录"], ["position", "面板位置", "位"], ["storage", "存储", "存"], ["shortcuts", "快捷键", "键"]] as const;
 
 export function SettingsPanel({ controller, history, menus, toast }: { controller: SettingsController; history: PanelController; menus: MenuController; toast: (message: string) => void }) {
   const state = useObservable(controller), panel = useObservable(history), menu = useObservable(menus);
@@ -51,52 +52,80 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     void controller.save(patch, reposition);
   }
   if (!s) return null;
-  return <>
-    <h2>设置</h2><ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
-    <label className="inline"><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
-      onChange={event => { void controller.setAutostart(event.target.checked); }} />开机启动</label>
-    <label className="inline"><input id="background-resident" type="checkbox" checked={!!s.backgroundResident}
-      onChange={event => save({ backgroundResident: event.target.checked })} />后台常驻</label>
-    <p className="hint">开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。</p>
-    {!isMacOS && <><label className="inline"><input id="show-taskbar-icon" type="checkbox" checked={s.showTaskbarIcon}
-      onChange={event => save({ showTaskbarIcon: event.target.checked })} />在任务栏显示图标</label>
-      <p className="hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</p></>}
-    <label className="inline"><input id="retain-search-input" type="checkbox" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} />保留搜索框输入</label>
-    <p className="hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</p>
-    <label className="inline"><input id="retain-type-filter" type="checkbox" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} />保留类型筛选</label>
-    <p className="hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</p>
-    <label>唤出快捷键<input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
-      {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</label>
-    <label>记录重命名快捷键<input id="rename-shortcut" placeholder="点击后按快捷键" value={displayShortcut(state.renameShortcutDraft ?? s.renameShortcut)} readOnly
+  return <div className="settings-layout">
+    <nav className="settings-sidebar" aria-label="设置分组">
+      <div className="settings-sidebar-title">设置</div>
+      {settingSections.map(([id, label, symbol]) => <button key={id} type="button" onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ block: "start" })}>
+        <span className="settings-section-icon" aria-hidden="true">{symbol}</span>{label}
+      </button>)}
+    </nav>
+    <div className="settings-content">
+    <h2>设置</h2>
+    <section className="settings-group" id="settings-appearance" aria-labelledby="appearance-title">
+      <h3 id="appearance-title">外观</h3><div className="settings-card">
+        <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
+      </div>
+    </section>
+    <section className="settings-group" id="settings-general" aria-labelledby="general-title">
+      <h3 id="general-title">通用</h3><div className="settings-card">
+    <label className="settings-row"><span className="settings-copy">开机启动</span><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
+      onChange={event => { void controller.setAutostart(event.target.checked); }} /></label>
+    <label className="settings-row"><span className="settings-copy">后台常驻<small id="background-resident-hint">开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。</small></span><input id="background-resident" type="checkbox" aria-label="后台常驻" aria-describedby="background-resident-hint" checked={!!s.backgroundResident}
+      onChange={event => save({ backgroundResident: event.target.checked })} /></label>
+    {!isMacOS && <label className="settings-row"><span className="settings-copy">在任务栏显示图标<small id="show-taskbar-icon-hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</small></span><input id="show-taskbar-icon" type="checkbox" aria-label="在任务栏显示图标" aria-describedby="show-taskbar-icon-hint" checked={s.showTaskbarIcon}
+      onChange={event => save({ showTaskbarIcon: event.target.checked })} /></label>}
+      </div>
+    </section>
+    <section className="settings-group" id="settings-panel" aria-labelledby="panel-title">
+      <h3 id="panel-title">面板行为</h3><div className="settings-card">
+    <label className="settings-row"><span className="settings-copy">保留搜索框输入<small id="retain-search-input-hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</small></span><input id="retain-search-input" type="checkbox" aria-label="保留搜索框输入" aria-describedby="retain-search-input-hint" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} /></label>
+    <label className="settings-row"><span className="settings-copy">保留类型筛选<small id="retain-type-filter-hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</small></span><input id="retain-type-filter" type="checkbox" aria-label="保留类型筛选" aria-describedby="retain-type-filter-hint" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} /></label>
+    <label className="settings-row"><span className="settings-copy">唤出快捷键</span><span className="settings-shortcut-control"><input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
+      {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</span></label>
+    <label className="settings-row"><span className="settings-copy">记录重命名快捷键</span><span className="settings-shortcut-control"><input id="rename-shortcut" placeholder="点击后按快捷键" value={displayShortcut(state.renameShortcutDraft ?? s.renameShortcut)} readOnly
       onKeyDown={event => { event.preventDefault(); event.stopPropagation(); controller.captureRenameShortcut(event.nativeEvent); }} />
-      {state.renameShortcutError && <span className="shortcut-error" role="alert">{state.renameShortcutError}</span>}</label>
-    <p className="hint">默认为 F2，仅在记录列表中生效。可使用功能键或带修饰键的字母、数字；按 Backspace 或 Delete 清除。</p>
-    <label><span>普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
+      {state.renameShortcutError && <span className="shortcut-error" role="alert">{state.renameShortcutError}</span>}</span></label>
+    <p className="settings-card-note">默认为 F2，仅在记录列表中生效。可使用功能键或带修饰键的字母、数字；按 Backspace 或 Delete 清除。</p>
+      </div>
+    </section>
+    <section className="settings-group" id="settings-records" aria-labelledby="records-title">
+      <h3 id="records-title">记录</h3><div className="settings-card">
+    <label className="settings-row"><span className="settings-copy">普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
     <div className="setting-field"><span className="setting-label">普通记录保留时间</span><div className="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.retention} onClick={() => menus.update({ retention: !menu.retention })}><span className="retention-value">{retentionOptions.find(([value]) => value === s.retentionDays)?.[1] ?? `${s.retentionDays} 天`}</span><Icon name="chevron" /></button>
       <div id="retention-menu" role="listbox" hidden={!menu.retention}>{retentionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-retention={value} aria-selected={s.retentionDays === value}
         onClick={() => { menus.update({ retention: false }); save({ retentionDays: value }); }}>{label}</button>)}</div>
     </div></div>
-    <label>1Password 记录保留秒数<NumberSetting id="sensitive" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></label>
-    <p className="hint">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
-    <fieldset><legend>面板位置</legend>{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="inline"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
-      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }); }} />{label}</label>)}
+    <label className="settings-row"><span className="settings-copy">1Password 记录保留秒数</span><NumberSetting id="sensitive" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></label>
+      </div><p className="settings-group-note">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
+    </section>
+    <section className="settings-group" id="settings-position" aria-labelledby="position-title">
+      <h3 id="position-title">面板位置</h3>
+    <fieldset className="settings-card" aria-labelledby="position-title">{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="settings-row settings-radio"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
+      onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }); }} /><span className="settings-copy">{label}</span></label>)}
       <fieldset className="fixed-position-settings" aria-label="固定位置设置" disabled={s.positionMode !== "fixed"}>
         <div className="setting-field"><span className="setting-label">固定位置</span><div className="setting-select fixed-position-select">
           <button id="fixed-position-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.fixedPosition && s.positionMode === "fixed"} onClick={() => menus.update({ fixedPosition: !menu.fixedPosition })}><span className="fixed-position-value">{positionOptions.find(([value]) => value === s.fixedPosition)![1]}</span><Icon name="chevron" /></button>
           <div id="fixed-position-menu" role="listbox" hidden={!menu.fixedPosition || s.positionMode !== "fixed"}>{positionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-fixed-position={value} aria-selected={s.fixedPosition === value}
             onClick={() => { menus.update({ fixedPosition: false }); save({ fixedPosition: value }, true); }}>{label}</button>)}</div>
         </div></div>
-        <label className="inline"><input id="remember" type="checkbox" checked={s.rememberPosition} onChange={event => save({ rememberPosition: event.target.checked }, !event.target.checked)} />记忆拖拽位置</label>
+        <label className="settings-row"><span className="settings-copy">记忆拖拽位置</span><input id="remember" type="checkbox" checked={s.rememberPosition} onChange={event => save({ rememberPosition: event.target.checked })} /></label>
       </fieldset>
     </fieldset>
-    <p className="hint">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
-    <ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} />
-    <section className="cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h3 id="cache-cleanup-title">清理缓存</h3>
+    <p className="settings-group-note">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
+    </section>
+    <section className="settings-group" id="settings-storage" aria-labelledby="storage-title">
+      <h3 id="storage-title">存储</h3>
+    <section className="settings-card cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h4 id="cache-cleanup-title">清理缓存</h4>
       <p className="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">{state.cacheSizeText}</span>。此操作无法撤销。</p></div>
       <button id="clear-cache" className="primary" disabled={state.clearingCache} onClick={() => { void controller.clearCache(); }}>{state.clearingCache ? "清理中…" : "清理缓存"}</button></section>
-    <p className="app-version">当前版本：<span id="app-version">{version}</span></p>
-  </>;
+    <p className="settings-card app-version"><span>当前版本</span><span id="app-version">{version}</span></p>
+    </section>
+    <section className="settings-group" id="settings-shortcuts" aria-labelledby="shortcuts-title">
+      <h3 id="shortcuts-title">快捷键</h3><div className="settings-card"><ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} /></div>
+    </section>
+    </div>
+  </div>;
 }
 function ShortcutTable({ shortcut, renameShortcut }: { shortcut: string; renameShortcut: string }) {
   const rows = [
@@ -115,5 +144,5 @@ function ShortcutTable({ shortcut, renameShortcut }: { shortcut: string; renameS
     ["Ctrl+A", "输入框聚焦时全选框内文字；面板其他区域禁用全选"],
     ["Esc", "关闭当前菜单、设置或大图预览；搜索词非空时清除搜索词并移走搜索框焦点，面板保持显示；搜索框为空时在主页隐藏面板；编辑分组名时取消"],
   ];
-  return <><h3>快捷键</h3><table className="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>{rows.map(([key, label]) => <tr key={label}><td>{key}</td><td>{label}</td></tr>)}</tbody></table></>;
+  return <table className="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>{rows.map(([key, label]) => <tr key={label}><td><kbd>{key}</kbd></td><td>{label}</td></tr>)}</tbody></table>;
 }
