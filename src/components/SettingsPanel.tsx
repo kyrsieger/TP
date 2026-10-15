@@ -54,20 +54,18 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   if (!s) return null;
   return <div className="settings-layout">
     <nav className="settings-sidebar" aria-label="设置分组">
-      <div className="settings-sidebar-title">设置</div>
       {settingSections.map(([id, label, symbol]) => <button key={id} type="button" onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ block: "start" })}>
         <span className="settings-section-icon" aria-hidden="true">{symbol}</span>{label}
       </button>)}
     </nav>
     <div className="settings-content">
-    <h2>设置</h2>
-    <section className="settings-group" id="settings-appearance" aria-labelledby="appearance-title">
-      <h3 id="appearance-title">外观</h3><div className="settings-card">
+    <section className="settings-group" id="settings-appearance" aria-label="外观">
+      <div className="settings-card">
         <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
       </div>
     </section>
-    <section className="settings-group" id="settings-general" aria-labelledby="general-title">
-      <h3 id="general-title">通用</h3><div className="settings-card">
+    <section className="settings-group" id="settings-general" aria-label="通用">
+      <div className="settings-card">
     <label className="settings-row"><span className="settings-copy">开机启动</span><input id="autostart" type="checkbox" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
       onChange={event => { void controller.setAutostart(event.target.checked); }} /></label>
     <label className="settings-row"><span className="settings-copy">后台常驻<small id="background-resident-hint">开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。</small></span><input id="background-resident" type="checkbox" aria-label="后台常驻" aria-describedby="background-resident-hint" checked={!!s.backgroundResident}
@@ -76,8 +74,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       onChange={event => save({ showTaskbarIcon: event.target.checked })} /></label>}
       </div>
     </section>
-    <section className="settings-group" id="settings-panel" aria-labelledby="panel-title">
-      <h3 id="panel-title">面板行为</h3><div className="settings-card">
+    <section className="settings-group" id="settings-panel" aria-label="面板行为">
+      <div className="settings-card">
     <label className="settings-row"><span className="settings-copy">保留搜索框输入<small id="retain-search-input-hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</small></span><input id="retain-search-input" type="checkbox" aria-label="保留搜索框输入" aria-describedby="retain-search-input-hint" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} /></label>
     <label className="settings-row"><span className="settings-copy">保留类型筛选<small id="retain-type-filter-hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</small></span><input id="retain-type-filter" type="checkbox" aria-label="保留类型筛选" aria-describedby="retain-type-filter-hint" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} /></label>
     <label className="settings-row"><span className="settings-copy">唤出快捷键</span><span className="settings-shortcut-control"><input id="shortcut" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
@@ -88,8 +86,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <p className="settings-card-note">默认为 F2，仅在记录列表中生效。可使用功能键或带修饰键的字母、数字；按 Backspace 或 Delete 清除。</p>
       </div>
     </section>
-    <section className="settings-group" id="settings-records" aria-labelledby="records-title">
-      <h3 id="records-title">记录</h3><div className="settings-card">
+    <section className="settings-group" id="settings-records" aria-label="记录">
+      <div className="settings-card">
     <label className="settings-row"><span className="settings-copy">普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></label>
     <div className="setting-field"><span className="setting-label">普通记录保留时间</span><div className="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.retention} onClick={() => menus.update({ retention: !menu.retention })}><span className="retention-value">{retentionOptions.find(([value]) => value === s.retentionDays)?.[1] ?? `${s.retentionDays} 天`}</span><Icon name="chevron" /></button>
@@ -99,9 +97,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <label className="settings-row"><span className="settings-copy">1Password 记录保留秒数</span><NumberSetting id="sensitive" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></label>
       </div><p className="settings-group-note">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
     </section>
-    <section className="settings-group" id="settings-position" aria-labelledby="position-title">
-      <h3 id="position-title">面板位置</h3>
-    <fieldset className="settings-card" aria-labelledby="position-title">{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="settings-row settings-radio"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
+    <section className="settings-group" id="settings-position" aria-label="面板位置">
+    <fieldset className="settings-card" aria-label="面板位置">{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <label key={value} className="settings-row settings-radio"><input type="radio" name="mode" value={value} checked={s.positionMode === value}
       onChange={() => { if (value === "cursor") menus.update({ fixedPosition: false }); save({ positionMode: value as Settings["positionMode"] }); }} /><span className="settings-copy">{label}</span></label>)}
       <fieldset className="fixed-position-settings" aria-label="固定位置设置" disabled={s.positionMode !== "fixed"}>
         <div className="setting-field"><span className="setting-label">固定位置</span><div className="setting-select fixed-position-select">
@@ -114,15 +111,14 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     </fieldset>
     <p className="settings-group-note">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     </section>
-    <section className="settings-group" id="settings-storage" aria-labelledby="storage-title">
-      <h3 id="storage-title">存储</h3>
+    <section className="settings-group" id="settings-storage" aria-label="存储">
     <section className="settings-card cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h4 id="cache-cleanup-title">清理缓存</h4>
       <p className="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">{state.cacheSizeText}</span>。此操作无法撤销。</p></div>
       <button id="clear-cache" className="primary" disabled={state.clearingCache} onClick={() => { void controller.clearCache(); }}>{state.clearingCache ? "清理中…" : "清理缓存"}</button></section>
     <p className="settings-card app-version"><span>当前版本</span><span id="app-version">{version}</span></p>
     </section>
-    <section className="settings-group" id="settings-shortcuts" aria-labelledby="shortcuts-title">
-      <h3 id="shortcuts-title">快捷键</h3><div className="settings-card"><ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} /></div>
+    <section className="settings-group" id="settings-shortcuts" aria-label="快捷键">
+      <div className="settings-card"><ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} /></div>
     </section>
     </div>
   </div>;

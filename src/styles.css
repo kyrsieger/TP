@@ -140,10 +140,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #settings{position:absolute;inset:82px 0 0;z-index:3;overflow:auto;border-top:1px solid var(--line);background:color-mix(in srgb,var(--panel-bg) 65%,var(--control-bg));scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
 .settings-layout{min-height:100%}
 .settings-content{max-width:620px;margin:0 auto;padding:20px 16px 36px}
-#settings h2{margin:0 10px 24px;font-size:20px;font-weight:650;color:var(--text-1)}
 .settings-sidebar{display:none}
-.settings-group{margin:0 0 28px;scroll-margin-top:20px}
-#settings h3{margin:0 10px 8px;font-size:16px;font-weight:600;color:var(--text-1)}
+.settings-group{margin:0 0 16px;scroll-margin-top:20px}
 .settings-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgb(0 0 0 / 3%)}
 #settings .settings-row,.setting-field{position:relative;display:flex;align-items:center;gap:14px;min-height:44px;margin:0;padding:10px 14px;color:var(--text-1);font-size:13px;line-height:1.5}
 .settings-card>.settings-row+.settings-row::before,.settings-card>.settings-row+.setting-field::before,.settings-card>.setting-field+.settings-row::before,.fixed-position-settings .settings-row::before{content:"";position:absolute;top:0;left:14px;right:0;height:1px;background:var(--line)}
@@ -180,11 +178,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #settings .fixed-position-settings :disabled{opacity:1}
 #settings .fixed-position-settings:disabled input{accent-color:var(--text-3)}
 .hint{margin:7px 0 13px;color:var(--text-3);font-size:11px;line-height:1.5}
-.cache-cleanup{display:flex;align-items:flex-start;gap:14px;padding:14px}
+.cache-cleanup{display:flex;flex-direction:column;gap:14px;padding:14px}
 .cache-cleanup-copy{flex:1 1 auto;min-width:0}
 #settings .cache-cleanup h4{margin:0 0 4px;font-size:13px;font-weight:500;color:var(--text-1)}
 .cache-cleanup .hint{margin:0;color:var(--text-2);font-size:12px;line-height:1.6}
-.cache-cleanup .primary{flex:0 0 auto;width:auto;padding:6px 12px;border-radius:6px;background:var(--danger-bg);color:var(--on-danger)}
+.cache-cleanup .primary{align-self:flex-end;flex:0 0 auto;width:auto;padding:6px 12px;border-radius:6px;background:var(--danger-bg);color:var(--on-danger)}
 .cache-cleanup .primary:hover{background:var(--danger-bg-hover)}
 .app-version{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:42px;margin:14px 0 0;padding:10px 14px;color:var(--text-2);font-size:12px}
 .theme-select{position:relative}
@@ -210,13 +208,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 @media(min-width:760px){
   .settings-layout{display:grid;grid-template-columns:200px minmax(0,1fr)}
   .settings-sidebar{display:block;position:sticky;top:0;align-self:start;height:calc(100vh - 83px);padding:24px 10px;background:var(--control-bg);border-right:1px solid var(--line);overflow-y:auto}
-  .settings-sidebar-title{margin:0 10px 20px;color:var(--text-1);font-size:18px;font-weight:600}
   .settings-sidebar button{display:flex;align-items:center;gap:9px;width:100%;margin-bottom:2px;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:var(--text-1);font-size:13px;text-align:left}
   .settings-sidebar button:hover,.settings-sidebar button:focus{background:var(--accent-soft)}
   .settings-section-icon{display:grid;place-items:center;flex:0 0 22px;height:22px;border-radius:5px;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:600}
   .settings-content{width:100%;padding:28px 24px 52px}
-  #settings h2{display:none}
-  .settings-group{margin-bottom:34px}
+  .settings-group{margin-bottom:20px}
 }
 @media(max-width:359px){
   .settings-content{padding-right:10px;padding-left:10px}
