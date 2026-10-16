@@ -21,6 +21,8 @@ npm install
 npm run tauri dev
 ```
 
+开发服务使用 `http://localhost:5173`，Vite 与 Tauri 的地址配置保持一致。
+
 启动后应用静默常驻，只在系统托盘或菜单栏显示图标，不主动显示面板；左键单击托盘图标或在面板设置中录入唤出快捷键即可打开。全局唤出快捷键没有默认值，需在面板设置中录入。`npm run build` 构建前端，`cd src-tauri && cargo check` 检查 Rust 后端。
 
 视频首帧预览目前使用系统 `PATH` 中的 `ffmpeg`；缺少它时，视频文件仍可记录和应用，但不会显示预览。跨应用自动粘贴会尝试返回先前窗口并发送粘贴键，是否进入目标输入框取决于目标应用和系统权限。
@@ -39,4 +41,4 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-浏览器测试会启动端口 1422 的本地 Vite 服务，使用 `tests/fixtures` 中的模拟 IPC 和合成记录，不访问真实剪贴板、数据库或系统设置。可通过 `TP_TEST_BROWSER` 环境变量指定已有 Chromium 的完整可执行路径。浏览器回归不能替代桌面剪贴板、跨应用粘贴和系统快捷键的实机验收。
+浏览器测试会启动端口 5175 的本地 Vite 服务，使用 `tests/fixtures` 中的模拟 IPC 和合成记录，不访问真实剪贴板、数据库或系统设置。可通过 `TP_TEST_BROWSER` 环境变量指定已有 Chromium 的完整可执行路径。浏览器回归不能替代桌面剪贴板、跨应用粘贴和系统快捷键的实机验收。

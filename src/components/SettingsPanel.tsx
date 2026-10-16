@@ -121,18 +121,16 @@ function ShortcutTable({ shortcut, renameShortcut }: { shortcut: string; renameS
   const rows = [
     [shortcut ? displayShortcut(shortcut) : "未设置", "唤出面板（全局快捷键）"],
     [renameShortcut ? displayShortcut(renameShortcut) : "未设置", "重命名当前记录（仅记录列表）"],
-    ["直接输入", "搜索框聚焦时搜索当前分组"], ["Ctrl+F", "聚焦搜索框"],
+    ["Ctrl+F", "聚焦搜索框"],
     [isMacOS ? "Delete / Fn+Delete" : "Backspace / Delete", "搜索框聚焦时编辑搜索词"],
     ["Tab / Shift+Tab", "切换到下一个 / 上一个分组"], ["←", "选中图片或视频记录时打开大图预览"], ["→", "显示当前选中记录的悬浮预览"],
     ["↑ / ↓", "选择上一条 / 下一条记录，首尾循环；分组菜单中切换选项"],
     ["Shift+↑ / Shift+↓、Shift+点击", "按当前列表顺序连续选择多条记录"],
-    ["Enter", "应用选中记录；分组菜单中确认选择；编辑分组名或普通记录数量上限时提交"],
     ["Space", "打开或关闭大图预览；分组菜单中确认选择"], ["1～9", "搜索框未聚焦时应用当前可见序号对应的记录"],
     ["Ctrl+1～9", "应用当前可见序号对应的记录，搜索框聚焦时也可使用"],
     ["Ctrl+D", "收藏或取消收藏所有选中记录"], [isMacOS ? "Ctrl+Delete" : "Ctrl+Backspace / Delete", "搜索框未聚焦时删除所有选中记录"],
     ["Ctrl+G", "打开分组菜单，移动所有选中记录"], ["Ctrl+P", "置顶或取消置顶所有选中记录"],
     ["Ctrl+A", "输入框聚焦时全选框内文字；面板其他区域禁用全选"],
-    ["Esc", "关闭当前菜单、设置或大图预览；搜索词非空时清除搜索词并移走搜索框焦点，面板保持显示；搜索框为空时在主页隐藏面板；编辑分组名时取消"],
   ];
   return <table className="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>{rows.map(([key, label]) => <tr key={label}><td><kbd>{key}</kbd></td><td>{label}</td></tr>)}</tbody></table>;
 }
