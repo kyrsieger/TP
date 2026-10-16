@@ -1,5 +1,5 @@
 import {
-  ArrowUpToLine, Check, ChevronDown, Circle, Clipboard, Copy, File, Funnel, Image,
+  ArrowUpToLine, Check, ChevronDown, Circle, Clipboard, File, Folder, Funnel, Image,
   Link, Minus, Palette, Pin, Play, Plus, Search, Settings, Square, Star, Type, Video, X,
   type LucideProps,
 } from "lucide-react";
@@ -14,7 +14,7 @@ const icons = {
   file: File,
   filter: Funnel,
   gear: Settings,
-  group: Copy,
+  group: Folder,
   image: Image,
   link: Link,
   minus: Minus,
