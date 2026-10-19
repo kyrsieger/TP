@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TP Search Results Test</title></head>
+<body><div id="app"></div><script type="module">
+import "./desktop-mock.js";
+const t = window.__TP_TEST__;
+t.state.records = [
+  t.makeRecord("short", "text", '"D:\\Workspace\\project\\micai-ohoskills"'),
+  t.makeRecord("long", "text", "前文内容".repeat(80) + " micai-ohoskills " + "后文内容".repeat(80)),
+  t.makeRecord("path", "file", "", { files: [{ original: "D:\\Workspace\\project\\micai-ohoskills", isDirectory: true, stored: null }] }),
+  t.makeRecord("media", "image", "前文内容".repeat(80) + " micai-ohoskills " + "后文内容".repeat(80), { preview: true }),
+];
+await import("/src/main.ts");
+</script></body></html>

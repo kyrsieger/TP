@@ -26,10 +26,7 @@ export function recordListText(record: RecordItem, search: string): string {
   if (![record.body, ...record.files.map(file => file.original)].some(text => text.toLocaleLowerCase().includes(needle))) return usual;
   const source = [record.body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
     ?? `${record.body} ${record.files.map(file => file.original).join(" ")}`;
-  const index = source.toLocaleLowerCase().indexOf(needle);
-  const start = Math.max(0, index - 6);
-  const end = Math.min(source.length, index + search.length + 48);
-  return `${start ? "…" : ""}${source.slice(start, end)}${end < source.length ? "…" : ""}`;
+  return source;
 }
 
 export function fileTagText(files: FileItem[]): string {

@@ -4,6 +4,7 @@ import type { RecordItem } from "../domain/types";
 import { call } from "../services/desktop";
 import { Icon } from "./Icon";
 import { Highlight } from "./Highlight";
+import { SearchExcerpt } from "./SearchExcerpt";
 import type { RecordRenameController } from "../state/record-rename";
 
 function RecordTitle({ record, editing, rename, search }: { record: RecordItem; editing: boolean; rename: RecordRenameController; search: string }) {
@@ -78,9 +79,9 @@ export function RecordRow({ record, index, last, selected, beforeSelected, ordin
     {!editing && <span className="ordinal">{ordinal}</span>}
     {media ? <>{named && <span className="media-record-title">{title}</span>}<span className="preview-wrap">{hasPreview ? <Thumbnail record={record} root={root} />
       : <span className="preview-unavailable">{record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>}</span>
-      {!editing && bodyMatch && <span className="media-search-match" style={{ bottom: note ? 32 : 9 }}><Highlight text={text} query={search} /></span>}
+      {!editing && bodyMatch && <SearchExcerpt className="media-search-match" style={{ bottom: note ? 32 : 9 }} text={text} query={search} />}
       {!editing && note && <span className="media-note">{note}</span>}</>
-      : <div className="record-main"><div className="record-content">{named ? <span className="record-name">{kindIcon}{title}</span> : kindIcon}<span className="record-text"><Highlight text={text} query={search} /></span>{note && <span className="record-note">{note}</span>}</div></div>}
+      : <div className="record-main"><div className="record-content">{named ? <span className="record-name">{kindIcon}{title}</span> : kindIcon}<SearchExcerpt className="record-text" text={text} query={search} />{note && <span className="record-note">{note}</span>}</div></div>}
     {!editing && <><span className="record-indicators">
       {pinned && <span className="record-indicator pin-indicator" aria-label="已置顶" title="已置顶"><Icon name="pin" size={13} /></span>}
       {record.favorite && <span className="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏"><Icon name="star-fill" size={13} /></span>}
