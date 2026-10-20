@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { labels, fileTagText, recordListText, hasTrailingNewline } from "../domain/records";
+import { labels, fileTagText, recordListText } from "../domain/records";
 import type { RecordItem } from "../domain/types";
 import { call } from "../services/desktop";
 import { Icon } from "./Icon";
@@ -59,7 +59,6 @@ export function RecordRow({ record, index, last, selected, beforeSelected, ordin
   const media = record.kind === "image" || record.kind === "video";
   const hasPreview = record.preview || (record.kind === "image" && record.files.length > 0 && record.status !== "pending");
   const text = media && !search ? "" : recordListText(record, search, removeTrailingNewlines);
-  const trailingNewline = !removeTrailingNewlines && ["text", "link", "color"].includes(record.kind) && hasTrailingNewline(record.body);
   const fileTag = record.kind === "file" ? fileTagText(record.files) : "";
   const kindIcon = media ? null : swatch ? <span className="swatch" style={{ color: record.body.trim() }} title="颜色"><Icon name="circle" size={14} fill="currentColor" strokeWidth={0} /></span>
     : record.kind === "text" ? null : record.kind === "file" ? <span className="file-tag" title={fileTag}>{fileTag}</span>
@@ -83,7 +82,7 @@ export function RecordRow({ record, index, last, selected, beforeSelected, ordin
       : <span className="preview-unavailable">{record.kind === "video" ? "首帧预览不可用" : "图片预览不可用"}</span>}</span>
       {!editing && bodyMatch && <SearchExcerpt className="media-search-match" style={{ bottom: note ? 32 : 9 }} text={text} query={search} />}
       {!editing && note && <span className="media-note">{note}</span>}</>
-      : <div className="record-main"><div className="record-content">{named ? <span className="record-name">{kindIcon}{title}</span> : kindIcon}<SearchExcerpt className="record-text" text={text} query={search} />{trailingNewline && <span className="trailing-newline-tag">有换行</span>}{note && <span className="record-note">{note}</span>}</div></div>}
+      : <div className="record-main"><div className="record-content">{named ? <span className="record-name">{kindIcon}{title}</span> : kindIcon}<SearchExcerpt className="record-text" text={text} query={search} />{note && <span className="record-note">{note}</span>}</div></div>}
     {!editing && <><span className="record-indicators">
       {pinned && <span className="record-indicator pin-indicator" aria-label="已置顶" title="已置顶"><Icon name="pin" size={13} /></span>}
       {record.favorite && <span className="record-indicator favorite-indicator" aria-label="已收藏" title="已收藏"><Icon name="star-fill" size={13} /></span>}

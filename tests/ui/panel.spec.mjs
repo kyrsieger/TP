@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.record[data-id="text"]')).toBeVisible();
 });
 
-test("remove terminal newlines defaults on, persists both values, tags named and searched records and retains originals", async ({ page }) => {
+test("trailing whitespace setting persists both values without newline tags and retains originals", async ({ page }) => {
   await page.evaluate(() => {
     const t = window.__TP_TEST__;
     t.change([
@@ -18,16 +18,16 @@ test("remove terminal newlines defaults on, persists both values, tags named and
   });
   await expect(page.locator(".trailing-newline-tag")).toHaveCount(0);
   await page.locator("#settings-button").click();
-  const toggle = page.getByRole("checkbox", { name: "移除末尾换行", exact: true });
+  const toggle = page.getByRole("checkbox", { name: "移除末尾空白", exact: true });
   await expect(toggle).toBeChecked();
   await toggle.uncheck();
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.removeTrailingNewlines)).toBe(false);
   await page.keyboard.press("Escape");
-  await expect(page.locator(".trailing-newline-tag")).toHaveCount(4);
+  await expect(page.locator(".trailing-newline-tag")).toHaveCount(0);
   await expect(page.locator('[data-id="plain"] .trailing-newline-tag')).toHaveCount(0);
-  await expect(page.locator('[data-id="named"] .trailing-newline-tag')).toHaveText("有换行");
+  await expect(page.locator('[data-id="named"]')).not.toContainText("有换行");
   await page.locator("#search").fill("DSH");
-  await expect(page.locator(".trailing-newline-tag")).toHaveText("有换行");
+  await expect(page.locator(".trailing-newline-tag")).toHaveCount(0);
   await page.locator("#settings-button").click();
   await expect(toggle).not.toBeChecked();
   await toggle.check();
@@ -389,4 +389,20 @@ test("file context actions and both preview triggers retain command payloads", a
   await page.locator('.record[data-id="image"]').click(); await page.keyboard.press("ArrowRight");
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "preview-content")?.args.payload.id)).toBe("image");
   await page.keyboard.press("ArrowLeft"); await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "large-preview-content")?.args.payload)).toEqual({ id: "image", kind: "image", count: 1, theme: "indigo" });
+});
+
+test("clipboard cleanup switch reflects confirmed settings while saving and after failure", async ({ page }) => {
+  await page.locator("#settings-button").click();
+  const toggle = page.getByRole("checkbox", { name: "移除末尾空白", exact: true });
+  await page.evaluate(() => { window.__TP_TEST__.themeSaveDelay = 800; });
+  await toggle.click();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toBeChecked();
+  await expect(toggle).toBeEnabled();
+  await expect(toggle).not.toBeChecked();
+  await page.evaluate(() => { window.__TP_TEST__.settingsError = "模拟保存失败"; window.__TP_TEST__.themeSaveDelay = 0; });
+  await toggle.click();
+  await expect(toggle).toBeEnabled();
+  await expect(toggle).not.toBeChecked();
+  expect(await page.evaluate(() => window.__TP_TEST__.state.settings.removeTrailingNewlines)).toBe(false);
 });

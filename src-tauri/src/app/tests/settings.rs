@@ -127,3 +127,54 @@ fn database_failure_does_not_apply_system_change() {
     drop(store);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn geometry_save_merges_into_latest_preferences_without_reverting_the_clipboard_switch() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut config = settings(&conn).unwrap();
+        config.remove_trailing_newlines = true;
+        config.theme = "forest-mist".into();
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [serde_json::to_string(&config).unwrap()],
+        )
+        .unwrap();
+        persist_panel_geometry(
+            &conn,
+            PanelGeometry {
+                panel_x: Some(100.0),
+                panel_y: Some(200.0),
+                panel_width: 480.0,
+                panel_height: 650.0,
+            },
+        )
+        .unwrap();
+        let saved = settings(&conn).unwrap();
+        assert!(saved.remove_trailing_newlines);
+        assert_eq!(saved.theme, "forest-mist");
+        assert_eq!(saved.panel_width, 480.0);
+        assert!(persist_panel_geometry(
+            &conn,
+            PanelGeometry {
+                panel_x: None,
+                panel_y: None,
+                panel_width: 20.0,
+                panel_height: 650.0
+            }
+        )
+        .is_err());
+        assert_eq!(settings(&conn).unwrap().panel_width, 480.0);
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    assert!(
+        settings(&store.db.lock().unwrap())
+            .unwrap()
+            .remove_trailing_newlines
+    );
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}

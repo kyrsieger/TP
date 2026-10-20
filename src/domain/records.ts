@@ -1,8 +1,8 @@
 import type { FileItem, Kind, PanelSession, RecordItem } from "./types";
 export const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
-/** Only CR and LF at the end are removed; spaces, indentation and internal lines remain exact. */
+/** Only trailing Unicode whitespace is removed; leading indentation and internal lines remain exact. */
 export function textForUse(body: string, removeTrailingNewlines = true): string {
-  return removeTrailingNewlines ? body.replace(/[\r\n]+$/, "") : body;
+  return removeTrailingNewlines ? body.replace(/\p{White_Space}+$/u, "") : body;
 }
 export function hasTrailingNewline(body: string): boolean { return /[\r\n]$/.test(body); }
 export function filteredRecords(records: RecordItem[], { view, kindFilter, search }: PanelSession): RecordItem[] {

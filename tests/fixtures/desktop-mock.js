@@ -80,6 +80,7 @@ window.__TAURI_INTERNALS__ = {
       window.__TP_TEST__.released = { generation: args.generation, rows: document.querySelectorAll('.record').length, images: document.querySelectorAll('img[src]').length };
       return;
     }
+    if (name === "save_panel_geometry") { state.settings = { ...state.settings, ...args.value }; return; }
     if (name === "save_settings") {
       if (window.__TP_TEST__.themeSaveDelay) await new Promise(resolve => setTimeout(resolve, window.__TP_TEST__.themeSaveDelay));
       if (window.__TP_TEST__.settingsError) throw new Error(window.__TP_TEST__.settingsError);

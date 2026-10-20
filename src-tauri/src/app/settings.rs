@@ -8,7 +8,7 @@ use super::{
     storage::{settings, Store},
 };
 use rusqlite::{Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 #[tauri::command]
@@ -97,6 +97,45 @@ pub(super) fn restore_saved_autostart(app: &tauri::AppHandle) -> Result<()> {
     let conn = store.db.lock().map_err(err)?;
     let current = app.autolaunch().is_enabled().map_err(err)?;
     restore_autostart(&conn, current, |value| apply_autostart(app, value))
+}
+
+/// Coordinates are saved independently of user preferences, so a delayed window
+/// resize cannot restore a stale copy of the entire settings object.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PanelGeometry {
+    panel_x: Option<f64>,
+    panel_y: Option<f64>,
+    panel_width: f64,
+    panel_height: f64,
+}
+
+fn persist_panel_geometry(conn: &Connection, value: PanelGeometry) -> Result<()> {
+    if !value.panel_width.is_finite()
+        || !value.panel_height.is_finite()
+        || value.panel_x.is_some_and(|v| !v.is_finite())
+        || value.panel_y.is_some_and(|v| !v.is_finite())
+    {
+        return Err("面板位置或尺寸无效".into());
+    }
+    let mut current = settings(conn)?;
+    current.panel_x = value.panel_x;
+    current.panel_y = value.panel_y;
+    current.panel_width = value.panel_width;
+    current.panel_height = value.panel_height;
+    current.validate()?;
+    conn.execute(
+        "UPDATE settings SET value=?1 WHERE key='main'",
+        [serde_json::to_string(&current).map_err(err)?],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(super) fn save_panel_geometry(store: tauri::State<Store>, value: PanelGeometry) -> Result<()> {
+    let conn = store.db.lock().map_err(err)?;
+    persist_panel_geometry(&conn, value)
 }
 
 #[derive(Serialize)]

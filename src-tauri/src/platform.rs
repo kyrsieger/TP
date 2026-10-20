@@ -199,7 +199,7 @@ unsafe extern "system" fn panel_resize_subclass(
                 GetClientRect, GetMessageTime, GetSystemMetrics, GetWindowRect, SetWindowPos,
                 HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
                 HTTOPRIGHT, SM_CXDOUBLECLK, SM_CYDOUBLECLK, SWP_NOACTIVATE, SWP_NOMOVE,
-                SWP_NOZORDER, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCDESTROY,
+                SWP_NOZORDER, WM_NCDESTROY, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN,
             },
         },
     };
@@ -454,4 +454,198 @@ pub fn video_preview(source: &Path, output: &Path) -> bool {
         let _ = std::fs::remove_file(output);
     }
     ready
+}
+
+/// Sequence captured before reading formats; prevents rewriting a newer copy.
+#[cfg(windows)]
+pub fn clipboard_revision() -> Option<u64> {
+    clipboard_win::raw::seq_num().map(|n| n.get() as u64)
+}
+
+#[cfg(target_os = "macos")]
+pub fn clipboard_revision() -> Option<u64> {
+    objc2::rc::autoreleasepool(|_| {
+        Some(objc2_app_kit::NSPasteboard::generalPasteboard().changeCount() as u64)
+    })
+}
+
+#[cfg(windows)]
+pub fn normalize_clipboard_text(
+    revision: Option<u64>,
+    original: &str,
+    text: &str,
+) -> std::io::Result<bool> {
+    use clipboard_win::{formats, options, raw, register_format, Clipboard};
+    let io_err = |e: clipboard_win::ErrorCode| std::io::Error::other(e.to_string());
+    use windows::{
+        core::w,
+        Win32::{
+            Foundation::HWND,
+            UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, HWND_MESSAGE},
+        },
+    };
+    struct ClipboardOwner(HWND);
+    impl Drop for ClipboardOwner {
+        fn drop(&mut self) {
+            let _ = unsafe { DestroyWindow(self.0) };
+        }
+    }
+    // Use a real owner window for this transaction. NULL ownership cannot safely
+    // take over another application's clipboard and is unsuitable for rewrites.
+    let owner = ClipboardOwner(
+        unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!("TP Clipboard"),
+                Default::default(),
+                0,
+                0,
+                0,
+                0,
+                Some(HWND_MESSAGE),
+                None,
+                None,
+                None,
+            )
+        }
+        .map_err(|e| std::io::Error::other(e.to_string()))?,
+    );
+    let _clipboard = Clipboard::new_attempts_for(owner.0 .0, 10).map_err(io_err)?;
+    if revision.is_none() || clipboard_revision() != revision {
+        return Ok(false);
+    }
+    let mut current = Vec::new();
+    raw::get_string(&mut current)
+        .map_err(|e| std::io::Error::other(format!("读取剪贴板纯文本失败: {e}")))?;
+    if current != original.as_bytes() {
+        return Ok(false);
+    }
+    // Retain every representation before taking ownership. Windows requires
+    // EmptyClipboard before writing when the clipboard belongs to another app.
+    // ANSI/OEM variants are synthesized from the new Unicode text by Windows.
+    let mut retained = Vec::new();
+    for format in raw::EnumFormats::new() {
+        if [
+            formats::CF_TEXT,
+            formats::CF_OEMTEXT,
+            formats::CF_LOCALE,
+            formats::CF_UNICODETEXT,
+        ]
+        .contains(&format)
+        {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        raw::get_vec(format, &mut bytes)
+            .map_err(|e| std::io::Error::other(format!("读取剪贴板格式 {format} 失败: {e}")))?;
+        retained.push((format, bytes));
+    }
+    let html_format = register_format("HTML Format")
+        .ok_or_else(|| std::io::Error::other("无法注册 HTML 剪贴板格式"))?
+        .get();
+    let rtf_format = register_format("Rich Text Format")
+        .ok_or_else(|| std::io::Error::other("无法注册 RTF 剪贴板格式"))?
+        .get();
+    let html = retained
+        .iter()
+        .find(|(format, _)| *format == html_format)
+        .map(|(_, bytes)| {
+            crate::clipboard_text::trim_windows_html(bytes)
+                .ok_or_else(|| std::io::Error::other("HTML 剪贴板偏移无效，保留原始复制内容"))
+        })
+        .transpose()?;
+    let rtf = retained
+        .iter()
+        .find(|(format, _)| *format == rtf_format)
+        .map(|(_, bytes)| crate::clipboard_text::trim_rtf(bytes));
+    let mut changed = original != text;
+    for (format, bytes) in &mut retained {
+        if *format == html_format {
+            let updated = html.as_ref().unwrap();
+            changed |= bytes != updated;
+            *bytes = updated.clone();
+        }
+        if *format == rtf_format {
+            let updated = rtf.as_ref().unwrap();
+            changed |= bytes != updated;
+            *bytes = updated.clone();
+        }
+    }
+    if !changed {
+        return Ok(false);
+    }
+    raw::empty().map_err(|e| std::io::Error::other(format!("接管剪贴板失败: {e}")))?;
+    for (format, bytes) in retained {
+        raw::set_without_clear(format, &bytes)
+            .map_err(|e| std::io::Error::other(format!("写回剪贴板格式 {format} 失败: {e}")))?;
+    }
+    raw::set_string_with(text, options::NoClear)
+        .map_err(|e| std::io::Error::other(format!("写回剪贴板纯文本失败: {e}")))?;
+
+    Ok(true)
+}
+
+#[cfg(target_os = "macos")]
+pub fn normalize_clipboard_text(
+    revision: Option<u64>,
+    original: &str,
+    text: &str,
+) -> std::io::Result<bool> {
+    use objc2_app_kit::{
+        NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeRTF, NSPasteboardTypeString,
+    };
+    use objc2_foundation::NSData;
+    objc2::rc::autoreleasepool(|_| {
+        let board = NSPasteboard::generalPasteboard();
+        if revision.is_none() || Some(board.changeCount() as u64) != revision {
+            return Ok(false);
+        }
+        if board
+            .stringForType(unsafe { NSPasteboardTypeString })
+            .map(|s| s.to_string())
+            .as_deref()
+            != Some(original)
+        {
+            return Ok(false);
+        }
+        let types = board
+            .types()
+            .ok_or_else(|| std::io::Error::other("无法读取剪贴板格式"))?;
+        let mut data = Vec::new();
+        let mut changed = original != text;
+        for kind in types.iter() {
+            let value = board
+                .dataForType(&kind)
+                .ok_or_else(|| std::io::Error::other("无法保留剪贴板格式"))?;
+            let bytes = if &*kind == unsafe { NSPasteboardTypeHTML } {
+                let source = String::from_utf8(value.to_vec()).map_err(std::io::Error::other)?;
+                crate::clipboard_text::trim_html(&source).into_bytes()
+            } else if &*kind == unsafe { NSPasteboardTypeRTF } {
+                crate::clipboard_text::trim_rtf(&value.to_vec())
+            } else if &*kind == unsafe { NSPasteboardTypeString } {
+                text.as_bytes().to_vec()
+            } else {
+                value.to_vec()
+            };
+            changed |= bytes != value.to_vec();
+            data.push((kind, NSData::with_bytes(&bytes)));
+        }
+        if Some(board.changeCount() as u64) != revision {
+            return Ok(false);
+        }
+        if !changed {
+            return Ok(false);
+        }
+        // Take ownership only after retaining all representations. macOS has no
+        // cross-process compare-and-swap for NSPasteboard.
+        unsafe { board.declareTypes_owner(&types, None) };
+        for (kind, value) in data {
+            if !board.setData_forType(Some(&value), &kind) {
+                return Err(std::io::Error::other("写回剪贴板格式失败"));
+            }
+        }
+
+        Ok(true)
+    })
 }

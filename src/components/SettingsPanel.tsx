@@ -43,6 +43,7 @@ const positionOptions = [["left", "左下角"], ["right", "右下角"], ["center
 export function SettingsPanel({ controller, history, menus, toast }: { controller: SettingsController; history: PanelController; menus: MenuController; toast: (message: string) => void }) {
   const state = useObservable(controller), panel = useObservable(history), menu = useObservable(menus);
   const [draft, setDraft] = useState<Settings | null>(panel.settings);
+  const [savingWhitespace, setSavingWhitespace] = useState(false);
   const [version, setVersion] = useState("读取中…");
   useEffect(() => { setDraft(panel.settings); }, [panel.settings, state.revision]);
   useEffect(() => { let alive = true; void getVersion().then(value => { if (alive) setVersion(value); }).catch(() => { if (alive) setVersion("无法获取"); }); return () => { alive = false; }; }, []);
@@ -107,7 +108,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       <div className="settings-card">
     <div className="settings-row"><span className="settings-copy">保留搜索框输入<small id="retain-search-input-hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</small></span><input id="retain-search-input" type="checkbox" aria-label="保留搜索框输入" aria-describedby="retain-search-input-hint" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} /></div>
     <div className="settings-row"><span className="settings-copy">保留类型筛选<small id="retain-type-filter-hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</small></span><input id="retain-type-filter" type="checkbox" aria-label="保留类型筛选" aria-describedby="retain-type-filter-hint" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} /></div>
-    <div className="settings-row"><span className="settings-copy">移除末尾换行<small id="remove-trailing-newlines-hint">展示和粘贴时移除末尾换行，保留中间换行和缩进。关闭后末尾换行会按原文粘贴。</small></span><input id="remove-trailing-newlines" type="checkbox" aria-label="移除末尾换行" aria-describedby="remove-trailing-newlines-hint" checked={s.removeTrailingNewlines !== false} onChange={event => save({ removeTrailingNewlines: event.target.checked })} /></div>
+    <div className="settings-row"><span className="settings-copy">移除末尾空白<small id="remove-trailing-newlines-hint">复制后自动移除文本末尾的换行和空格，直接粘贴也生效。关闭后新复制的内容会保留原文。</small></span><input id="remove-trailing-newlines" type="checkbox" aria-label="移除末尾空白" aria-describedby="remove-trailing-newlines-hint" checked={panel.settings?.removeTrailingNewlines !== false} disabled={savingWhitespace} onChange={event => { const enabled = event.target.checked; setSavingWhitespace(true); void controller.save({ removeTrailingNewlines: enabled }).finally(() => setSavingWhitespace(false)); }} /></div>
       </div>
     </section>
     <section className="settings-group" id="settings-position" aria-label="面板位置">

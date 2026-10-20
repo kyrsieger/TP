@@ -109,6 +109,7 @@ pub fn run() {
             settings::autostart_enabled,
             settings::set_autostart,
             settings::save_settings,
+            settings::save_panel_geometry,
             settings::get_theme,
             settings::get_font,
             fonts::get_system_fonts,

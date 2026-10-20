@@ -33,7 +33,7 @@ fn text_kind(text: &str) -> &'static str {
 
 fn text_for_use(body: &str, remove_trailing_newlines: bool) -> &str {
     if remove_trailing_newlines {
-        body.trim_end_matches(['\r', '\n'])
+        body.trim_end_matches(char::is_whitespace)
     } else {
         body
     }
@@ -44,6 +44,47 @@ fn text_writeback(body: &str, remove_trailing_newlines: bool) -> (&str, String) 
     // The watcher classifies and hashes the actual clipboard text, not the stored original.
     (text, hash(text_kind(text), text.as_bytes()))
 }
+// Self writes can emit multiple clipboard notifications. Keep suppressing the same
+// content until a different copy arrives, rather than consuming the marker once.
+fn is_suppressed_copy(store: &Store, digest: &str, revision: Option<u64>) -> Result<bool> {
+    let mut suppressed = store.suppressed_digest.lock().map_err(err)?;
+    if let Some((expected, expected_revision)) = suppressed.as_mut() {
+        if expected == digest && (expected_revision.is_none() || *expected_revision == revision) {
+            *expected_revision = revision;
+            return Ok(true);
+        }
+    }
+    *suppressed = None;
+    Ok(false)
+}
+
+// The writer checks that the clipboard still contains the captured copy before
+// replacing it. A newer copy or a failed write must not leave a suppression marker.
+fn normalize_copied_text(
+    store: &Store,
+    body: &str,
+    enabled: bool,
+    write: impl FnOnce(&str) -> Result<bool>,
+) -> Result<bool> {
+    let (text, digest) = text_writeback(body, enabled);
+    // A clean plain-text representation may still have trailing empty HTML paragraphs.
+    if !enabled {
+        return Ok(false);
+    }
+    let mut suppressed = store.suppressed_digest.lock().map_err(err)?;
+    let previous = suppressed.replace((digest, None));
+    match write(text) {
+        Ok(true) => {
+            suppressed.as_mut().unwrap().1 = platform::clipboard_revision();
+            Ok(true)
+        }
+        result => {
+            *suppressed = previous;
+            result
+        }
+    }
+}
+
 #[tauri::command]
 pub(super) fn apply_record(
     app: tauri::AppHandle,
@@ -78,7 +119,7 @@ pub(super) fn apply_record(
     match kind.as_str() {
         "text" | "link" | "color" => {
             let (text, digest) = text_writeback(&body, remove_trailing_newlines);
-            *store.suppressed_digest.lock().map_err(err)? = Some(digest);
+            *store.suppressed_digest.lock().map_err(err)? = Some((digest, None));
             ctx.set_text(text.to_owned()).map_err(err)?;
         }
         "image" if files.is_empty() => {
@@ -91,7 +132,7 @@ pub(super) fn apply_record(
                 .into_owned();
             // 写回后剪贴板带文件路径，监听器按文件路径计算摘要，因此按该路径重新计算。
             *store.suppressed_digest.lock().map_err(err)? =
-                Some(file_digest(&[path.clone()], "image")?);
+                Some((file_digest(&[path.clone()], "image")?, None));
             platform::set_clipboard_image_with_file(Path::new(&path)).map_err(err)?;
         }
         "image" | "file" | "video" => {
@@ -108,10 +149,14 @@ pub(super) fn apply_record(
             if paths.iter().any(|path| !Path::new(path).exists()) {
                 return Err("文件已不存在，无法放回剪贴板".into());
             }
-            *store.suppressed_digest.lock().map_err(err)? = Some(file_digest(&paths, &kind)?);
+            *store.suppressed_digest.lock().map_err(err)? =
+                Some((file_digest(&paths, &kind)?, None));
             ctx.set_files(paths).map_err(err)?;
         }
         _ => return Err("不支持的记录类型".into()),
+    }
+    if let Some((_, revision)) = store.suppressed_digest.lock().map_err(err)?.as_mut() {
+        *revision = platform::clipboard_revision();
     }
     store
         .db
@@ -138,6 +183,7 @@ pub(super) fn apply_record(
 
 fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     let store = app.state::<Store>();
+    let revision = platform::clipboard_revision();
     let files = ctx.get_files().unwrap_or_default();
     // 写回图片记录时会把本工具保存的图片文件放上剪贴板，且一次写回可能触发多次更新通知；
     // 这类自有文件不再记入历史，避免重复记录。
@@ -185,22 +231,14 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     } else {
         return Ok(());
     };
-
-    if store
-        .suppressed_digest
-        .lock()
-        .map_err(err)?
-        .take()
-        .as_deref()
-        == Some(&digest)
-    {
+    if is_suppressed_copy(&store, &digest, revision)? {
         return Ok(());
     }
     let sensitive = platform::source_is_1password();
     let config = settings(&*store.db.lock().map_err(err)?)?;
     let expires = sensitive.then(|| now() + i64::from(config.sensitive_seconds) * 1000);
     let id = Uuid::new_v4().to_string();
-    {
+    let existing = {
         let conn = store.db.lock().map_err(err)?;
         let existing: Option<String> = conn
             .query_row("SELECT id FROM records WHERE digest=?1", [&digest], |r| {
@@ -214,17 +252,29 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
                 params![now(), expires, digest],
             )
             .map_err(err)?;
-            drop(conn);
-            changed(app);
-            return Ok(());
-        }
-        let created_at = now();
-        conn.execute("INSERT INTO records(id,digest,kind,body,files,used_at,created_at,expires_at,storage_mode,status) VALUES(?1,?2,?3,?4,?5,?6,?6,?7,?8,?9)",
+        } else {
+            let created_at = now();
+            conn.execute("INSERT INTO records(id,digest,kind,body,files,used_at,created_at,expires_at,storage_mode,status) VALUES(?1,?2,?3,?4,?5,?6,?6,?7,?8,?9)",
             params![id, digest, kind, body, serde_json::to_string(&file_items).map_err(err)?, created_at, expires,
                 if file_items.is_empty() { "" } else { "reference" },
                 if file_items.is_empty() { "ready" } else { "pending" }]).map_err(err)?;
+        }
+        existing.is_some()
+    };
+    // Normalize only after the original is safely stored, including duplicates.
+    if matches!(kind.as_str(), "text" | "link" | "color") {
+        if let Err(error) =
+            normalize_copied_text(&store, &body, config.remove_trailing_newlines, |text| {
+                platform::normalize_clipboard_text(revision, &body, text).map_err(err)
+            })
+        {
+            eprintln!("Clipboard whitespace cleanup failed: {error}");
+        }
     }
     changed(app);
+    if existing {
+        return Ok(());
+    }
     if let Some(bytes) = image_bytes {
         let dir = store.dir.join("assets").join(&id);
         fs::create_dir_all(&dir).map_err(err)?;

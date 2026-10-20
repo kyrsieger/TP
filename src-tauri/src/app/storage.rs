@@ -18,7 +18,7 @@ pub(super) struct Store {
     pub(super) dir: PathBuf,
     pub(super) media_lock: Mutex<()>,
     pub(super) paste_target: Mutex<Option<platform::PasteTarget>>,
-    pub(super) suppressed_digest: Mutex<Option<String>>,
+    pub(super) suppressed_digest: Mutex<Option<(String, Option<u64>)>>,
 }
 
 pub(super) fn settings(conn: &Connection) -> Result<Settings> {

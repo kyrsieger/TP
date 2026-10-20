@@ -1,5 +1,5 @@
 import { PhysicalPosition, PhysicalSize, type Window } from "@tauri-apps/api/window";
-import type { SettingsSaveResult } from "../domain/types";
+
 import type { PanelController } from "../state/panel";
 import { call, isMacOS } from "./desktop";
 export class GeometryController {
@@ -25,11 +25,14 @@ export class GeometryController {
     this.positionSaveTimer = window.setTimeout(async () => {
       const position = await this.panel.outerPosition();
       const size = await this.panel.innerSize();
-      const next = { ...this.history.value.settings!, panelX: position.x, panelY: position.y,
+      const geometry = { panelX: position.x, panelY: position.y,
         panelWidth: size.width, panelHeight: size.height };
       try {
-        if ((await call<SettingsSaveResult>("save_settings", { value: next })).status === "saved")
-          this.history.commitSettings(next);
+        await call("save_panel_geometry", { value: geometry });
+        // Merge only coordinates into the latest settings. A delayed resize save
+        // must never overwrite a switch changed while the request was in flight.
+        const current = this.history.value.settings;
+        if (current) this.history.commitSettings({ ...current, ...geometry });
       }
       catch { /* keep last valid size */ }
     }, 300);
