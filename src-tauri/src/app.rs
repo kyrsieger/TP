@@ -114,6 +114,7 @@ pub fn run() {
             fonts::get_system_fonts,
             records::add_group,
             records::rename_group,
+            records::reorder_groups,
             records::rename_record,
             records::delete_group,
             records::set_favorite,

@@ -14,6 +14,22 @@ export class GroupController extends Observable<{ edit: GroupEdit | null; saving
   }
   cancel() { if (!this.value.saving) this.update({ edit: null }); }
   reset() { this.update({ edit: null }); }
+  async reorder(ids: number[]) {
+    if (this.value.saving || this.value.edit) return;
+    const previous = this.panel.value.snapshot;
+    if (!previous || ids.length !== previous.groups.length || new Set(ids).size !== ids.length) return;
+    const ordered = ids.map(id => previous.groups.find(group => group.id === id));
+    if (ordered.some(group => !group) || ids.every((id, index) => id === previous.groups[index].id)) return;
+    this.update({ saving: true });
+    this.panel.update({ snapshot: { ...previous, groups: ordered as typeof previous.groups } });
+    try { await this.call("reorder_groups", { ids }); }
+    catch (error) {
+      const current = this.panel.value.snapshot;
+      if (current) this.panel.update({ snapshot: { ...current, groups: [...current.groups].sort((a, b) =>
+        previous.groups.findIndex(group => group.id === a.id) - previous.groups.findIndex(group => group.id === b.id)) } });
+      this.toast(String(error));
+    } finally { this.update({ saving: false }); await this.panel.refresh().catch(error => this.toast(String(error))); }
+  }
   async commit() {
     const { edit, saving } = this.value;
     if (!edit || saving) return;

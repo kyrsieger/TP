@@ -45,6 +45,16 @@ pub(super) fn initialize(dir: PathBuf) -> Result<Store> {
         );
         CREATE INDEX IF NOT EXISTS records_used ON records(used_at DESC);
         PRAGMA foreign_keys=ON;").map_err(err)?;
+    let has_group_position: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('groups') WHERE name='position')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(err)?;
+    if !has_group_position {
+        conn.execute_batch("ALTER TABLE groups ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE groups SET position=id;").map_err(err)?;
+    }
     let has_title: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='title')",
@@ -252,7 +262,7 @@ pub(super) fn snapshot(store: &Store) -> Result<Snapshot> {
         }
     }
     let mut stmt = conn
-        .prepare("SELECT id,name FROM groups ORDER BY id")
+        .prepare("SELECT id,name FROM groups ORDER BY position,id")
         .map_err(err)?;
     let groups = stmt
         .query_map([], |r| {

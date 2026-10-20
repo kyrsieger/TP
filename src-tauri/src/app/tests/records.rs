@@ -217,3 +217,43 @@ fn pinned_records_sort_by_pin_time_and_unpin_restores_use_order() {
     drop(store);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn group_order_persists_and_rejects_stale_or_duplicate_ids() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let mut conn = store.db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO groups(id,name,position) VALUES(1,'工作',1),(2,'资料',2),(3,'项目',3)",
+            [],
+        )
+        .unwrap();
+        set_group_order(&mut conn, &[3, 1, 2]).unwrap();
+        assert!(set_group_order(&mut conn, &[1, 1, 2]).is_err());
+        assert!(set_group_order(&mut conn, &[1, 2]).is_err());
+        assert!(set_group_order(&mut conn, &[1, 2, 9]).is_err());
+    }
+    assert_eq!(
+        snapshot(&store)
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.id)
+            .collect::<Vec<_>>(),
+        vec![3, 1, 2]
+    );
+    drop(store);
+    let reopened = super::super::storage::initialize(dir.clone()).unwrap();
+    assert_eq!(
+        snapshot(&reopened)
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.id)
+            .collect::<Vec<_>>(),
+        vec![3, 1, 2]
+    );
+    drop(reopened);
+    fs::remove_dir_all(dir).unwrap();
+}

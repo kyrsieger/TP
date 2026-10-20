@@ -67,7 +67,7 @@ flowchart TB
 | 界面图标 | `lucide-react` 具名导入经公共 `Icon` 组件映射，统一尺寸、线宽与颜色继承；主面板与两个预览页面复用，收藏保留实心状态，分页指示器使用圆形与短线；许可声明随前端资源打包 | [components/Icon.tsx](../src/components/Icon.tsx)、[media-indicators.css](../src/media-indicators.css)、[third-party-notices.txt](../public/third-party-notices.txt) |
 | 面板状态 | 完整快照读取与请求合并、拒绝过期响应、浏览会话、选中范围、隐藏后释放快照 | [src/state/panel.ts](../src/state/panel.ts) |
 | 记录标题编辑 | 原地编辑、标题校验、保存与失败恢复、取消及异步生命周期保护 | [src/state/record-rename.ts](../src/state/record-rename.ts) |
-| 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑和名称校验 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
+| 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑、名称校验和排序保存及失败恢复 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
 | 主题配色 | 已审核色板、七色色条、CIEDE2000 排序、悬浮即时切换与预览窗口同步 | [domain/themes.ts](../src/domain/themes.ts)、[domain/color-distance.ts](../src/domain/color-distance.ts)、[components/ThemeSetting.tsx](../src/components/ThemeSetting.tsx)、[services/theme.ts](../src/services/theme.ts)、[theme.css](../src/theme.css) |
 | 界面字体 | 完整字体家族及真实样式枚举、双下拉选择、全局应用、持久化与预览窗口同步 | [app/fonts.rs](../src-tauri/src/app/fonts.rs)、[domain/fonts.ts](../src/domain/fonts.ts)、[components/FontSetting.tsx](../src/components/FontSetting.tsx)、[components/FontStyleSetting.tsx](../src/components/FontStyleSetting.tsx)、[services/fonts.ts](../src/services/fonts.ts) |
 | 前端系统服务 | Tauri 命令、窗口定位调用和平台缩放、预览协调和就绪握手、焦点还原；独立事件监听并行注册及失败清理 | [src/services](../src/services)、[src/preview-windows.ts](../src/preview-windows.ts) |
@@ -228,10 +228,14 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 | 整理状态 | `favorite` 独立于 `group_id`；一条记录最多属于一个自建分组；`pinned_at` 只决定记录排序 |
 | 时间 | `created_at` 为创建时间，`used_at` 为最后使用时间，`expires_at` 为可空的敏感记录到期时刻；时间戳使用 Unix 毫秒 |
 | 保存与预览状态 | `storage_mode` 区分文件副本 `copy` 与路径引用 `reference`，非文件内容为空字符串；`status` 记录处理状态，`preview` 标记已生成预览 |
-| 自建分组 `groups` | 整数主键、唯一名称；删除分组时通过外键将记录的 `group_id` 置空，不直接删除记录 |
+| 自建分组 `groups` | 整数主键、唯一名称、排序字段 `position`；快照按 `position,id` 排序，旧数据库迁移时按 ID 保留原顺序，新建分组追加到末尾。`reorder_groups` 在事务中校验完整且无重复的分组 ID 后保存顺序；删除分组时通过外键将记录的 `group_id` 置空，不直接删除记录 |
 | 设置 `settings` | 键 `main` 对应一个 JSON 对象，保存清理规则、快捷键和面板配置；独立键 `autostart` 保存登录启动选择（JSON 布尔值），不受普通设置保存覆盖。开关写入与系统应用失败时回退，首次运行接收旧版系统状态 |
 
 “默认”和“收藏”是视图，不是 `groups` 表中的分组。普通记录由 `favorite = 0 AND group_id IS NULL` 判定。`records_used` 索引支持按最后使用时间访问；快照排序顺序为置顶记录优先、置顶时间降序、最后使用时间降序。
+
+分组栏由 [use-group-drag.ts](../src/components/use-group-drag.ts) 使用 Pointer Events 处理长按拖拽，Windows 与 macOS 共用实现。按住 400 毫秒后激活，边缘逐帧横向滚动，拖动标签限制在栏内以免撑大滚动范围；松开后由 `GroupController.reorder` 即时显示新顺序并调用宿主保存，失败恢复顺序并提示。Esc、指针取消、失焦或面板隐藏清理计时器、动画和指针捕获；拖动不切换当前视图或记录选择。
+
+2026-10-20 分组拖拽排序验证：188 项前端单元测试、36 项原有主面板界面回归、4 项新增拖拽界面回归及前端构建通过；69 项 Rust 测试通过，随后新增旧分组表迁移测试单独运行通过。覆盖长按排序、取消、固定内置入口、原单击与双击、两端自动滚动、保存失败恢复、数据库重开、旧数据迁移与新增分组追加。界面回归使用 Windows Edge 和模拟 IPC；Codex 内置浏览器连接超时，未完成内置浏览器检查。未在真实 Tauri 桌面窗口或 macOS 实机运行验证。
 
 `pending` 表示文件保存尚未完成，`ready` 表示已确定文件保存方式且无副本失败标记，或内容不需要文件任务；`copy_failed` 表示副本保存失败。`missing` 是读取快照时根据路径存在性计算的展示状态，不是后台文件监听产生的持久化状态，也不能由 `ready` 推断预览一定可用。
 

@@ -109,6 +109,7 @@ window.__TAURI_INTERNALS__ = {
       return;
     }
     if (name === "add_group") { state.groups.push({ id: Math.max(...state.groups.map(group => group.id), 0) + 1, name: args.name }); return; }
+    if (name === "reorder_groups") { state.groups = args.ids.map(id => state.groups.find(group => group.id === id)); return; }
     if (name === "rename_group") { state.groups.find(group => group.id === args.id).name = args.name; return; }
     if (name === "delete_group") { state.groups = state.groups.filter(group => group.id !== args.id); return; }
     if (name === "get_cache_size") return 1536;

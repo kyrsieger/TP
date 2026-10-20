@@ -52,6 +52,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #groups button:hover{background:var(--group-soft)}
 #groups .group.active{background:var(--group-soft);color:var(--group-text);font-weight:600}
 #groups .group:focus-visible{outline:0}
+#groups .group{position:relative;touch-action:pan-x;user-select:none}
+#groups.is-dragging,#groups.is-dragging button{cursor:grabbing;touch-action:none}
+#groups .group.dragging{z-index:2;opacity:.7;box-shadow:0 2px 8px var(--line);pointer-events:none}
+#groups .drop-before{position:relative}
+#groups .drop-before::before{content:"";position:absolute;left:-3px;top:3px;bottom:3px;width:2px;border-radius:2px;background:var(--group-text)}
 #groups .add-group{width:26px;padding:0}
 #groups .group-input{flex:0 0 116px;width:116px;height:26px;padding:0 9px;border:1px solid var(--group-text);border-radius:7px;outline:none;background:var(--surface);color:var(--text-1);font-size:12px}
 #groups .group-input:focus{box-shadow:0 0 0 1px var(--group-text)}

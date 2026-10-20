@@ -4,6 +4,50 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn old_groups_gain_persistent_order_and_new_groups_append() {
+    let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
+    fs::create_dir_all(&dir).unwrap();
+    let conn = Connection::open(dir.join("history.sqlite3")).unwrap();
+    conn.execute_batch("CREATE TABLE groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE); INSERT INTO groups(id,name) VALUES(8,'资料'),(2,'工作');").unwrap();
+    drop(conn);
+    let store = initialize(dir.clone()).unwrap();
+    assert_eq!(
+        snapshot(&store)
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.id)
+            .collect::<Vec<_>>(),
+        vec![2, 8]
+    );
+    {
+        let conn = store.db.lock().unwrap();
+        conn.execute_batch(
+            "UPDATE groups SET position=0 WHERE id=8; UPDATE groups SET position=1 WHERE id=2;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO groups(name,position) SELECT ?1,COALESCE(MAX(position),-1)+1 FROM groups",
+            ["新增"],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    assert_eq!(
+        snapshot(&store)
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["资料", "工作", "新增"]
+    );
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn font_choice_survives_database_restart() {
     let store = test_store();
     let dir = store.dir.clone();

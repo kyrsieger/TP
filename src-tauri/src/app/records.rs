@@ -52,10 +52,52 @@ pub(super) fn add_group(
         .db
         .lock()
         .map_err(err)?
-        .execute("INSERT INTO groups(name) VALUES(?1)", [name])
+        .execute(
+            "INSERT INTO groups(name,position) SELECT ?1,COALESCE(MAX(position),-1)+1 FROM groups",
+            [name],
+        )
         .map_err(err)?;
     changed(&app);
     Ok(())
+}
+
+#[tauri::command]
+pub(super) fn reorder_groups(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    ids: Vec<i64>,
+) -> Result<()> {
+    let mut conn = store.db.lock().map_err(err)?;
+    set_group_order(&mut conn, &ids)?;
+    drop(conn);
+    changed(&app);
+    Ok(())
+}
+
+fn set_group_order(conn: &mut Connection, ids: &[i64]) -> Result<()> {
+    let tx = conn.transaction().map_err(err)?;
+    let existing = {
+        let mut stmt = tx
+            .prepare("SELECT id FROM groups ORDER BY id")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, i64>(0))
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?
+    };
+    let mut sorted = ids.to_vec();
+    sorted.sort_unstable();
+    if sorted != existing {
+        return Err("分组已变化，请重试".into());
+    }
+    for (position, id) in ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE groups SET position=?1 WHERE id=?2",
+            params![position as i64, id],
+        )
+        .map_err(err)?;
+    }
+    tx.commit().map_err(err)
 }
 
 #[tauri::command]
