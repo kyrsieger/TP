@@ -111,6 +111,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .kind-icon{display:flex;flex:0 0 auto;color:var(--text-3)}
 .kind-icon.link{color:var(--link)}
 .file-tag{display:block;flex:0 0 auto;max-width:52px;padding:2px 5px;overflow:hidden;border-radius:4px;background:var(--file-tag-bg);color:var(--file-tag-text);font-size:10px;font-weight:600;line-height:14px;text-overflow:ellipsis;white-space:nowrap}
+.record.selected .file-tag{background:color-mix(in srgb,var(--accent) 22%,var(--file-tag-bg))}
 .swatch{display:grid;flex:0 0 12px;place-items:center;width:12px;height:12px}
 .swatch svg{display:block;filter:drop-shadow(0 0 .5px rgba(23,28,40,.2))}
 .record-indicator{display:grid;flex:0 0 auto;place-items:center;width:24px;height:24px;margin-left:4px}
