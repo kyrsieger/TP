@@ -69,6 +69,7 @@ flowchart TB
 | 记录标题编辑 | 原地编辑、标题校验、保存与失败恢复、取消及异步生命周期保护 | [src/state/record-rename.ts](../src/state/record-rename.ts) |
 | 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑和名称校验 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |
 | 主题配色 | 已审核色板、七色色条、CIEDE2000 排序、悬浮即时切换与预览窗口同步 | [domain/themes.ts](../src/domain/themes.ts)、[domain/color-distance.ts](../src/domain/color-distance.ts)、[components/ThemeSetting.tsx](../src/components/ThemeSetting.tsx)、[services/theme.ts](../src/services/theme.ts)、[theme.css](../src/theme.css) |
+| 界面字体 | 完整字体家族及真实样式枚举、双下拉选择、全局应用、持久化与预览窗口同步 | [app/fonts.rs](../src-tauri/src/app/fonts.rs)、[domain/fonts.ts](../src/domain/fonts.ts)、[components/FontSetting.tsx](../src/components/FontSetting.tsx)、[components/FontStyleSetting.tsx](../src/components/FontStyleSetting.tsx)、[services/fonts.ts](../src/services/fonts.ts) |
 | 前端系统服务 | Tauri 命令、窗口定位调用和平台缩放、预览协调和就绪握手、焦点还原；独立事件监听并行注册及失败清理 | [src/services](../src/services)、[src/preview-windows.ts](../src/preview-windows.ts) |
 | 前端领域与键盘 | 数据契约、过滤、显示文本和连续选择的纯计算；键盘操作规则 | [src/domain](../src/domain)、[src/input](../src/input)、[src/list-layout.ts](../src/list-layout.ts) |
 | 预览页面 | React 渲染文本、路径、颜色、图片和视频首帧；测量尺寸、读取单文件文本与清空内容 | [src/preview](../src/preview)、[src/preview.ts](../src/preview.ts)、[src/large-preview.ts](../src/large-preview.ts) |
@@ -130,7 +131,8 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 | 页面 → Rust | `get_state` | 返回全部记录、分组与设置；数据库已完成置顶与使用时间排序 |
 | 页面 → Rust | `rename_record`、`apply_record`、`set_favorite`、`set_record_pinned`、`move_group`、`delete_record`、`batch_records` | 执行单条或批量记录操作，返回结果或错误 |
 | 页面 → Rust | `save_settings`、分组命令、缓存命令、`set_autostart` | 保存配置、整理记录或调用系统配置 |
-| 页面 → Rust | `get_theme` | 预览页面就绪前只读取已保存的主题，不加载完整历史记录 |
+| 页面 → Rust | `get_theme`、`get_font` | 预览页面就绪前读取已保存的主题与字体，不加载完整历史记录 |
+| 页面 → Rust | `get_system_fonts` | Windows 通过 DirectWrite、macOS 通过 AppKit 读取完整家族、名称别名及真实样式（名称、渲染名称、字重、宽度和倾斜），按元数据归类，过滤模拟样式及私有字体 |
 | 页面 → Rust | `register_panel_shortcut` | 在 Rust 中替换快捷键绑定，界面销毁后绑定仍有效；注册失败保留原绑定 |
 | 页面 → Rust | `panel_ready`、`get_panel_session`、`save_panel_session` | 确认主页面监听已就绪，恢复或保存本次运行的浏览状态；每次唤出由前端将分组重置为默认，搜索和类型筛选沿用各自规则 |
 | 页面 → Rust | `panel_content_released` | 确认指定隐藏序号的内容已卸载；Rust 再核对窗口与序号，随后挂起 |
@@ -142,6 +144,7 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 | Rust → 主页面 | `preview-window-used`、`preview-window-hidden`、`preview-destroyed`、`large-preview-destroyed` | 取消或开始闲置释放计时，并确认窗口销毁完成 |
 | 主页面 ↔ 预览页面 | `preview-*`、`large-preview-*` | 传递预览内容、就绪与尺寸信息、关闭和鼠标交互事件 |
 | 主页面 → 预览页面 | `theme-changed` | 悬浮切换时广播主题 ID，两个预览立即同步；预览内容载荷也携带主题 ID |
+| 主页面 → 预览页面 | `font-changed` | 选择及保存完成时广播 `{ family, style }`，两个预览立即同步家族和样式；空家族恢复默认字体及样式 |
 
 全局快捷键在 Rust 注册和处理，主面板唤出定位通过 Rust 命令批量执行，拖拽与部分预览窗口操作仍使用 Tauri 前端 API。普通设置保存由前端串行提交、Rust 校验并写入 SQLite；全局唤出快捷键先注册成功再保存，失败时尝试恢复原绑定。记录重命名快捷键属于前端局部按键，不调用全局注册命令。登录启动状态通过插件查询操作系统，不作为 `Settings` JSON 的字段保存。窗口移动和缩放后的几何信息另有延迟保存逻辑。
 
@@ -188,6 +191,18 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 随后按开发模式重新复现，确认上述验证遗漏了 Vite 整页重载：使用真实 Vite 开发服务器与调试宿主，隐藏 180 秒后只发送一次全局快捷键，原代码约 165 毫秒显示窗口，约 279 毫秒重新加载主页面；新页面报告就绪后没有再次打开列表，等待 15 秒仍未完成恢复。此次增加导航开始和页面就绪的状态同步，已显示窗口在重载后自动重新读取并展示记录。修复后的同条件实测捕获热更新连接断开及新页面启动，约 294 毫秒完成恢复；15 秒后列表、分组、图片与焦点仍正常，F2 可立即编辑。挂起前后通过 WebView2 调试协议捕获的页面截图均完整，内容一致。保留一分钟内的图片节点与资源，满一分钟后同步卸载并确认，再交给 Rust 挂起；迟到的隐藏、清空及确认均校验生命周期序号。
 
 同日调整面板每次唤出回到「默认」分组：138 项前端单元测试、3 项 Windows Edge 界面回归及前端构建通过。覆盖恢复收藏或自建分组会话后打开、从非默认分组关闭后重新打开、默认列表首条记录聚焦，以及搜索词和类型筛选沿用原规则。界面回归使用演示记录和模拟 IPC，未验证桌面原生窗口重建或 macOS 实机运行。
+
+字体设置使用 `Settings.fontFamily` / Rust `font_family` 及 `Settings.fontStyle` / Rust `font_style` 共同存入现有 SQLite 设置 JSON。家族为空时沿用原有字体，缺少样式字段时默认 Regular（400、正常宽度、直立）。样式记录名称、实际渲染字体名、字重、宽度和倾斜。Windows 通过 DirectWrite 读取 OpenType 完整家族和子家族名称；读取 Win32 家族别名用于精确渲染及旧选择转换，排除合成加粗/倾斜，不通过删除 Light/Bold 后缀合并。macOS 同步命令在主线程使用 `NSFontManager.availableFontFamilies` 和 `availableMembersOfFontFamily`，记录样式名、PostScript 名及 AppKit 属性，不新增字体库依赖。
+
+`FontSetting` 在主题行下提供可搜索的家族列表，选中有多个样式的家族后通过 `FontStyleSetting` 显示下方样式行。切换家族优先 Regular，否则选择最接近常规的真实样式；只搜索、悬停或移动样式菜单焦点不提交。`domain/fonts.ts` 按系统元数据将旧 Light 家族名转换为完整家族及对应样式，设置页读取列表后通过原有队列保存，失败不循环重试迁移。`SettingsController.selectFont` 以一份草稿立即更新家族和样式，并一次性加入串行设置保存队列，用选择序号保护较新的选择；失败恢复已保存值。
+
+`services/fonts.ts` 将渲染名称和家族名作为带引号的 CSS 字符串写入 `--app-font`，并设置 `--app-font-weight`、`--app-font-style`、`--app-font-stretch`，保留原有回退字体；主面板、设置、弹窗、两个预览及文本文件内容共用。预览先监听 `font-changed` 再读取结构化的 `get_font`，丢弃过期启动响应。主页面在选择和保存完成时均广播，以覆盖保存中途创建的预览窗口；依赖样式值的稳定签名，避免每次历史快照刷新都重新应用字体。悬停预览用 `ResizeObserver` 在字体或样式改变内容尺寸后重新报告高度。`PreviewCard` 对图片和视频增加媒体就绪状态：单页由读取、解码成功或失败后的 DOM 提交通知就绪，多页由轮播首张画面或不可用提示准备完成后通知；就绪前不注册卡片尺寸观察器、不发送 `preview-measured`，就绪后首次测量并持续观察。每个预览请求通过记录 ID 和代次重新挂载卡片，关闭时卸载，旧异步结果不能将窗口重新显示。
+
+字体和样式触发按钮使用内容宽度及所在行 50% 的上限，文字溢出显示省略号。`components/useFontMenuWidth.ts` 按菜单当前字体用 Canvas 测量全部名称（兼顾选中项的半粗字重），增加内边距和滚动条空间，将菜单宽度限制到所在行内容宽度。字体菜单保留 180 像素搜索操作空间，小窗口仍以行宽为限；测量不依赖搜索结果。`ResizeObserver` 及字体加载完成事件负责窗口和字体变化后的重新测量。字体列表在首次加载及每次展开时重新调用 `get_system_fonts`，丢弃已经关闭或卸载的请求结果，重新打开后按最新目录计算宽度。
+
+搜索摘要组件订阅字体应用完成通知，在字体改变后重新测量文本宽度，保持搜索关键词及周围内容可见；卸载时取消订阅。
+
+字体下拉搜索由 [domain/font-search.ts](../src/domain/font-search.ts) 建立索引：针对家族中文名和系统提供的别名，保留名称字符串，并用随应用打包的 `pinyin-pro` 生成无声调全拼和逐字首字母。名称、查询词均经 NFKC、转小写和去空白处理，以连续子串匹配；匹配结果去重为家族名，保持原列表顺序。`FontSetting` 用 `useMemo` 在字体列表或未安装的当前选择发生变化时生成索引，输入时只比较已生成字符串，且渲染结果和 Enter 的默认选项共用同一匹配函数。拼音转换与搜索都在本地执行，Windows 与 macOS 共用前端代码；许可随 `public/third-party-notices.txt` 分发。
 
 ## 4. 数据架构
 
@@ -364,6 +379,14 @@ flowchart TD
 这些限制是当前实现边界，不代表已经确定要增加的新功能。后续调整应围绕[产品设计](DESIGN.md)中的行为要求和实际验证结果进行，不据此预设服务拆分或额外基础设施。
 
 ## 8. 验证状态与完成条件
+
+2026-10-20 调整字体与样式控件宽度：前端构建、183 项前端单元测试、70 项 Chromium 全量界面回归通过。新增回归覆盖内容自适应、行宽 50% 上限、长名称省略、搜索时菜单宽度稳定、删除最长字体后再次打开逐步缩窄及小窗口边界；原有键盘、保存失败及预览同步用例通过。Codex 内置浏览器实际选择“霞鹜文楷”，字体及 Regular 按钮分别约 94 和 89 像素。浏览器使用模拟系统字体及 IPC，未在 Windows WebView2 桌面宿主或 macOS 实机运行本次宽度变更。
+
+2026-10-20 加强字体拼音搜索：前端构建、183 项前端单元测试及 69 项 Chromium 全量界面回归通过。新增覆盖首字母片段 `XW`/`XWWK`、全拼、中文和英文别名、大小写与全角空白处理、多音字上下文、别名去重、无结果恢复及 Enter 选择；Codex 内置浏览器已实际输入 `XW` 并看到“霞鹜文楷”结果。字体目录及 IPC 在浏览器中模拟，未在 Windows 桌面宿主或 macOS 实机运行此次搜索变更；本次没有修改 Rust 字体枚举或设置保存逻辑。详见 [字体搜索验证记录](validation/font-search-windows.json)。
+
+2026-10-20 将字体设置调整为“字体家族 + 样式”双下拉：前端构建、179 项前端单元测试、66 项 Rust 测试、68 项 Chromium 全量界面回归通过，最终字体专项 13 项再次通过。本机 DirectWrite 实测“微软雅黑”为一个家族，包含 Regular（400）、Light（290）及 Bold（700），未按名称后缀猜测归属或固定 Light 字重。覆盖旧 Light 名称转换、样式默认与家族切换、仅列出实际样式、键盘和小窗口滚动、失败回退、串行保存、SQLite 重启恢复及两个预览窗口的结构化同步。Codex 内置浏览器已实际选择微软雅黑及 Light 并检查三项样式列表。Windows 原生 WebView2 端到端和 macOS 编译/实机运行仍未验证；浏览器使用演示数据及模拟 IPC。详见 [字体样式验证记录](validation/font-styles-windows.json)。
+
+2026-10-19 增加“字体”设置：Windows 环境下前端构建、175 项前端单元测试和 65 项 Rust 测试通过，Rust 测试调用真实 Windows 字体枚举并验证旧设置兼容和 SQLite 重启恢复。Chromium 全量界面回归 62 项通过；随后补充搜索摘要在字体切换后重新测量，最终字体与搜索回归 10 项通过（其中字体用例 8 项）。Codex 内置浏览器实际操作了字体入口、名称搜索和选择。浏览器回归使用演示记录、模拟字体列表和 IPC；未在 Windows WebView2 桌面宿主端到端验证，macOS 分支已实现，但未编译或实机运行。详见 [字体验证记录](validation/font-settings-windows.json)。
 
 2026-10-06 修复筛选后的大图预览关闭：Windows 环境下 119 项前端模块测试及前端构建通过。新增 [preview-filtering.test.mjs](../tests/preview-filtering.test.mjs) 使用实际面板控制器、预览服务与应用组装，模拟桌面接口，验证搜索、类型筛选、收藏和自建分组排除大图记录后发送关闭命令并允许后续预览，以及仍匹配时保留大图。此次未在真实 Tauri 桌面窗口或 macOS 中运行验证。
 

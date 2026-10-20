@@ -1,4 +1,4 @@
-:root{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:var(--text-1);background:var(--surface);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+:root{font-weight:var(--app-font-weight,400);font-style:var(--app-font-style,normal);font-stretch:var(--app-font-stretch,100%);font-family:var(--app-font,"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif);color:var(--text-1);background:var(--surface);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
 html,body,#app{width:100%;height:100%;margin:0}
 body{overflow:hidden}
@@ -30,7 +30,7 @@ body{overflow:hidden}
 .file::marker{color:var(--text-2)}
 .path{color:var(--text-2);line-height:1.5;overflow-wrap:anywhere;user-select:text}
 .path strong{font-weight:600;color:var(--text-1)}
-.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:var(--surface);font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:var(--surface);font-family:var(--app-font,ui-monospace,"Cascadia Code",Consolas,monospace);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
 .file-text-error{margin:8px 0 0;color:var(--text-3);font-size:12px}
 .color-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0 20px;font-size:13px;user-select:text}
 .color-disc{display:block;width:112px;height:112px;border-radius:50%;outline:1px solid rgba(23,28,40,.12)}

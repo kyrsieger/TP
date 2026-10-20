@@ -113,6 +113,16 @@ pub(super) fn get_theme(store: tauri::State<Store>) -> Result<String> {
 }
 
 #[tauri::command]
+pub(super) fn get_font(store: tauri::State<Store>) -> Result<super::fonts::FontSelection> {
+    let conn = store.db.lock().map_err(err)?;
+    let settings = settings(&conn)?;
+    Ok(super::fonts::FontSelection {
+        family: settings.font_family,
+        style: settings.font_style,
+    })
+}
+
+#[tauri::command]
 pub(super) fn save_settings(
     app: tauri::AppHandle,
     store: tauri::State<Store>,

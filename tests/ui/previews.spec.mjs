@@ -7,6 +7,68 @@ async function openPreview(page, large = false) {
   await expect.poll(() => page.evaluate(label => window.__TP_TEST__.calls.some(call => call.args.event === label + "-ready"), label)).toBe(true);
 }
 async function send(page, event, content) { await page.evaluate(({ event, content }) => window.__TP_TEST__.emit(event, content), { event, content }); }
+
+async function holdMedia(page) {
+  await page.evaluate(() => {
+    const probe = window.__TP_TEST__.mediaProbe = { readStarted: false, decodeStarted: false };
+    const reading = new Promise(resolve => { probe.releaseRead = resolve; });
+    const decoding = new Promise((resolve, reject) => { probe.releaseDecode = failed => failed ? reject(Error("decode failed")) : resolve(); });
+    const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (name, args) => {
+      if (name === "preview_data") { probe.readStarted = true; await reading; }
+      return invoke(name, args);
+    };
+    const decode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = async function () {
+      probe.decodeStarted = true; await decoding; return decode.call(this);
+    };
+  });
+}
+async function expectNoMeasurement(page) {
+  // Let the initial ResizeObserver notification and its queued frame run.
+  const count = await page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return window.__TP_TEST__.calls.filter(call => call.args.event === "preview-measured").length;
+  });
+  expect(count).toBe(0);
+}
+
+for (const kind of ["image", "video"]) {
+  for (const count of [1, 2]) {
+    for (const failed of [false, true]) {
+      test(`hover ${kind} (${count} files) waits for reading and decoding before showing ${failed ? "failure" : "media"}`, async ({ page }) => {
+        await openPreview(page); await holdMedia(page);
+        const files = Array.from({ length: count }, (_, index) => ({ original: `C:\\Files\\${index}.${kind === "image" ? "png" : "mp4"}` }));
+        await send(page, "preview-content", { ...payload("pending", kind, "", files), title: "i".repeat(100), width: 210 });
+        await expect.poll(() => page.evaluate(() => window.__TP_TEST__.mediaProbe.readStarted)).toBe(true);
+        await expectNoMeasurement(page);
+        await page.evaluate(() => window.__TP_TEST__.mediaProbe.releaseRead());
+        await expect.poll(() => page.evaluate(() => window.__TP_TEST__.mediaProbe.decodeStarted)).toBe(true);
+        await send(page, "font-changed", "Consolas");
+        await expectNoMeasurement(page);
+        await page.evaluate(failed => window.__TP_TEST__.mediaProbe.releaseDecode(failed), failed);
+        await expect(page.locator(failed ? ".media .unavailable" : count === 1 ? "#large-preview" : ".media-slide img")).toBeVisible();
+        await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "preview-measured")?.args.payload.height)).toBeGreaterThan(0);
+        const before = await page.locator(".card").evaluate(element => element.offsetHeight);
+        await send(page, "font-changed", "Arial");
+        await expect.poll(() => page.locator(".card").evaluate(element => element.offsetHeight)).not.toBe(before);
+        const height = await page.locator(".card").evaluate(element => element.offsetHeight);
+        await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "preview-measured")?.args.payload.height)).toBe(height);
+      });
+    }
+  }
+}
+
+test("clearing a pending media preview prevents late measurements", async ({ page }) => {
+  await openPreview(page); await holdMedia(page);
+  await send(page, "preview-content", payload("pending", "image"));
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.mediaProbe.readStarted)).toBe(true);
+  await send(page, "preview-clear", 1);
+  await page.evaluate(() => { window.__TP_TEST__.mediaProbe.releaseRead(); window.__TP_TEST__.mediaProbe.releaseDecode(false); });
+  await expect(page.locator(".card")).toHaveCount(0);
+  await expectNoMeasurement(page);
+});
+
 test("hover text preview preserves highlighting, group details, measurement and stale-clear protection", async ({ page }) => {
   await openPreview(page); await send(page, "preview-content", payload("text", "text", "第一行\n中文内容\n最后一行"));
   await expect(page.locator(".text-content .search-hit")).toHaveText("中文"); await expect(page.locator(".details dd")).toHaveText("工作");

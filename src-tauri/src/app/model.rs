@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 pub(super) struct Settings {
     #[serde(default = "default_theme", deserialize_with = "deserialize_theme")]
     pub(super) theme: String,
+    #[serde(default)]
+    pub(super) font_family: String,
+    #[serde(default)]
+    pub(super) font_style: super::fonts::FontStyle,
     pub(super) max_ordinary: u16,
     pub(super) retention_days: u16,
     pub(super) sensitive_seconds: u32,
@@ -123,6 +127,8 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            font_family: String::new(),
+            font_style: super::fonts::FontStyle::default(),
             max_ordinary: 300,
             retention_days: 7,
             sensitive_seconds: 90,
@@ -148,6 +154,9 @@ impl Settings {
     pub(super) fn validate(&self) -> Result<()> {
         if !THEMES.contains(&self.theme.as_str()) {
             return Err("无效的主题配色".into());
+        }
+        if !super::fonts::valid_name(&self.font_family) || !self.font_style.valid() {
+            return Err("无效的字体名称".into());
         }
         if !valid_rename_shortcut(&self.rename_shortcut)
             || (!self.rename_shortcut.is_empty() && self.rename_shortcut == self.shortcut)

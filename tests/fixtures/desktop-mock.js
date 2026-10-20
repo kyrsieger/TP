@@ -3,7 +3,8 @@ const callbacks = new Map(), listeners = new Map();
 let nextId = 1, visible = false, confirmationCount = 0, generation = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
-  theme: window.__TP_TEST_INITIAL_THEME__ ?? "indigo", backgroundResident: false, retainTypeFilter: true,
+  theme: window.__TP_TEST_INITIAL_THEME__ ?? "indigo", fontFamily: window.__TP_TEST_INITIAL_FONT__ ?? "",
+  fontStyle: window.__TP_TEST_INITIAL_FONT_STYLE__ ?? { name: "Regular", family: "", weight: 400, stretch: 100, style: "normal" }, backgroundResident: false, retainTypeFilter: true,
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
 const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, title: "", files: [], favorite: false, pinnedAt: null, groupId: null,
   usedAt: 1, createdAt: null, expiresAt: null, status: "ready", preview: false, assetPath: null, ...overrides });
@@ -51,6 +52,20 @@ window.__TAURI_INTERNALS__ = {
     if (name === "panel_ready") { setTimeout(() => window.__TP_TEST__.show(), 0); return null; }
     if (name === "get_state") return structuredClone(state);
     if (name === "get_theme") return state.settings.theme ?? "indigo";
+    if (name === "get_font") return { family: state.settings.fontFamily ?? "", style: state.settings.fontStyle };
+    if (name === "get_system_fonts") {
+      if (window.__TP_TEST__.fontListError) throw new Error("font list unavailable");
+      if (window.__TP_TEST__.systemFonts) return window.__TP_TEST__.systemFonts;
+      return ["Arial", "Consolas", "微软雅黑", "Segoe UI", "等线", "霞鹜文楷", ...Array.from({ length: 120 }, (_, index) => `Test Font ${String(index).padStart(3, "0")}`)]
+        .map(name => ({ name, aliases: name === "微软雅黑" ? ["微软雅黑", "Microsoft YaHei", "Microsoft YaHei Light", "微软雅黑 Light"] : name === "霞鹜文楷" ? [name, "LXGW WenKai"] : [name], styles: [
+          { name: "Regular", family: name, weight: 400, stretch: 100, style: "normal", aliases: [name] },
+          ...(name === "等线" || name.startsWith("Test Font") ? [] : [
+            { name: "Light", family: name === "微软雅黑" ? "微软雅黑 Light" : name, weight: name === "微软雅黑" ? 290 : 300, stretch: 100, style: "normal", aliases: name === "微软雅黑" ? ["Microsoft YaHei Light", "微软雅黑 Light"] : [] },
+            { name: "Bold", family: name, weight: 700, stretch: 100, style: "normal", aliases: [name] },
+            ...(name === "微软雅黑" ? [] : [{ name: "Italic", family: name, weight: 400, stretch: 100, style: "italic", aliases: [name] }]),
+          ]),
+        ] }));
+    }
     if (name === "show_panel") { visible = true; return; }
     if (name === "hide_panel") { window.__TP_TEST__.hide(); return; }
     if (name === "apply_record") { if (!state.settings.alwaysOnTop) window.__TP_TEST__.hide(); return; }

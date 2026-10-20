@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PreviewPayload } from "../domain/types";
 import { labels } from "../domain/records";
 import { call } from "../services/desktop";
@@ -17,7 +17,7 @@ function FileText({ id, index, measured }: { id: string; index: number; measured
   if (!result || (result.content === null && !result.error)) return null;
   return result.content === null ? <p className="file-text-error">文本预览不可用：{result.error}</p> : <pre className="file-text-content">{result.content}</pre>;
 }
-function SingleMedia({ payload, measured }: { payload: PreviewPayload; measured: () => void }) {
+function SingleMedia({ payload, onReady }: { payload: PreviewPayload; onReady: () => void }) {
   const ref = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false), [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -33,17 +33,27 @@ function SingleMedia({ payload, measured }: { payload: PreviewPayload; measured:
     })();
     return () => { alive = false; image.removeAttribute("src"); };
   }, [payload.id]);
-  useLayoutEffect(() => { if (loaded || failed) measured(); }, [loaded, failed]);
+  useLayoutEffect(() => { if (loaded || failed) onReady(); }, [loaded, failed, onReady]);
   return <div className="media"><img id="large-preview" ref={ref} alt={`${labels[payload.kind]}预览`} hidden={!loaded} />
     <p id="media-error" className="unavailable" hidden={!failed}>{failed ? payload.kind === "video" ? "首帧预览不可用" : "预览图不可用" : ""}</p></div>;
 }
 export function PreviewCard({ payload, measured, carouselRef }: { payload: PreviewPayload; measured: () => void; carouselRef: React.Ref<CarouselHandle | null> }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Each preview request mounts a new card; media must settle before it can reveal the window.
+  const [mediaReady, setMediaReady] = useState(false);
+  const onMediaReady = useCallback(() => setMediaReady(true), []);
+  const canMeasure = (payload.kind !== "image" && payload.kind !== "video") || mediaReady;
+  useEffect(() => {
+    if (!canMeasure) return;
+    const observer = new ResizeObserver(measured);
+    observer.observe(ref.current!);
+    return () => observer.disconnect();
+  }, [measured, canMeasure]);
   useLayoutEffect(() => {
     const area = ref.current!.querySelector<HTMLElement>(".text-content"), match = area?.querySelector<HTMLElement>(".search-hit");
     if (area && match) area.scrollTop = match.getBoundingClientRect().top - area.getBoundingClientRect().top - area.clientHeight / 2;
-    if (payload.kind !== "image" && payload.kind !== "video") measured();
-  }, [payload, measured]);
+    if (canMeasure) measured();
+  }, [payload, measured, canMeasure]);
   const color = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(payload.body.trim()) ? payload.body.trim() : "";
   const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   return <div ref={ref} className={`card${payload.kind === "text" ? " text-card" : ""}`} style={{ width: payload.width, maxHeight: payload.kind === "text" ? payload.maxHeight : undefined }}>
@@ -52,8 +62,8 @@ export function PreviewCard({ payload, measured, carouselRef }: { payload: Previ
     {payload.kind === "color" && <div className="color-content"><span className="color-disc" style={{ background: color }} /><span><Highlight text={payload.body} query={payload.search} /></span></div>}
     {(payload.kind === "image" || payload.kind === "video") && (payload.files.length > 1
       ? <div className="media multi"><MediaCarousel count={payload.files.length} load={index => call("preview_data", { id: payload.id, role: "preview", index })}
-        unavailable={payload.kind === "video" ? "首帧预览不可用" : "预览图不可用"} anchor="frame" carouselRef={carouselRef} onReady={measured} /></div>
-      : <SingleMedia payload={payload} measured={measured} />)}
+        unavailable={payload.kind === "video" ? "首帧预览不可用" : "预览图不可用"} anchor="frame" carouselRef={carouselRef} onReady={onMediaReady} /></div>
+      : <SingleMedia payload={payload} onReady={onMediaReady} />)}
     {payload.groupName !== null && <dl className="details"><div><dt>分组</dt><dd>{payload.groupName}</dd></div></dl>}
     {payload.files.length > 0 && <ul className={`files${payload.files.length === 1 ? " single-file" : ""}`}>{payload.files.map((file, index) => {
       const name = file.original.split(/[\\/]/).pop() || file.original;

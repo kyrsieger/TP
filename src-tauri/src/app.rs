@@ -5,6 +5,7 @@ mod digest;
 mod events;
 mod files;
 mod filesystem;
+mod fonts;
 mod media;
 mod model;
 mod panel;
@@ -109,6 +110,8 @@ pub fn run() {
             settings::set_autostart,
             settings::save_settings,
             settings::get_theme,
+            settings::get_font,
+            fonts::get_system_fonts,
             records::add_group,
             records::rename_group,
             records::rename_record,

@@ -4,6 +4,7 @@ import type { PanelController } from "./panel";
 import { Observable } from "./observable";
 import { recordRenameShortcutFromKey, recordRenameShortcutError } from "../domain/shortcuts";
 import { getTheme, defaultTheme, type ThemeId } from "../domain/themes";
+import { fontStyleKey, regularFontStyle, type FontSelection, type FontStyle } from "../domain/fonts";
 
 export const displayShortcut = (shortcut: string) => shortcut.split("+").map(part => part === "Control" ? "Ctrl" : part).join("+");
 export function shortcutFromKey(event: KeyboardEvent): string | null {
@@ -21,6 +22,7 @@ export function formatCacheSize(bytes: number) {
 }
 type SettingsValue = {
   themeDraft: ThemeId | null;
+  fontDraft: FontSelection | null;
   open: boolean; clearingCache: boolean; cacheSizeText: string;
   shortcutDraft: string | null; shortcutError: string | null;
   renameShortcutDraft: string | null; renameShortcutError: string | null;
@@ -42,8 +44,9 @@ export class SettingsController extends Observable<SettingsValue> {
   private resolveConfirmation: ((confirmed: boolean) => void) | null = null;
   private themeTimer: ReturnType<typeof setTimeout> | undefined;
   private themeGeneration = 0;
+  private fontGeneration = 0;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
-    super({ themeDraft: null, open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
+    super({ themeDraft: null, fontDraft: null, open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
       shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, cacheConfirmationOpen: false, revision: 0 });
   }
   ready(error: string | null) {
@@ -51,6 +54,17 @@ export class SettingsController extends Observable<SettingsValue> {
     if (error) this.effects.toast(error);
   }
   syncShortcut() { this.activeShortcut = this.value.shortcutError ? "" : this.history.value.settings?.shortcut ?? ""; }
+  selectFont(fontFamily: string, fontStyle: FontStyle = regularFontStyle) {
+    const previous = this.value.fontDraft ?? { family: this.history.value.settings?.fontFamily ?? "", style: this.history.value.settings?.fontStyle ?? regularFontStyle };
+    if (fontFamily === previous.family && fontStyleKey(fontStyle) === fontStyleKey(previous.style)) return;
+    const { name, family, weight, stretch, style } = fontStyle;
+    const selection = { family: fontFamily, style: { name, family, weight, stretch, style } };
+    const generation = ++this.fontGeneration;
+    this.update({ fontDraft: selection });
+    void this.save({ fontFamily, fontStyle: selection.style }).then(() => {
+      if (generation === this.fontGeneration) this.update({ fontDraft: null });
+    });
+  }
   reset() { this.flushTheme(); this.confirm(false); this.update({ open: false }); this.cacheRequest++; }
   selectTheme(id: ThemeId) {
     const theme = getTheme(id).id;

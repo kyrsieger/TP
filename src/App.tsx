@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { applyTheme } from "./services/theme";
+import { applyFont } from "./services/fonts";
+import { fontStyleKey, regularFontStyle } from "./domain/fonts";
 import { defaultTheme } from "./domain/themes";
 import { createApplication } from "./application";
 import { panelWindow } from "./services/desktop";
@@ -25,6 +27,13 @@ export function App() {
   const [backToTop, setBackToTop] = useState(false);
   const theme = settings.themeDraft ?? panel.settings?.theme ?? defaultTheme;
   useLayoutEffect(() => { applyTheme(theme); void emit("theme-changed", theme).catch(() => {}); }, [theme]);
+  const fontFamily = settings.fontDraft?.family ?? panel.settings?.fontFamily ?? "";
+  const fontStyle = settings.fontDraft?.style ?? panel.settings?.fontStyle ?? regularFontStyle;
+  const styleKey = fontStyleKey(fontStyle), savedStyleKey = fontStyleKey(panel.settings?.fontStyle ?? regularFontStyle);
+  useLayoutEffect(() => {
+    const selection = { family: fontFamily, style: fontStyle };
+    applyFont(selection); void emit("font-changed", selection).catch(() => {});
+  }, [fontFamily, styleKey, panel.settings?.fontFamily, savedStyleKey]);
   useEffect(() => { void app.start(); return () => app.dispose(); }, [app]);
   const groupContextMenu = (event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
@@ -52,6 +61,8 @@ export function App() {
       if (!element.closest(".retention-select")) patch.retention = false;
       if (!element.closest(".fixed-position-select")) patch.fixedPosition = false;
       if (!element.closest(".theme-select")) patch.theme = false;
+      if (!element.closest(".font-select")) patch.font = false;
+      if (!element.closest(".font-style-select")) patch.fontStyle = false;
       if (!element.closest("#move-group-menu,[data-move-group-trigger]")) patch.move = null;
       app.menus.update(patch);
     }}>

@@ -1,5 +1,5 @@
-:root{
-  font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+:root{font-weight:var(--app-font-weight,400);font-style:var(--app-font-style,normal);font-stretch:var(--app-font-stretch,100%);
+  font-family:var(--app-font,"Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif);
   color:var(--text-1);background:transparent;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;
 }
 *{box-sizing:border-box}
@@ -144,7 +144,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .settings-group{margin:0 0 16px;scroll-margin-top:20px}
 .settings-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgb(0 0 0 / 3%)}
 #settings .settings-row,.setting-field{position:relative;display:flex;align-items:center;gap:14px;min-height:44px;margin:0;padding:10px 14px;color:var(--text-1);font-size:13px;line-height:1.5}
-.settings-card>.settings-row+.settings-row::before,.settings-card>.settings-row+.setting-field::before,.settings-card>.setting-field+.settings-row::before,.fixed-position-settings .settings-row::before{content:"";position:absolute;top:0;left:14px;right:0;height:1px;background:var(--line)}
+.settings-card>.settings-row+.settings-row::before,.settings-card>.settings-row+.setting-field::before,.settings-card>.setting-field+.settings-row::before,.settings-card>.setting-field+.setting-field::before,.fixed-position-settings .settings-row::before{content:"";position:absolute;top:0;left:14px;right:0;height:1px;background:var(--line)}
 .settings-copy,.setting-label{flex:1;min-width:0}
 .settings-copy small{display:block;margin-top:3px;color:var(--text-2);font-size:12px;line-height:1.55}
 .settings-card-note,.settings-group-note{color:var(--text-2);font-size:12px;line-height:1.6}
@@ -200,6 +200,28 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .theme-strip{display:flex;flex:0 1 175px;height:14px;min-width:98px;overflow:hidden;border-radius:3px;outline:1px solid var(--control-border)}
 .theme-strip span{flex:1 1 0;min-width:0;height:100%}
 .theme-trigger-strip{flex:0 0 56px;min-width:0;height:10px}
+.font-select,.font-style-select{width:max-content;min-width:0;max-width:50%}
+#font-style-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:28px;padding:0 9px;border:1px solid var(--control-border);border-radius:6px;background:var(--control-bg);color:var(--text-1);font-size:13px;text-align:left}
+#font-style-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#font-style-trigger svg{flex-shrink:0;color:var(--text-3)}
+#font-style-trigger:hover{background:var(--hover)}
+#font-style-trigger[aria-expanded="true"]{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 1px var(--accent)}
+#font-style-menu{position:absolute;top:calc(100% + 5px);right:0;width:220px;max-width:calc(100vw - 64px);max-height:min(240px,calc(100vh - 300px));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent;z-index:8;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 12px 28px rgba(23,28,40,.14)}
+#font-style-menu button{display:block;width:100%;min-height:30px;padding:5px 9px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font-size:12px;text-align:left}
+#font-style-menu button:hover,#font-style-menu button:focus-visible,#font-style-menu button[aria-selected="true"]{outline:0;background:var(--accent-soft);color:var(--text-selected)}
+#font-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:28px;padding:0 9px;border:1px solid var(--control-border);border-radius:6px;background:var(--control-bg);color:var(--text-1);font-size:13px;text-align:left}
+#font-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#font-trigger svg{flex-shrink:0;color:var(--text-3)}
+#font-trigger:hover{background:var(--hover)}
+#font-trigger[aria-expanded="true"]{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 1px var(--accent)}
+#font-menu{position:absolute;top:calc(100% + 5px);right:0;width:268px;max-width:calc(100vw - 64px);z-index:8;padding:6px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 12px 28px rgba(23,28,40,.14)}
+#font-list{position:relative;max-height:min(240px,calc(100vh - 290px));margin-top:5px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+#font-list button{display:block;width:100%;min-height:30px;padding:5px 9px;overflow:hidden;border:0;border-radius:6px;background:transparent;color:var(--text-2);font-size:12px;text-align:left;text-overflow:ellipsis;white-space:nowrap}
+#font-list button[aria-selected="true"]{color:var(--accent);font-weight:600}
+#font-list button.font-active{background:var(--accent-soft);color:var(--text-selected)}
+#font-menu .font-status{display:block;width:100%;margin:5px 0 0;padding:6px 4px;border:0;background:transparent;color:var(--text-2);font-size:12px;text-align:center}
+#font-menu,#font-style-menu{font-size:12px}
+#font-style-menu button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shortcut-error{color:var(--danger);font-size:11px;line-height:1.4}
 .shortcut-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;line-height:1.55;color:var(--text-2)}
 .shortcut-table th,.shortcut-table td{padding:9px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}

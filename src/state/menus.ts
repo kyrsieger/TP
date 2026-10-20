@@ -5,11 +5,11 @@ export type Point = { x: number; y: number };
 type MoveMenu = { ids: string[]; triggerId: string; anchor: { top: number; bottom: number; right: number } };
 export class MenuController extends Observable<{
   group: ({ id: number } & Point) | null; record: ({ id: string; scrollTop?: number } & Point) | null; move: MoveMenu | null;
-  filter: boolean; retention: boolean; fixedPosition: boolean; theme: boolean;
+  filter: boolean; retention: boolean; fixedPosition: boolean; theme: boolean; font: boolean; fontStyle: boolean;
 }> {
-  constructor() { super({ group: null, record: null, move: null, filter: false, retention: false, fixedPosition: false, theme: false }); }
+  constructor() { super({ group: null, record: null, move: null, filter: false, retention: false, fixedPosition: false, theme: false, font: false, fontStyle: false }); }
   closePopups() { this.update({ group: null, record: null, move: null }); }
-  reset() { this.closePopups(); this.update({ filter: false, retention: false, fixedPosition: false, theme: false }); }
+  reset() { this.closePopups(); this.update({ filter: false, retention: false, fixedPosition: false, theme: false, font: false, fontStyle: false }); }
   openMove(trigger: HTMLElement, anchor = trigger, records: RecordItem[]) {
     const rect = anchor.getBoundingClientRect();
     this.update({ move: { ids: records.map(record => record.id), triggerId: trigger.dataset.moveGroupTrigger!,

@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn fonts_default_for_old_settings_and_validate_family_names() {
+    let mut value = serde_json::to_value(Settings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("fontFamily");
+    value.as_object_mut().unwrap().remove("fontStyle");
+    value["maxOrdinary"] = 100.into();
+    let mut config: Settings = serde_json::from_value(value).unwrap();
+    assert!(config.font_family.is_empty());
+    assert_eq!(config.font_style.name, "Regular");
+    assert_eq!(config.font_style.weight, 400);
+    assert_eq!(config.max_ordinary, 100);
+    for family in [
+        "",
+        "Segoe UI",
+        "微软雅黑",
+        "PingFang SC",
+        "Font with \"quotes\"",
+    ] {
+        config.font_family = family.into();
+        assert!(config.validate().is_ok());
+    }
+    for family in ["bad\nfont".to_owned(), "a".repeat(257)] {
+        config.font_family = family;
+        assert!(config.validate().is_err());
+    }
+    config.font_family = "微软雅黑".into();
+    config.font_style.name = "Light".into();
+    config.font_style.family = "微软雅黑 Light".into();
+    config.font_style.weight = 290;
+    assert!(config.validate().is_ok());
+    config.font_style.weight = 0;
+    assert!(config.validate().is_err());
+    config.font_style.weight = 400;
+    config.font_style.style = "unexpected".into();
+    assert!(config.validate().is_err());
+}
+
+#[test]
 fn type_filter_retention_defaults_on_for_older_settings_and_round_trips() {
     let mut config = Settings::default();
     assert!(config.retain_type_filter);

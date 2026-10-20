@@ -93,11 +93,21 @@ export function createPanelKeydown(context: KeyboardContext) {
     if (settingsOpen) {
       if (event.key === "Escape") {
         const themeMenu = document.querySelector<HTMLElement>("#theme-menu");
+        const fontMenu = document.querySelector<HTMLElement>("#font-menu");
+        const fontStyleMenu = document.querySelector<HTMLElement>("#font-style-menu");
         const retentionMenu = document.querySelector<HTMLElement>("#retention-menu");
         const fixedPositionMenu = document.querySelector<HTMLElement>("#fixed-position-menu");
         if (themeMenu && !themeMenu.hidden) {
           menus.update({ theme: false });
           document.querySelector<HTMLElement>("#theme-trigger")?.focus({ preventScroll: true });
+        }
+        else if (fontMenu && !fontMenu.hidden) {
+          menus.update({ font: false });
+          document.querySelector<HTMLElement>("#font-trigger")?.focus({ preventScroll: true });
+        }
+        else if (fontStyleMenu && !fontStyleMenu.hidden) {
+          menus.update({ fontStyle: false });
+          document.querySelector<HTMLElement>("#font-style-trigger")?.focus({ preventScroll: true });
         }
         else if (retentionMenu && !retentionMenu.hidden)
           setRetentionMenuOpen(false);

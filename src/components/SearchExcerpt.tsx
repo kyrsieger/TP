@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { prepareSearchExcerpt } from "../search-excerpt";
 import { Highlight } from "./Highlight";
+import { onFontChange } from "../services/fonts";
 
 let context: CanvasRenderingContext2D | null | undefined;
 
@@ -27,7 +28,8 @@ export function SearchExcerpt({ text, query, className, style }: {
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
-    return () => observer.disconnect();
+    const unlisten = onFontChange(update);
+    return () => { observer.disconnect(); unlisten(); };
   }, [text, fit]);
   const excerpt = result.fit === fit ? result.text : fit ? "" : text;
   return <span ref={ref} className={`${className}${query ? " search-excerpt" : ""}`} style={{ ...style, whiteSpace: query ? "pre" : undefined }}><Highlight text={excerpt} query={query} /></span>;

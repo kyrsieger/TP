@@ -1,4 +1,5 @@
 import type { ThemeId } from "./themes";
+import type { FontStyle } from "./fonts";
 export type Kind = "text" | "link" | "image" | "file" | "video" | "color";
 export type FileItem = { original: string; stored: string | null; isDirectory: boolean };
 export type RecordItem = {
@@ -10,6 +11,8 @@ export type RecordItem = {
 export type Group = { id: number; name: string };
 export type Settings = {
   theme?: ThemeId;
+  fontFamily?: string;
+  fontStyle?: FontStyle;
   maxOrdinary: number; retentionDays: number; sensitiveSeconds: number; shortcut: string; renameShortcut: string;
   positionMode: "fixed" | "cursor"; fixedPosition: "left" | "right" | "center";
   rememberPosition: boolean; panelWidth: number; panelHeight: number;

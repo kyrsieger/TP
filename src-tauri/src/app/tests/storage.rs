@@ -4,6 +4,39 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn font_choice_survives_database_restart() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    {
+        let conn = store.db.lock().unwrap();
+        let mut config = settings(&conn).unwrap();
+        config.font_family = "Microsoft YaHei".into();
+        config.font_style = super::super::fonts::FontStyle {
+            name: "Light".into(),
+            family: "Microsoft YaHei Light".into(),
+            weight: 290,
+            ..Default::default()
+        };
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [serde_json::to_string(&config).unwrap()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    let store = initialize(dir.clone()).unwrap();
+    assert_eq!(
+        settings(&store.db.lock().unwrap()).unwrap().font_family,
+        "Microsoft YaHei"
+    );
+    let restored = settings(&store.db.lock().unwrap()).unwrap();
+    assert_eq!(restored.font_style.name, "Light");
+    assert_eq!(restored.font_style.weight, 290);
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn theme_migrates_old_settings_and_survives_restart() {
     let store = test_store();
     let dir = store.dir.clone();

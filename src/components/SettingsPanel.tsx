@@ -9,6 +9,8 @@ import type { MenuController } from "../state/menus";
 import { Icon } from "./Icon";
 import { useObservable } from "./use-observable";
 import { ThemeSetting } from "./ThemeSetting";
+import { FontSetting } from "./FontSetting";
+import { regularFontStyle } from "../domain/fonts";
 
 function NumberSetting({ id, label, value, max, revision, save, toast }: { id: string; label: string; value: number; max: number; revision: number; save: (value: number) => void; toast: (message: string) => void }) {
   const [draft, setDraft] = useState(String(value));
@@ -56,6 +58,9 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <section className="settings-group" id="settings-appearance" aria-label="外观">
       <div className="settings-card">
         <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
+        <FontSetting value={state.fontDraft?.family ?? s.fontFamily ?? ""} styleValue={state.fontDraft?.style ?? s.fontStyle ?? regularFontStyle}
+          open={menu.font} toggle={font => menus.update({ font })} styleOpen={menu.fontStyle} toggleStyle={fontStyle => menus.update({ fontStyle })}
+          choose={(family, style) => controller.selectFont(family, style)} />
       </div>
     </section>
     <section className="settings-group" id="settings-general" aria-label="通用">
