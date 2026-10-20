@@ -18,27 +18,68 @@ use rusqlite::{params, OptionalExtension};
 use std::{fs, path::Path, thread};
 use tauri::Manager;
 use uuid::Uuid;
+
+fn text_kind(text: &str) -> &'static str {
+    if is_hex_color(text) {
+        "color"
+    } else if url::Url::parse(text.trim())
+        .is_ok_and(|url| ["http", "https"].contains(&url.scheme()))
+    {
+        "link"
+    } else {
+        "text"
+    }
+}
+
+fn text_for_use(body: &str, remove_trailing_newlines: bool) -> &str {
+    if remove_trailing_newlines {
+        body.trim_end_matches(['\r', '\n'])
+    } else {
+        body
+    }
+}
+
+fn text_writeback(body: &str, remove_trailing_newlines: bool) -> (&str, String) {
+    let text = text_for_use(body, remove_trailing_newlines);
+    // The watcher classifies and hashes the actual clipboard text, not the stored original.
+    (text, hash(text_kind(text), text.as_bytes()))
+}
 #[tauri::command]
 pub(super) fn apply_record(
     app: tauri::AppHandle,
     store: tauri::State<Store>,
     id: String,
 ) -> Result<()> {
-    let (kind, body, files, mode, digest): (String, String, String, String, String) = {
+    let (kind, body, files, mode, remove_trailing_newlines): (
+        String,
+        String,
+        String,
+        String,
+        bool,
+    ) = {
         let conn = store.db.lock().map_err(err)?;
-        conn.query_row(
-            "SELECT kind,body,files,storage_mode,digest FROM records WHERE id=?1",
-            [&id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        let (kind, body, files, mode) = conn
+            .query_row(
+                "SELECT kind,body,files,storage_mode FROM records WHERE id=?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .map_err(err)?;
+        (
+            kind,
+            body,
+            files,
+            mode,
+            settings(&conn)?.remove_trailing_newlines,
         )
-        .map_err(err)?
     };
     let ctx = ClipboardContext::new().map_err(err)?;
     let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
     match kind.as_str() {
         "text" | "link" | "color" => {
-            *store.suppressed_digest.lock().map_err(err)? = Some(digest.clone());
-            ctx.set_text(body).map_err(err)?;
+            let (text, digest) = text_writeback(&body, remove_trailing_newlines);
+            *store.suppressed_digest.lock().map_err(err)? = Some(digest);
+            ctx.set_text(text.to_owned()).map_err(err)?;
         }
         "image" if files.is_empty() => {
             let path = store
@@ -138,15 +179,7 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
         if text.is_empty() {
             return Ok(());
         }
-        let kind = if is_hex_color(&text) {
-            "color"
-        } else if url::Url::parse(text.trim())
-            .is_ok_and(|url| ["http", "https"].contains(&url.scheme()))
-        {
-            "link"
-        } else {
-            "text"
-        };
+        let kind = text_kind(&text);
         let digest = hash(kind, text.as_bytes());
         (kind.into(), text, Vec::new(), None, digest)
     } else {
@@ -229,3 +262,7 @@ impl ClipboardHandler for Watcher {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/clipboard.rs"]
+mod tests;

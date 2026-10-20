@@ -18,11 +18,13 @@ export type Settings = {
   rememberPosition: boolean; panelWidth: number; panelHeight: number;
   panelX: number | null; panelY: number | null; alwaysOnTop: boolean; retainSearchInput: boolean; showTaskbarIcon: boolean;
   backgroundResident: boolean; retainTypeFilter: boolean;
+  removeTrailingNewlines?: boolean;
 };
 export type Snapshot = { records: RecordItem[]; groups: Group[]; settings: Settings };
 export type SettingsSaveResult = { status: "saved" } | { status: "confirmation_required"; count: number };
 export type PanelSession = { view: string; kindFilter: string; search: string };
 export type PreviewPayload = {
+  removeTrailingNewlines?: boolean;
   theme?: ThemeId;
   id: string; kind: Kind; body: string; title?: string; files: { original: string }[];
   groupName: string | null; preview: boolean; status: string;

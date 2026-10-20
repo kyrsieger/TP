@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PreviewPayload } from "../domain/types";
-import { labels } from "../domain/records";
+import { labels, textForUse, hasTrailingNewline } from "../domain/records";
 import { call } from "../services/desktop";
 import { Highlight } from "../components/Highlight";
 import { MediaCarousel, type CarouselHandle } from "../components/MediaCarousel";
@@ -55,11 +55,14 @@ export function PreviewCard({ payload, measured, carouselRef }: { payload: Previ
     if (canMeasure) measured();
   }, [payload, measured, canMeasure]);
   const color = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(payload.body.trim()) ? payload.body.trim() : "";
+  const body = textForUse(payload.body, payload.removeTrailingNewlines !== false);
+  // An empty inline box gives the final empty line a real line box without changing copied text.
+  const terminalLine = hasTrailingNewline(body) && <span className="terminal-line" aria-hidden="true" />;
   const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
   return <div ref={ref} className={`card${payload.kind === "text" ? " text-card" : ""}`} style={{ width: payload.width, maxHeight: payload.kind === "text" ? payload.maxHeight : undefined }}>
     {payload.title && <div className="record-preview-title"><Highlight text={payload.title} query={payload.search} /></div>}
-    {(payload.kind === "text" || payload.kind === "link") && <pre className="text-content"><Highlight text={payload.body} query={payload.search} /></pre>}
-    {payload.kind === "color" && <div className="color-content"><span className="color-disc" style={{ background: color }} /><span><Highlight text={payload.body} query={payload.search} /></span></div>}
+    {(payload.kind === "text" || payload.kind === "link") && <pre className="text-content"><Highlight text={body} query={payload.search} />{terminalLine}</pre>}
+    {payload.kind === "color" && <div className="color-content"><span className="color-disc" style={{ background: color }} /><span className="color-text"><Highlight text={body} query={payload.search} />{terminalLine}</span></div>}
     {(payload.kind === "image" || payload.kind === "video") && (payload.files.length > 1
       ? <div className="media multi"><MediaCarousel count={payload.files.length} load={index => call("preview_data", { id: payload.id, role: "preview", index })}
         unavailable={payload.kind === "video" ? "首帧预览不可用" : "预览图不可用"} anchor="frame" carouselRef={carouselRef} onReady={onMediaReady} /></div>

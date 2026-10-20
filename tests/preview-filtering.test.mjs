@@ -30,6 +30,22 @@ function setup() {
   return { app, calls, events, runTimers: () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); } };
 }
 
+test("hover preview sends the current newline preference with the untouched original body", async () => {
+  const { app, events } = setup();
+  const record = app.history.value.snapshot.records[0];
+  record.kind = "text"; record.body = "DSH 0.2.1-rc.2\r\n";
+  try {
+    for (const remove of [undefined, false, true]) {
+      app.history.commitSettings({ removeTrailingNewlines: remove });
+      app.previews.hoveredId = record.id;
+      await app.previews.preparePreview(record.id);
+      const content = events.findLast(event => event.event === "preview-content").payload;
+      assert.equal(content.body, record.body);
+      assert.equal(content.removeTrailingNewlines, remove !== false);
+    }
+  } finally { app.dispose(); }
+});
+
 for (const [name, change, nextId] of [
   ["search", history => history.browse({ search: "other" }), "other"],
   ["type filter", history => history.browse({ kindFilter: "video" }), "video"],

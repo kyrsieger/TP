@@ -1,5 +1,10 @@
 import type { FileItem, Kind, PanelSession, RecordItem } from "./types";
 export const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
+/** Only CR and LF at the end are removed; spaces, indentation and internal lines remain exact. */
+export function textForUse(body: string, removeTrailingNewlines = true): string {
+  return removeTrailingNewlines ? body.replace(/[\r\n]+$/, "") : body;
+}
+export function hasTrailingNewline(body: string): boolean { return /[\r\n]$/.test(body); }
 export function filteredRecords(records: RecordItem[], { view, kindFilter, search }: PanelSession): RecordItem[] {
   return records.filter(record => {
     if (view === "favorite" && !record.favorite) return false;
@@ -17,15 +22,16 @@ export function firstLineText(body: string): string {
   return hasMore ? `${first} ...` : first;
 }
 
-export function recordListText(record: RecordItem, search: string): string {
+export function recordListText(record: RecordItem, search: string, removeTrailingNewlines = true): string {
+  const body = textForUse(record.body, removeTrailingNewlines);
   const usual = record.files.length > 1 ? `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`
     : record.files.length === 1 ? record.files[0].original.split(/[\\/]/).pop() || "文件"
-    : firstLineText(record.body);
+    : firstLineText(body);
   if (!search) return usual;
   const needle = search.toLocaleLowerCase();
-  if (![record.body, ...record.files.map(file => file.original)].some(text => text.toLocaleLowerCase().includes(needle))) return usual;
-  const source = [record.body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
-    ?? `${record.body} ${record.files.map(file => file.original).join(" ")}`;
+  if (![body, ...record.files.map(file => file.original)].some(text => text.toLocaleLowerCase().includes(needle))) return usual;
+  const source = [body, ...record.files.map(file => file.original)].find(text => text.toLocaleLowerCase().includes(needle))
+    ?? `${body} ${record.files.map(file => file.original).join(" ")}`;
   return source;
 }
 

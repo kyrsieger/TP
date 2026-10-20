@@ -4,6 +4,67 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn trailing_newline_setting_defaults_on_and_survives_restart_without_changing_original() {
+    let store = test_store();
+    let dir = store.dir.clone();
+    let original = "DSH 0.2.1-rc.2\r\n";
+    let digest = hash("text", original.as_bytes());
+    {
+        let conn = store.db.lock().unwrap();
+        let mut old = serde_json::to_value(settings(&conn).unwrap()).unwrap();
+        old.as_object_mut()
+            .unwrap()
+            .remove("removeTrailingNewlines");
+        conn.execute(
+            "UPDATE settings SET value=?1 WHERE key='main'",
+            [old.to_string()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO records(id,digest,kind,body,used_at) VALUES('newline',?1,'text',?2,?3)",
+            params![digest, original, now()],
+        )
+        .unwrap();
+    }
+    drop(store);
+    for remove in [false, true] {
+        let store = initialize(dir.clone()).unwrap();
+        {
+            let conn = store.db.lock().unwrap();
+            let mut config = settings(&conn).unwrap();
+            assert_eq!(config.remove_trailing_newlines, !remove);
+            config.remove_trailing_newlines = remove;
+            config.validate().unwrap();
+            conn.execute(
+                "UPDATE settings SET value=?1 WHERE key='main'",
+                [serde_json::to_string(&config).unwrap()],
+            )
+            .unwrap();
+        }
+        drop(store);
+        let store = initialize(dir.clone()).unwrap();
+        assert_eq!(
+            settings(&store.db.lock().unwrap())
+                .unwrap()
+                .remove_trailing_newlines,
+            remove
+        );
+        let snapshot = snapshot(&store).unwrap();
+        assert_eq!(snapshot.records[0].body, original);
+        let saved_digest: String = store
+            .db
+            .lock()
+            .unwrap()
+            .query_row("SELECT digest FROM records WHERE id='newline'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(saved_digest, digest);
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn old_groups_gain_persistent_order_and_new_groups_append() {
     let dir = std::env::temp_dir().join(format!("tp-test-{}", Uuid::new_v4()));
     fs::create_dir_all(&dir).unwrap();

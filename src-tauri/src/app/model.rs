@@ -32,6 +32,8 @@ pub(super) struct Settings {
     pub(super) show_taskbar_icon: bool,
     #[serde(default)]
     pub(super) background_resident: bool,
+    #[serde(default = "default_remove_trailing_newlines")]
+    pub(super) remove_trailing_newlines: bool,
 }
 
 pub(super) const THEMES: [&str; 11] = [
@@ -123,6 +125,10 @@ fn default_retain_type_filter() -> bool {
     true
 }
 
+fn default_remove_trailing_newlines() -> bool {
+    true
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -146,6 +152,7 @@ impl Default for Settings {
             retain_type_filter: true,
             show_taskbar_icon: true,
             background_resident: false,
+            remove_trailing_newlines: true,
         }
     }
 }

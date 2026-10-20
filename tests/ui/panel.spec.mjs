@@ -5,6 +5,38 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.record[data-id="text"]')).toBeVisible();
 });
 
+test("remove terminal newlines defaults on, persists both values, tags named and searched records and retains originals", async ({ page }) => {
+  await page.evaluate(() => {
+    const t = window.__TP_TEST__;
+    t.change([
+      t.makeRecord("text", "text", "DSH 0.2.1-rc.2\r\n", { pinnedAt: 1 }),
+      t.makeRecord("named", "text", "    first\n\tsecond\n", { title: "标题" }),
+      t.makeRecord("plain", "text", "没有末尾换行"),
+      t.makeRecord("url", "link", "https://example.com\r"),
+      t.makeRecord("hex", "color", "#abc\n"),
+    ]);
+  });
+  await expect(page.locator(".trailing-newline-tag")).toHaveCount(0);
+  await page.locator("#settings-button").click();
+  const toggle = page.getByRole("checkbox", { name: "移除末尾换行", exact: true });
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.removeTrailingNewlines)).toBe(false);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".trailing-newline-tag")).toHaveCount(4);
+  await expect(page.locator('[data-id="plain"] .trailing-newline-tag')).toHaveCount(0);
+  await expect(page.locator('[data-id="named"] .trailing-newline-tag')).toHaveText("有换行");
+  await page.locator("#search").fill("DSH");
+  await expect(page.locator(".trailing-newline-tag")).toHaveText("有换行");
+  await page.locator("#settings-button").click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.removeTrailingNewlines)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".trailing-newline-tag")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__TP_TEST__.state.records.find(r => r.id === "text").body)).toBe("DSH 0.2.1-rc.2\r\n");
+});
+
 test("development tools release hidden content immediately and reopen without losing records", async ({ page }) => {
   const count = await page.evaluate(() => window.__TP_TEST__.state.records.length);
   await page.locator("#settings-button").click();

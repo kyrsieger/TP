@@ -96,6 +96,7 @@ export function RecordList({ history, rename, previews, menus, listRef, onBackTo
         ordinal={ordinals.includes(record.id) ? String(ordinals.indexOf(record.id) + 1) : ""} search={state.search} root={ref.current}
         moveOpen={menu.move?.triggerId === record.id} select={extend => history.selectRecord(record.id, extend)} apply={() => { void history.apply(record.id); }}
         editing={edit.id === record.id} rename={rename}
+        removeTrailingNewlines={state.settings?.removeTrailingNewlines !== false}
         action={(name, args) => { void history.action(name, args); }}
         move={trigger => { if (menu.move?.triggerId === record.id) menus.update({ move: null }); else menus.openMove(trigger, trigger, [record]); }}
         hover={() => { if (!edit.id && !menu.record) previews.hoverRecord(record.id); }} leave={() => previews.leave(record.id)} />)}

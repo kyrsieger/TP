@@ -4,7 +4,7 @@ let nextId = 1, visible = false, confirmationCount = 0, generation = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
   theme: window.__TP_TEST_INITIAL_THEME__ ?? "indigo", fontFamily: window.__TP_TEST_INITIAL_FONT__ ?? "",
-  fontStyle: window.__TP_TEST_INITIAL_FONT_STYLE__ ?? { name: "Regular", family: "", weight: 400, stretch: 100, style: "normal" }, backgroundResident: false, retainTypeFilter: true,
+  fontStyle: window.__TP_TEST_INITIAL_FONT_STYLE__ ?? { name: "Regular", family: "", weight: 400, stretch: 100, style: "normal" }, backgroundResident: false, retainTypeFilter: true, removeTrailingNewlines: true,
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
 const makeRecord = (id, kind, body, overrides = {}) => ({ id, kind, body, title: "", files: [], favorite: false, pinnedAt: null, groupId: null,
   usedAt: 1, createdAt: null, expiresAt: null, status: "ready", preview: false, assetPath: null, ...overrides });

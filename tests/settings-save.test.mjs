@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadTs } from "./load-ts.mjs";
 const { SettingsController } = loadTs("src/state/settings.ts");
+test("trailing newline preference saves both values and restores the persisted value after failure", async () => {
+  const good = setup(() => true);
+  good.original.removeTrailingNewlines = true;
+  await good.controller.save({ removeTrailingNewlines: false });
+  assert.equal(good.context.state.settings.removeTrailingNewlines, false);
+  await good.controller.save({ removeTrailingNewlines: true });
+  assert.equal(good.context.state.settings.removeTrailingNewlines, true);
+  const bad = setup(() => { throw new Error("save failed"); });
+  bad.original.removeTrailingNewlines = false;
+  await bad.controller.save({ removeTrailingNewlines: true });
+  assert.equal(bad.context.state.settings.removeTrailingNewlines, false);
+  assert.ok(bad.effects.some(effect => effect[0] === "toast"));
+});
 function setup(save, confirm = () => false) {
   const effects = [], elements = new Map([["#search", { value: "kept" }], ["#clear-search", { hidden: false }]]);
   const original = { maxOrdinary: 100, retentionDays: 3, shortcut: "", rememberPosition: false };

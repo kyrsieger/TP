@@ -113,6 +113,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .record-text.search-excerpt{flex:1}
 .search-hit{background:var(--accent);color:var(--on-accent)}
 .record-note{flex:0 0 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3);font-size:10px;font-weight:400}
+.trailing-newline-tag{flex:0 0 auto;padding:1px 5px;border-radius:4px;background:var(--control-bg);color:var(--text-3);font-size:10px;line-height:16px;white-space:nowrap}
 .kind-icon{display:flex;flex:0 0 auto;color:var(--text-3)}
 .kind-icon.link{color:var(--link)}
 .file-tag{display:block;flex:0 0 auto;max-width:52px;padding:2px 5px;overflow:hidden;border-radius:4px;background:var(--file-tag-bg);color:var(--file-tag-text);font-size:10px;font-weight:600;line-height:14px;text-overflow:ellipsis;white-space:nowrap}

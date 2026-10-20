@@ -8,6 +8,26 @@ async function openPreview(page, large = false) {
 }
 async function send(page, event, content) { await page.evaluate(({ event, content }) => window.__TP_TEST__.emit(event, content), { event, content }); }
 
+test("terminal newlines follow the setting and occupy real visible lines without adding text", async ({ page }) => {
+  await openPreview(page);
+  for (const kind of ["text", "link", "color"]) {
+    const body = kind === "color" ? "#abc" : kind === "link" ? "https://example.com" : "    first\n\tsecond";
+    const area = page.locator(kind === "color" ? ".color-text" : ".text-content");
+    await send(page, "preview-content", { ...payload("newline", kind, body + "\r\n\r\n"), search: "", removeTrailingNewlines: true });
+    await expect.poll(() => area.textContent()).toBe(body);
+    await expect(area.locator(".terminal-line")).toHaveCount(0);
+    const height = await area.evaluate(el => el.getBoundingClientRect().height);
+    await send(page, "preview-content", { ...payload("newline", kind, body + "\r\n\r\n"), generation: 2, search: "", removeTrailingNewlines: false });
+    await expect(area.locator(".terminal-line")).toHaveCount(1);
+    // HTML parsing normalizes CRLF to LF; the original payload remains unchanged.
+    expect(await area.textContent()).toBe(body + "\n\n");
+    const lineHeight = await area.evaluate(el => parseFloat(getComputedStyle(el).lineHeight));
+    expect(await area.evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(height + 2 * lineHeight, 0);
+    await area.evaluate(el => { const range = document.createRange(); range.selectNodeContents(el); getSelection().removeAllRanges(); getSelection().addRange(range); });
+    expect(await page.evaluate(() => getSelection().toString())).toBe(body + "\n\n");
+  }
+});
+
 async function holdMedia(page) {
   await page.evaluate(() => {
     const probe = window.__TP_TEST__.mediaProbe = { readStarted: false, decodeStarted: false };
