@@ -61,6 +61,23 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese"],
+        "customLanguageFiles": {
+          "SimpChinese": "installer/SimpChinese.nsh"
+        },
+        "displayLanguageSelector": false,
+        "installerHooks": "installer/hooks.nsh"
+      },
+      "wix": {
+        "language": {
+          "zh-CN": {
+            "localePath": "installer/zh-CN.wxl"
+          }
+        }
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -378,6 +378,12 @@ flowchart TD
 
 构建由 Vite 输出主面板与两个预览页面，Tauri 将前端产物与 Rust 宿主打包；发布产物不依赖 Vite 开发服务器。开发与检查命令见 [README](../README.md)，依赖声明见 [package.json](../package.json) 和 [Cargo.toml](../src-tauri/Cargo.toml)。当前机器只有 Windows，macOS 代码虽有条件编译分支，仍需在 Mac 上完成编译、权限与运行验证。
 
+Windows 安装语言在 `src-tauri/tauri.conf.json` 中配置：NSIS 仅启用 `SimpChinese`，WiX 使用 `zh-CN`，并通过 `src-tauri/installer/zh-CN.wxl` 翻译启动、版本降级与安装组件等附加提示。NSIS 通过 `src-tauri/installer/hooks.nsh` 定义 `MUI_FINISHPAGE_SHOWREADME_NOTCHECKED`，使安装完成页的桌面快捷方式选项默认不勾选，仍允许用户主动勾选；沿用 Tauri 内置安装模板。
+
+2026-10-20 安装界面调整验证：Windows 正式构建及 EXE、MSI 打包成功，MSI 补充翻译后重新打包成功；核对实际生成的 NSIS 脚本及编译日志，确认仅启用简体中文并载入默认不勾选快捷方式的定义，MSI 语言为 2052（简体中文）。未实际执行安装或卸载流程，macOS 未运行。
+
+NSIS 通过 `customLanguageFiles` 使用项目内的 `src-tauri/installer/SimpChinese.nsh`，保留内置简体中文翻译，并将相同版本维护页的 `addOrReinstall` 文案覆盖为“重新安装 TP”。
+
 ## 7. 架构取舍与当前限制
 
 | 方面 | 已采用的方式 | 当前限制或待补足项 |
