@@ -82,11 +82,8 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       onChange={event => save({ showTaskbarIcon: event.target.checked })} /></div>}
       </div>
     </section>
-    <section className="settings-group" id="settings-panel" aria-label="面板行为">
+    <section className="settings-group" id="settings-shortcuts" aria-label="快捷键">
       <div className="settings-card">
-    <div className="settings-row"><span className="settings-copy">保留搜索框输入<small id="retain-search-input-hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</small></span><input id="retain-search-input" type="checkbox" aria-label="保留搜索框输入" aria-describedby="retain-search-input-hint" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} /></div>
-    <div className="settings-row"><span className="settings-copy">保留类型筛选<small id="retain-type-filter-hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</small></span><input id="retain-type-filter" type="checkbox" aria-label="保留类型筛选" aria-describedby="retain-type-filter-hint" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} /></div>
-    <div className="settings-row"><span className="settings-copy">移除末尾换行<small id="remove-trailing-newlines-hint">展示和粘贴时移除末尾换行，保留中间换行和缩进。关闭后末尾换行会按原文粘贴。</small></span><input id="remove-trailing-newlines" type="checkbox" aria-label="移除末尾换行" aria-describedby="remove-trailing-newlines-hint" checked={s.removeTrailingNewlines !== false} onChange={event => save({ removeTrailingNewlines: event.target.checked })} /></div>
     <div className="settings-row"><span className="settings-copy">唤出快捷键</span><span className="settings-shortcut-control" data-value={displayShortcut(state.shortcutDraft ?? s.shortcut) || "点击后按组合键"}><input id="shortcut" aria-label="唤出快捷键" placeholder="点击后按组合键" value={displayShortcut(state.shortcutDraft ?? s.shortcut)} readOnly onKeyDown={event => { event.preventDefault(); controller.captureShortcut(event.nativeEvent); }} />
       {state.shortcutError && <span className="shortcut-error" role="alert">{state.shortcutError}</span>}</span></div>
     <div className="settings-row"><span className="settings-copy">记录重命名快捷键</span><span className="settings-shortcut-control" data-value={displayShortcut(state.renameShortcutDraft ?? s.renameShortcut) || "点击后按快捷键"}><input id="rename-shortcut" aria-label="记录重命名快捷键" placeholder="点击后按快捷键" value={displayShortcut(state.renameShortcutDraft ?? s.renameShortcut)} readOnly
@@ -105,6 +102,13 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     </div></div>
     <div className="settings-row"><span className="settings-copy">1Password 记录保留秒数</span><NumberSetting id="sensitive" label="1Password 记录保留秒数" value={s.sensitiveSeconds} max={4294967295} revision={state.revision} save={sensitiveSeconds => save({ sensitiveSeconds })} toast={toast} /></div>
       </div><p className="settings-group-note">数量和时间上限只作用于普通记录。收藏或已分组的记录只能手动删除。</p>
+    </section>
+    <section className="settings-group" id="settings-panel" aria-label="面板行为">
+      <div className="settings-card">
+    <div className="settings-row"><span className="settings-copy">保留搜索框输入<small id="retain-search-input-hint">关闭后，每次面板关闭都会清空搜索框内的关键词。</small></span><input id="retain-search-input" type="checkbox" aria-label="保留搜索框输入" aria-describedby="retain-search-input-hint" checked={s.retainSearchInput} onChange={event => save({ retainSearchInput: event.target.checked })} /></div>
+    <div className="settings-row"><span className="settings-copy">保留类型筛选<small id="retain-type-filter-hint">关闭后，每次面板关闭都会将类型筛选恢复为“全部”。</small></span><input id="retain-type-filter" type="checkbox" aria-label="保留类型筛选" aria-describedby="retain-type-filter-hint" checked={s.retainTypeFilter} onChange={event => save({ retainTypeFilter: event.target.checked })} /></div>
+    <div className="settings-row"><span className="settings-copy">移除末尾换行<small id="remove-trailing-newlines-hint">展示和粘贴时移除末尾换行，保留中间换行和缩进。关闭后末尾换行会按原文粘贴。</small></span><input id="remove-trailing-newlines" type="checkbox" aria-label="移除末尾换行" aria-describedby="remove-trailing-newlines-hint" checked={s.removeTrailingNewlines !== false} onChange={event => save({ removeTrailingNewlines: event.target.checked })} /></div>
+      </div>
     </section>
     <section className="settings-group" id="settings-position" aria-label="面板位置">
     <fieldset className="settings-card" aria-label="面板位置">{[["fixed", "固定位置"], ["cursor", "跟随光标"]].map(([value, label]) => <div key={value} className="settings-row settings-radio"><input id={`position-mode-${value}`} type="radio" name="mode" value={value} aria-label={label} checked={s.positionMode === value}
@@ -126,7 +130,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       <button id="clear-cache" className="primary" disabled={state.clearingCache} onClick={() => { void controller.clearCache(); }}>{state.clearingCache ? "清理中…" : "清理缓存"}</button></section>
     <p className="settings-card app-version"><span>当前版本</span><span id="app-version">{version}</span></p>
     </section>
-    <section className="settings-group" id="settings-shortcuts" aria-label="快捷键">
+    <section className="settings-group" id="settings-shortcut-reference" aria-label="快捷键说明">
       <div className="settings-card"><ShortcutTable shortcut={s.shortcut} renameShortcut={s.renameShortcut} /></div>
     </section>
     </div>
