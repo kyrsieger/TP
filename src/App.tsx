@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { applyTheme } from "./services/theme";
 import { applyFont } from "./services/fonts";
+import { loadSystemFonts } from "./services/font-catalog";
 import { fontStyleKey, regularFontStyle } from "./domain/fonts";
 import { defaultTheme } from "./domain/themes";
 import { createApplication } from "./application";
@@ -35,6 +36,7 @@ export function App() {
     applyFont(selection); void emit("font-changed", selection).catch(() => {});
   }, [fontFamily, styleKey, panel.settings?.fontFamily, savedStyleKey]);
   useEffect(() => { void app.start(); return () => app.dispose(); }, [app]);
+  useEffect(() => { void loadSystemFonts().catch(() => {}); }, []);
   const groupContextMenu = (event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
     if (target.closest(".group-input")) return;

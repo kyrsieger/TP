@@ -54,6 +54,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "get_theme") return state.settings.theme ?? "indigo";
     if (name === "get_font") return { family: state.settings.fontFamily ?? "", style: state.settings.fontStyle };
     if (name === "get_system_fonts") {
+      if (window.__TP_TEST__.fontListPending) await window.__TP_TEST__.fontListPending;
       if (window.__TP_TEST__.fontListError) throw new Error("font list unavailable");
       if (window.__TP_TEST__.systemFonts) return window.__TP_TEST__.systemFonts;
       return ["Arial", "Consolas", "微软雅黑", "Segoe UI", "等线", "霞鹜文楷", ...Array.from({ length: 120 }, (_, index) => `Test Font ${String(index).padStart(3, "0")}`)]

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { call } from "../services/desktop";
+import { getCachedSystemFonts, loadSystemFonts } from "../services/font-catalog";
 import { Icon } from "./Icon";
 import { defaultFontStyle, fontStyleKey, regularFontStyle, resolveFontSelection, type FontFamily, type FontStyle } from "../domain/fonts";
 import { FontStyleSetting } from "./FontStyleSetting";
@@ -10,7 +10,7 @@ export function FontSetting({ value, styleValue, open, toggle, choose, styleOpen
   value: string; styleValue: FontStyle; open: boolean; toggle: (open: boolean) => void; choose: (family: string, style: FontStyle) => void;
   styleOpen: boolean; toggleStyle: (open: boolean) => void;
 }) {
-  const [fonts, setFonts] = useState<FontFamily[] | null>(null), [error, setError] = useState(false);
+  const [fonts, setFonts] = useState<FontFamily[] | null>(getCachedSystemFonts), [error, setError] = useState(false);
   const migrations = useRef(new Set<string>());
   const [query, setQuery] = useState(""), [active, setActive] = useState(value), [request, setRequest] = useState(0);
   const trigger = useRef<HTMLButtonElement>(null), search = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null);
@@ -18,8 +18,8 @@ export function FontSetting({ value, styleValue, open, toggle, choose, styleOpen
     if (!open && fonts !== null) return;
     let alive = true;
     setError(false);
-    void call<FontFamily[]>("get_system_fonts").then(groups => {
-      if (alive) setFonts([...groups].sort((a, b) => a.name.localeCompare(b.name, "zh-CN")));
+    void loadSystemFonts(open).then(groups => {
+      if (alive) setFonts(groups);
     }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
   }, [request, open]);

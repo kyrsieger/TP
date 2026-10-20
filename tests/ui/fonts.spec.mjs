@@ -12,6 +12,68 @@ async function selectFont(page, family) {
 }
 const fontOf = (page, selector) => page.locator(selector).evaluate(element => getComputedStyle(element).fontFamily);
 
+for (const [family, labels] of [
+  ["微软雅黑", ["主题配色", "字体", "样式"]],
+  ["等线", ["主题配色", "字体"]],
+  ["", ["主题配色", "字体"]],
+]) {
+  test(`settings immediately restore appearance rows for saved font ${family || "default"}`, async ({ page }) => {
+    await page.addInitScript(family => { window.__TP_TEST_INITIAL_FONT__ = family; }, family);
+    await page.goto("/tests/fixtures/panel.html");
+    await expect(page.locator('.record[data-id="text"]')).toBeVisible();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // Block any further enumeration, so a late response cannot hide a missing first render.
+    await page.evaluate(() => {
+      window.__TP_TEST__.fontListPending = new Promise(resolve => { window.__TP_TEST__.finishFontList = resolve; });
+      window.__TP_TEST__.appearanceRenders = [];
+      new MutationObserver(() => {
+        if (document.querySelector("#font-trigger")) window.__TP_TEST__.appearanceRenders.push(
+          [...document.querySelectorAll("#settings-appearance .setting-label")].map(label => label.textContent));
+      }).observe(document.querySelector("#settings"), { childList: true, subtree: true });
+    });
+    for (let visit = 0; visit < 3; visit++) {
+      await page.locator("#settings-button").click();
+      await expect(page.locator("#font-value")).toHaveText(family || "系统默认");
+      await expect(page.locator("#settings-appearance .setting-label")).toHaveText(labels);
+      await page.locator("#settings-button").click();
+    }
+    // The directory also survives the normal idle-content unmount.
+    await page.evaluate(() => { window.__TP_TEST__.hide(); window.__TP_TEST__.idle(); });
+    await expect(page.locator(".record")).toHaveCount(0);
+    await page.evaluate(() => window.__TP_TEST__.show());
+    await expect(page.locator('.record[data-id="text"]')).toBeVisible();
+    await page.locator("#settings-button").click();
+    const renders = await page.evaluate(() => window.__TP_TEST__.appearanceRenders);
+    expect(renders.length).toBeGreaterThanOrEqual(4);
+    for (const render of renders) expect(render).toEqual(labels);
+    expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "get_system_fonts").length)).toBe(1);
+  });
+}
+
+test("refreshing the font menu keeps the style row until new metadata arrives, including after a failed refresh", async ({ page }) => {
+  await openSettings(page);
+  await selectFont(page, "微软雅黑");
+  await page.evaluate(() => {
+    window.__TP_TEST__.fontListPending = new Promise(resolve => { window.__TP_TEST__.finishFontList = resolve; });
+  });
+  await page.locator("#font-trigger").click();
+  await expect(page.locator("#font-style-value")).toHaveText("Regular");
+  await page.evaluate(() => {
+    window.__TP_TEST__.fontListError = true;
+    window.__TP_TEST__.finishFontList();
+  });
+  await expect(page.getByRole("button", { name: "读取字体失败，点击重试" })).toBeVisible();
+  await expect(page.locator("#font-style-value")).toHaveText("Regular");
+  await page.evaluate(() => {
+    window.__TP_TEST__.fontListError = false;
+    window.__TP_TEST__.systemFonts = [{ name: "微软雅黑", aliases: [], styles: [
+      { name: "Regular", family: "微软雅黑", weight: 400, stretch: 100, style: "normal" },
+    ] }];
+  });
+  await page.getByRole("button", { name: "读取字体失败，点击重试" }).click();
+  await expect(page.locator("#font-style-trigger")).toHaveCount(0);
+});
+
 test("font controls fit selected labels, truncate at half a row and resize menus after catalog refresh", async ({ page }) => {
   await openSettings(page);
   const longFamily = "A particularly long installed font family with many words";
