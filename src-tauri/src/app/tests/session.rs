@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn suspended_dev_document_reloads_hidden_before_the_open_request_is_delivered() {
+    let mut state = PanelState {
+        ready: true,
+        ..PanelState::default()
+    };
+    assert!(!state.begin_reload_for_open());
+    state.mark_hidden();
+    let old = state
+        .begin_release(state.hidden_at.unwrap() + Duration::from_secs(60))
+        .unwrap();
+    assert!(state.begin_suspend(old));
+    state.reload_before_open = true;
+    state.cancel_idle(); // The shortcut cancels idle work but must retain the reload requirement.
+    assert!(state.reload_before_open);
+    assert!(state.begin_reload_for_open());
+    assert!(!state.ready);
+    assert!(state.open_requested);
+    assert!(!state.reload_before_open);
+    assert!(!state.begin_reload_for_open());
+    assert!(!state.begin_suspend(old));
+    state.document_loading(false);
+    assert!(state.document_ready(false).is_some());
+    assert!(state.ready);
+    assert!(!state.open_requested);
+    assert!(!state.reload_before_open);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn debug_release_skips_delay_but_preserves_residency_and_reopen_guards() {
+    let mut state = PanelState {
+        ready: true,
+        ..PanelState::default()
+    };
+    state.expire_idle_delay();
+    assert!(state.begin_release(Instant::now()).is_none());
+    state.mark_hidden();
+    assert!(!state.idle_due(Instant::now()));
+    state.expire_idle_delay();
+    let generation = state.begin_release(Instant::now()).unwrap();
+    state.cancel_idle();
+    assert!(!state.begin_suspend(generation));
+    state.set_background_resident(true);
+    state.mark_hidden();
+    state.expire_idle_delay();
+    assert!(state.begin_release(Instant::now()).is_none());
+}
+
+#[test]
 fn type_filter_retention_clears_only_hidden_filters_including_late_session_saves() {
     for hidden in [true, false] {
         for retain in [true, false] {

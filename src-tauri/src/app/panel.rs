@@ -76,8 +76,11 @@ pub(super) fn open_panel(app: &tauri::AppHandle) -> Result<()> {
     let lifecycle = app.state::<PanelLifecycle>();
     let mut state = lifecycle.state.lock().map_err(err)?;
     let ready = state.ready;
+    // Resume a suspended Vite client by reloading while the window is hidden.
+    // Otherwise its reconnect reload can erase a panel that was already shown.
+    let reload = state.begin_reload_for_open();
     let generation = state.generation;
-    if ready {
+    if ready && !reload {
         state.open_requested = false;
     }
     drop(state);
@@ -89,6 +92,10 @@ pub(super) fn open_panel(app: &tauri::AppHandle) -> Result<()> {
     } else if ready {
         let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
         resume_panel(&window).map_err(err)?;
+        if reload {
+            window.reload().map_err(err)?;
+            return Ok(());
+        }
         app.emit_to("main", "open-requested", generation)
             .map_err(err)?;
     }
@@ -229,6 +236,36 @@ pub(super) fn suspend_idle_panel(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
+pub(super) async fn debug_release_panel(app: tauri::AppHandle) -> Result<()> {
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = app;
+        Err("开发测试仅在开发构建中可用".into())
+    }
+    #[cfg(debug_assertions)]
+    {
+        {
+            let lifecycle = app.state::<PanelLifecycle>();
+            let state = lifecycle.state.lock().map_err(err)?;
+            if state.background_resident {
+                return Err("请先关闭后台常驻再测试".into());
+            }
+            if !state.ready {
+                return Err("面板尚未就绪".into());
+            }
+        }
+        hide_panel(app.clone())?;
+        app.state::<PanelLifecycle>()
+            .state
+            .lock()
+            .map_err(err)?
+            .expire_idle_delay();
+        suspend_idle_panel(&app);
+        Ok(())
+    }
+}
+
+#[tauri::command]
 pub(super) fn panel_content_released(app: tauri::AppHandle, generation: u64) -> Result<()> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -245,6 +282,7 @@ pub(super) fn panel_content_released(app: tauri::AppHandle, generation: u64) -> 
         if !state.begin_suspend(generation) {
             return;
         }
+        state.reload_before_open = tauri::is_dev();
         drop(state);
         for label in ["preview", "large-preview"] {
             if let Some(window) = handle.get_webview_window(label) {

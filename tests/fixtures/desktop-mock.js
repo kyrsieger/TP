@@ -68,6 +68,12 @@ window.__TAURI_INTERNALS__ = {
     }
     if (name === "show_panel") { visible = true; return; }
     if (name === "hide_panel") { window.__TP_TEST__.hide(); return; }
+    if (name === "debug_release_panel") {
+      if (state.settings.backgroundResident) throw new Error("请先关闭后台常驻再测试");
+      window.__TP_TEST__.hide();
+      window.__TP_TEST__.idle();
+      return;
+    }
     if (name === "apply_record") { if (!state.settings.alwaysOnTop) window.__TP_TEST__.hide(); return; }
     if (name === "panel_content_released") {
       window.__TP_TEST__.released = { generation: args.generation, rows: document.querySelectorAll('.record').length, images: document.querySelectorAll('img[src]').length };

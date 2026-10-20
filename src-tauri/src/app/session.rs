@@ -39,6 +39,7 @@ pub(super) struct PanelState {
     pub(super) generation: u64,
     pub(super) hidden_at: Option<Instant>,
     pub(super) background_resident: bool,
+    pub(super) reload_before_open: bool,
     pub(super) session: PanelSession,
     pub(super) shortcut_error: Option<String>,
 }
@@ -58,7 +59,17 @@ impl PanelState {
         }
     }
 
+    pub(super) fn begin_reload_for_open(&mut self) -> bool {
+        if !self.ready || !self.reload_before_open {
+            return false;
+        }
+        self.document_loading(false);
+        self.open_requested = true;
+        true
+    }
+
     pub(super) fn document_loading(&mut self, visible: bool) {
+        self.reload_before_open = false;
         self.ready = false;
         self.open_requested |= visible;
         // A new document cannot acknowledge an old document's release request.
@@ -112,6 +123,13 @@ impl PanelState {
         }
         self.idle_phase = PanelIdlePhase::Clearing;
         Some(self.generation)
+    }
+
+    #[cfg(debug_assertions)]
+    pub(super) fn expire_idle_delay(&mut self) {
+        if let Some(hidden_at) = self.hidden_at.as_mut() {
+            *hidden_at = Instant::now() - Duration::from_secs(60);
+        }
     }
 
     pub(super) fn begin_suspend(&mut self, generation: u64) -> bool {

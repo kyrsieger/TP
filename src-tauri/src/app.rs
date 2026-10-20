@@ -131,6 +131,7 @@ pub fn run() {
             panel::save_panel_session,
             panel::panel_ready,
             panel::panel_content_released,
+            panel::debug_release_panel,
             panel::show_panel,
             panel_geometry::place_panel,
             panel::hide_panel,

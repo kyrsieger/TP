@@ -23,7 +23,7 @@ export function formatCacheSize(bytes: number) {
 type SettingsValue = {
   themeDraft: ThemeId | null;
   fontDraft: FontSelection | null;
-  open: boolean; clearingCache: boolean; cacheSizeText: string;
+  open: boolean; clearingCache: boolean; releasingPanel: boolean; cacheSizeText: string;
   shortcutDraft: string | null; shortcutError: string | null;
   renameShortcutDraft: string | null; renameShortcutError: string | null;
   autostartEnabled: boolean | null; autostartSaving: boolean;
@@ -46,7 +46,7 @@ export class SettingsController extends Observable<SettingsValue> {
   private themeGeneration = 0;
   private fontGeneration = 0;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
-    super({ themeDraft: null, fontDraft: null, open: false, clearingCache: false, cacheSizeText: "计算中…", shortcutDraft: null,
+    super({ themeDraft: null, fontDraft: null, open: false, clearingCache: false, releasingPanel: false, cacheSizeText: "计算中…", shortcutDraft: null,
       shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, cacheConfirmationOpen: false, revision: 0 });
   }
   ready(error: string | null) {
@@ -103,6 +103,21 @@ export class SettingsController extends Observable<SettingsValue> {
     try { await this.call("set_autostart", { enabled }); }
     catch (error) { this.update({ autostartEnabled: previous }); this.effects.toast(String(error)); }
     finally { this.update({ autostartSaving: false }); }
+  }
+  async releasePanelNow() {
+    if (this.value.releasingPanel || !this.value.open || !this.history.value.active) return;
+    this.update({ releasingPanel: true });
+    try {
+      this.flushTheme();
+      await this.queue;
+      if (!this.value.open || !this.history.value.active) return;
+      if (this.history.value.settings?.backgroundResident) {
+        this.effects.toast("请先关闭后台常驻再测试");
+        return;
+      }
+      await this.call("debug_release_panel");
+    } catch (error) { this.effects.toast(`释放面板失败：${String(error)}`); }
+    finally { this.update({ releasingPanel: false }); }
   }
   async clearCache() {
     if (this.cacheClearQueued || !this.value.open || !this.history.value.active) return;

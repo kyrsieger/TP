@@ -5,6 +5,23 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.record[data-id="text"]')).toBeVisible();
 });
 
+test("development tools release hidden content immediately and reopen without losing records", async ({ page }) => {
+  const count = await page.evaluate(() => window.__TP_TEST__.state.records.length);
+  await page.locator("#settings-button").click();
+  await expect(page.locator(".settings-group").first()).toHaveAttribute("id", "settings-development");
+  await page.locator("#background-resident").check();
+  await expect(page.locator("#release-panel-now")).toBeDisabled();
+  await page.locator("#background-resident").uncheck();
+  await page.locator("#release-panel-now").click();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.visible)).toBe(false);
+  await expect(page.locator(".record")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.released?.rows)).toBe(0);
+  expect(await page.evaluate(() => window.__TP_TEST__.state.records.length)).toBe(count);
+  await page.evaluate(() => window.__TP_TEST__.show());
+  await expect(page.locator('.record[data-id="text"]')).toBeFocused();
+  await expect(page.locator("#settings-development")).toBeHidden();
+});
+
 test("closing from another group reopens the default group and focuses its first record", async ({ page }) => {
   for (const view of ["favorite", "group:1"]) {
     await page.locator(`[data-view="${view}"]`).click();

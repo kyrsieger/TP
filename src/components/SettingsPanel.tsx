@@ -55,6 +55,15 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
   if (!s) return null;
   return <div className="settings-layout">
     <div className="settings-content">
+    {import.meta.env.DEV && <section className="settings-group" id="settings-development" aria-label="开发测试">
+      <div className="settings-card development-tools">
+        <h4>开发测试</h4>
+        <p className="hint">立即隐藏面板、卸载内容并挂起页面，跳过一分钟等待。历史记录和设置会保留，可用快捷键或托盘重新唤出。</p>
+        {s.backgroundResident && <p className="hint">请先关闭“后台常驻”再测试。</p>}
+        <button id="release-panel-now" type="button" disabled={s.backgroundResident || state.releasingPanel}
+          onClick={() => { void controller.releasePanelNow(); }}>{state.releasingPanel ? "释放中…" : "立即释放面板"}</button>
+      </div>
+    </section>}
     <section className="settings-group" id="settings-appearance" aria-label="外观">
       <div className="settings-card">
         <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
