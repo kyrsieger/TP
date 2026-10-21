@@ -27,7 +27,7 @@ function NumberSetting({ id, label, value, min = 1, max, revision, save, toast }
     }
     save(number);
   };
-  return <input ref={input} id={id} aria-label={label} type="number" min={min} max={max} value={draft}
+  const control = <input ref={input} id={id} aria-label={label} type="number" min={min} max={max} value={draft}
     onChange={event => {
       setDraft(event.target.value);
       if (id === "sensitive") { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => submit(false), 300); }
@@ -36,6 +36,7 @@ function NumberSetting({ id, label, value, min = 1, max, revision, save, toast }
         event.preventDefault(); event.stopPropagation(); if (!event.repeat && !event.nativeEvent.isComposing) submit(true);
       }
     }} />;
+  return id === "font-size" ? <span className="settings-input-control" data-value={draft}>{control}</span> : control;
 }
 const retentionOptions = [[1, "24 小时"], [3, "3 天"], [5, "5 天"], [7, "7 天"], [30, "1 个月"]] as const;
 const positionOptions = [["left", "左下角"], ["right", "右下角"], ["center", "下方居中"]] as const;

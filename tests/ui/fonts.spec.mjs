@@ -411,6 +411,15 @@ test("font size defaults to 14, saves on Enter, restores on reentry and rejects 
   await openSettings(page);
   const size = page.getByRole("spinbutton", { name: "字号", exact: true });
   await expect(size).toHaveValue("14");
+  const width = () => size.evaluate(element => element.getBoundingClientRect().width);
+  expect(await width()).toBe(80);
+  await size.fill("12345678");
+  expect(await width()).toBeGreaterThan(80);
+  expect(await width()).toBeLessThan(160);
+  await size.fill("12345678901234567890");
+  expect(await width()).toBe(160);
+  await size.fill("14");
+
   const order = await page.locator(".settings-group").evaluateAll(nodes => nodes.map(node => node.id));
   expect(order.indexOf("settings-appearance")).toBe(order.indexOf("settings-general") + 1);
   await size.fill("16");

@@ -144,7 +144,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #move-group-menu button:focus .move-group-check{color:var(--accent)}
 .empty{padding:55px 16px;text-align:center;color:var(--text-3);font-size:calc(13px * var(--app-font-scale,1))}
 
-#settings{--settings-compact-width:110px;--settings-shortcut-min-width:80px;--settings-shortcut-max-width:160px;position:absolute;inset:82px 0 0;z-index:3;overflow:auto;border-top:1px solid var(--line);background:color-mix(in srgb,var(--panel-bg) 65%,var(--control-bg));scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+#settings{--settings-compact-width:110px;--settings-input-min-width:80px;--settings-input-max-width:160px;position:absolute;inset:82px 0 0;z-index:3;overflow:auto;border-top:1px solid var(--line);background:color-mix(in srgb,var(--panel-bg) 65%,var(--control-bg));scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
 .settings-layout{min-height:100%}
 .settings-content{max-width:620px;margin:0 auto;padding:20px 16px 36px}
 .settings-group{margin:0 0 16px;scroll-margin-top:20px}
@@ -176,9 +176,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #settings input:not([type=radio]):not([type=checkbox]){min-width:0;width:100%;height:28px;padding:0 7px;border:1px solid var(--control-border);border-radius:6px;background:var(--control-bg);color:var(--text-1);font-size:calc(12px * var(--app-font-scale,1))}
 #settings input[type=number]{position:relative;flex:0 0 var(--settings-compact-width);width:var(--settings-compact-width);background:var(--surface);text-align:center;font-variant-numeric:tabular-nums}
 #settings input[type=number]::-webkit-inner-spin-button{position:absolute;top:4px;right:6px;width:14px;height:18px;margin:0}
-.settings-shortcut-control{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;flex:0 0 auto;width:max-content;min-width:var(--settings-shortcut-min-width);max-width:var(--settings-shortcut-max-width)}
-.settings-shortcut-control::before{content:attr(data-value);grid-area:1 / 1;visibility:hidden;white-space:pre;font-size:calc(12px * var(--app-font-scale,1));padding:0 7px;border:1px solid transparent}
+.settings-shortcut-control,.settings-input-control{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;flex:0 0 auto;width:max-content;min-width:var(--settings-input-min-width);max-width:var(--settings-input-max-width)}
+.settings-shortcut-control::before,.settings-input-control::before{content:attr(data-value);grid-area:1 / 1;visibility:hidden;white-space:pre;font-size:calc(12px * var(--app-font-scale,1));padding:0 7px;border:1px solid transparent}
 #settings .settings-shortcut-control input:not([type=radio]):not([type=checkbox]){grid-area:1 / 1;width:0;min-width:100%;text-align:center}
+#settings .settings-input-control input[type=number]{grid-area:1 / 1;width:0;min-width:100%}
+.settings-input-control::before{padding-right:27px;font-variant-numeric:tabular-nums}
 .settings-shortcut-control .shortcut-error{contain:inline-size;overflow-wrap:anywhere}
 #settings input:not([type=radio]):not([type=checkbox]):focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 1px var(--accent);background:var(--surface)}
 #settings fieldset{min-width:0;margin:0;padding:0}
