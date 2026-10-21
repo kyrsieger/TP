@@ -1,6 +1,6 @@
 [package]
 name = "tp"
-version = "1.0.18"
+version = "1.0.19"
 description = "Local clipboard history for Windows and macOS"
 edition = "2021"
 

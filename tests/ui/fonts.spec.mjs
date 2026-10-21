@@ -13,9 +13,9 @@ async function selectFont(page, family) {
 const fontOf = (page, selector) => page.locator(selector).evaluate(element => getComputedStyle(element).fontFamily);
 
 for (const [family, labels] of [
-  ["微软雅黑", ["主题配色", "字体", "样式"]],
-  ["等线", ["主题配色", "字体"]],
-  ["", ["主题配色", "字体"]],
+  ["微软雅黑", ["主题配色", "字号", "字体", "字重"]],
+  ["等线", ["主题配色", "字号", "字体"]],
+  ["", ["主题配色", "字号", "字体"]],
 ]) {
   test(`settings immediately restore appearance rows for saved font ${family || "default"}`, async ({ page }) => {
     await page.addInitScript(family => { window.__TP_TEST_INITIAL_FONT__ = family; }, family);
@@ -165,7 +165,7 @@ test("family list merges YaHei faces and exposes installed styles below the fami
   await expect(page.locator("#font-list [role=option]")).toHaveText(["微软雅黑"]);
   await page.getByRole("option", { name: "微软雅黑", exact: true }).click();
   await expect(page.locator("#font-style-value")).toHaveText("Regular");
-  await expect(page.locator("#settings-appearance .setting-label")).toHaveText(["主题配色", "字体", "样式"]);
+  await expect(page.locator("#settings-appearance .setting-label")).toHaveText(["主题配色", "字号", "字体", "字重"]);
   await page.locator("#font-style-trigger").click();
   await expect(page.locator("#font-style-menu [role=option]")).toHaveText(["Regular", "Light", "Bold"]);
   await page.locator("#font-style-menu").getByRole("option", { name: "Light", exact: true }).click();
@@ -242,19 +242,21 @@ test("both preview windows restore and synchronize the family and selected style
     await page.goto(`/tests/fixtures/${entry}.html`);
     await expect(page.locator("html")).toHaveCSS("font-weight", "290");
     await page.evaluate(() => window.__TP_TEST__.emit("font-changed", {
-      family: "Arial", style: { name: "Bold Italic", family: "Arial", weight: 700, stretch: 100, style: "italic" },
+      size: 16, family: "Arial", style: { name: "Bold Italic", family: "Arial", weight: 700, stretch: 100, style: "italic" },
     }));
     await expect(page.locator("html")).toHaveCSS("font-weight", "700");
     await expect(page.locator("html")).toHaveCSS("font-style", "italic");
+    await expect.poll(() => page.locator("html").evaluate(element => Number(element.style.getPropertyValue("--app-font-scale")))).toBe(16 / 13);
   }
 });
 
 test("font setting follows theme, searches system families and applies globally with persistence", async ({ page }) => {
   await openSettings(page);
   const fields = page.locator("#settings-appearance .setting-field");
-  await expect(fields).toHaveCount(2);
+  await expect(fields).toHaveCount(3);
   await expect(fields.nth(0)).toContainText("主题配色");
-  await expect(fields.nth(1)).toContainText("字体");
+  await expect(fields.nth(1)).toContainText("字号");
+  await expect(fields.nth(2)).toContainText("字体");
   await page.locator("#font-label").click();
   await expect(page.locator("#font-menu")).toBeHidden();
   await selectFont(page, "Consolas");
@@ -402,4 +404,34 @@ test("file preview text uses the selected font and a live change remeasures the 
   await expect.poll(() => page.locator(".card").evaluate(element => element.offsetHeight)).not.toBe(before);
   const height = await page.locator(".card").evaluate(element => element.offsetHeight);
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "preview-measured")?.args.payload.height)).toBe(height);
+});
+
+
+test("font size defaults to 14, saves on Enter, restores on reentry and rejects invalid input", async ({ page }) => {
+  await openSettings(page);
+  const size = page.getByRole("spinbutton", { name: "字号", exact: true });
+  await expect(size).toHaveValue("14");
+  const order = await page.locator(".settings-group").evaluateAll(nodes => nodes.map(node => node.id));
+  expect(order.indexOf("settings-appearance")).toBe(order.indexOf("settings-general") + 1);
+  await size.fill("16");
+  await expect(page.locator("#font-label")).toHaveCSS("font-size", "14px");
+  await size.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.settings.fontSize)).toBe(16);
+  await expect(page.locator("#font-label")).toHaveCSS("font-size", "16px");
+  await page.locator("#settings-button").click();
+  await page.locator("#settings-button").click();
+  await expect(size).toHaveValue("16");
+  await size.fill("21");
+  await size.press("Tab");
+  await expect(size).toHaveValue("16");
+  expect(await page.evaluate(() => window.__TP_TEST__.state.settings.fontSize)).toBe(16);
+  await page.evaluate(() => { window.__TP_TEST__.settingsError = "字号保存失败"; });
+  await size.fill("18");
+  await size.press("Enter");
+  await expect(size).toHaveValue("16");
+  await expect(page.locator("#font-label")).toHaveCSS("font-size", "16px");
+  await page.evaluate(() => { window.__TP_TEST__.settingsError = null; });
+  await size.fill("14");
+  await size.press("Tab");
+  await expect(page.locator("#font-label")).toHaveCSS("font-size", "14px");
 });

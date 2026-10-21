@@ -156,6 +156,7 @@ pub(super) fn get_font(store: tauri::State<Store>) -> Result<super::fonts::FontS
     let conn = store.db.lock().map_err(err)?;
     let settings = settings(&conn)?;
     Ok(super::fonts::FontSelection {
+        size: settings.font_size,
         family: settings.font_family,
         style: settings.font_style,
     })

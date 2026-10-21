@@ -116,6 +116,7 @@ fn font_choice_survives_database_restart() {
         let conn = store.db.lock().unwrap();
         let mut config = settings(&conn).unwrap();
         config.font_family = "Microsoft YaHei".into();
+        config.font_size = 16;
         config.font_style = super::super::fonts::FontStyle {
             name: "Light".into(),
             family: "Microsoft YaHei Light".into(),
@@ -135,6 +136,7 @@ fn font_choice_survives_database_restart() {
         "Microsoft YaHei"
     );
     let restored = settings(&store.db.lock().unwrap()).unwrap();
+    assert_eq!(restored.font_size, 16);
     assert_eq!(restored.font_style.name, "Light");
     assert_eq!(restored.font_style.weight, 290);
     drop(store);

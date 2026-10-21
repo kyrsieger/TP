@@ -149,3 +149,21 @@ test("live preview style survives a stale startup response and can return to Reg
   listener({ payload: { family: "Arial", style: regularFontStyle } });
   assert.equal(values.get("--app-font-weight"), "400");
 });
+
+
+test("font size scales default and custom families, rejects invalid sizes, and resets safely", () => {
+  const values = new Map();
+  const { applyFont } = loadTs("src/services/fonts.ts", { document: { documentElement: { style: {
+    setProperty: (key, value) => values.set(key, value), removeProperty: key => values.delete(key),
+  } } } }, { "./desktop": {} });
+  for (const family of ["", "Arial"]) {
+    applyFont({ family, style: regularFontStyle, size: 16 });
+    assert.equal(Number(values.get("--app-font-scale")), 16 / 13);
+    for (const size of [undefined, null, 0, 9, 21, 13.5, "16"]) {
+      applyFont({ family, style: regularFontStyle, size });
+      assert.equal(Number(values.get("--app-font-scale")), 14 / 13);
+    }
+  }
+  applyFont(undefined);
+  assert.equal(Number(values.get("--app-font-scale")), 14 / 13);
+});

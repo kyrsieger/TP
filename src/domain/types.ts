@@ -11,6 +11,7 @@ export type RecordItem = {
 export type Group = { id: number; name: string };
 export type Settings = {
   theme?: ThemeId;
+  fontSize?: number;
   fontFamily?: string;
   fontStyle?: FontStyle;
   maxOrdinary: number; retentionDays: number; sensitiveSeconds: number; shortcut: string; renameShortcut: string;

@@ -1,6 +1,6 @@
 export type FontStyle = { name: string; family: string; weight: number; stretch: number; style: "normal" | "italic" | "oblique"; aliases?: string[] };
 export type FontFamily = { name: string; aliases: string[]; styles: FontStyle[] };
-export type FontSelection = { family: string; style: FontStyle };
+export type FontSelection = { family: string; style: FontStyle; size?: number };
 export const regularFontStyle: FontStyle = { name: "Regular", family: "", weight: 400, stretch: 100, style: "normal" };
 export const fontStyleKey = (style: FontStyle) => JSON.stringify([style.name, style.family, style.weight, style.stretch, style.style]);
 export function defaultFontStyle(family: FontFamily): FontStyle {

@@ -30,11 +30,12 @@ export function App() {
   useLayoutEffect(() => { applyTheme(theme); void emit("theme-changed", theme).catch(() => {}); }, [theme]);
   const fontFamily = settings.fontDraft?.family ?? panel.settings?.fontFamily ?? "";
   const fontStyle = settings.fontDraft?.style ?? panel.settings?.fontStyle ?? regularFontStyle;
+  const fontSize = panel.settings?.fontSize ?? 14;
   const styleKey = fontStyleKey(fontStyle), savedStyleKey = fontStyleKey(panel.settings?.fontStyle ?? regularFontStyle);
   useLayoutEffect(() => {
-    const selection = { family: fontFamily, style: fontStyle };
+    const selection = { family: fontFamily, style: fontStyle, size: fontSize };
     applyFont(selection); void emit("font-changed", selection).catch(() => {});
-  }, [fontFamily, styleKey, panel.settings?.fontFamily, savedStyleKey]);
+  }, [fontFamily, styleKey, panel.settings?.fontFamily, savedStyleKey, fontSize]);
   useEffect(() => { void app.start(); return () => app.dispose(); }, [app]);
   useEffect(() => { void loadSystemFonts().catch(() => {}); }, []);
   const groupContextMenu = (event: React.MouseEvent) => {

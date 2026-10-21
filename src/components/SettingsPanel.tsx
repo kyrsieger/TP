@@ -12,7 +12,7 @@ import { ThemeSetting } from "./ThemeSetting";
 import { FontSetting } from "./FontSetting";
 import { regularFontStyle } from "../domain/fonts";
 
-function NumberSetting({ id, label, value, max, revision, save, toast }: { id: string; label: string; value: number; max: number; revision: number; save: (value: number) => void; toast: (message: string) => void }) {
+function NumberSetting({ id, label, value, min = 1, max, revision, save, toast }: { id: string; label: string; value: number; min?: number; max: number; revision: number; save: (value: number) => void; toast: (message: string) => void }) {
   const [draft, setDraft] = useState(String(value));
   const timer = useRef<number | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
@@ -27,12 +27,12 @@ function NumberSetting({ id, label, value, max, revision, save, toast }: { id: s
     }
     save(number);
   };
-  return <input ref={input} id={id} aria-label={label} type="number" min={1} max={max} value={draft}
+  return <input ref={input} id={id} aria-label={label} type="number" min={min} max={max} value={draft}
     onChange={event => {
       setDraft(event.target.value);
       if (id === "sensitive") { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => submit(false), 300); }
     }} onBlur={() => submit(true)} onKeyDown={event => {
-      if (id === "max-ordinary" && event.key === "Enter") {
+      if ((id === "max-ordinary" || id === "font-size") && event.key === "Enter") {
         event.preventDefault(); event.stopPropagation(); if (!event.repeat && !event.nativeEvent.isComposing) submit(true);
       }
     }} />;
@@ -65,14 +65,6 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
           onClick={() => { void controller.releasePanelNow(); }}>{state.releasingPanel ? "释放中…" : "立即释放面板"}</button>
       </div>
     </section>}
-    <section className="settings-group" id="settings-appearance" aria-label="外观">
-      <div className="settings-card">
-        <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
-        <FontSetting value={state.fontDraft?.family ?? s.fontFamily ?? ""} styleValue={state.fontDraft?.style ?? s.fontStyle ?? regularFontStyle}
-          open={menu.font} toggle={font => menus.update({ font })} styleOpen={menu.fontStyle} toggleStyle={fontStyle => menus.update({ fontStyle })}
-          choose={(family, style) => controller.selectFont(family, style)} />
-      </div>
-    </section>
     <section className="settings-group" id="settings-general" aria-label="通用">
       <div className="settings-card">
     <div className="settings-row"><span className="settings-copy">开机启动</span><input id="autostart" type="checkbox" aria-label="开机启动" checked={!!state.autostartEnabled} disabled={state.autostartEnabled === null || state.autostartSaving}
@@ -81,6 +73,15 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
       onChange={event => save({ backgroundResident: event.target.checked })} /></div>
     {!isMacOS && <div className="settings-row"><span className="settings-copy">在任务栏显示图标<small id="show-taskbar-icon-hint">关闭后仍可通过系统托盘或唤出快捷键打开 TP。</small></span><input id="show-taskbar-icon" type="checkbox" aria-label="在任务栏显示图标" aria-describedby="show-taskbar-icon-hint" checked={s.showTaskbarIcon}
       onChange={event => save({ showTaskbarIcon: event.target.checked })} /></div>}
+      </div>
+    </section>
+    <section className="settings-group" id="settings-appearance" aria-label="外观">
+      <div className="settings-card">
+        <ThemeSetting value={state.themeDraft ?? s.theme} open={menu.theme} toggle={theme => menus.update({ theme })} choose={theme => controller.selectTheme(theme)} />
+        <div className="setting-field"><span className="setting-label">字号</span><NumberSetting id="font-size" label="字号" value={s.fontSize ?? 14} min={10} max={20} revision={state.revision} save={fontSize => save({ fontSize })} toast={toast} /></div>
+        <FontSetting value={state.fontDraft?.family ?? s.fontFamily ?? ""} styleValue={state.fontDraft?.style ?? s.fontStyle ?? regularFontStyle}
+          open={menu.font} toggle={font => menus.update({ font })} styleOpen={menu.fontStyle} toggleStyle={fontStyle => menus.update({ fontStyle })}
+          choose={(family, style) => controller.selectFont(family, style)} />
       </div>
     </section>
     <section className="settings-group" id="settings-shortcuts" aria-label="快捷键">

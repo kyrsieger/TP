@@ -195,3 +195,21 @@ fn search_retention_setting_round_trips_both_values() {
         assert!(restored.validate().is_ok());
     }
 }
+
+#[test]
+fn font_size_defaults_validates_and_round_trips() {
+    let mut value = serde_json::to_value(Settings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("fontSize");
+    let mut config: Settings = serde_json::from_value(value).unwrap();
+    assert_eq!(config.font_size, 14);
+    for size in [10, 13, 14, 16, 20] {
+        config.font_size = size;
+        assert!(config.validate().is_ok());
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.font_size, size);
+    }
+    for size in [0, 9, 21] {
+        config.font_size = size;
+        assert!(config.validate().is_err());
+    }
+}

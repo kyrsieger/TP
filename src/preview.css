@@ -6,16 +6,16 @@ body{overflow:hidden}
 /* 卡片与预览窗口四边贴合，圆角取系统窗口半径，避免与系统圆角形成两条弧线。 */
 .card{padding:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 8px 26px rgba(23,28,40,.12)}
 .details{display:grid;gap:8px;margin:14px 0 0}
-.details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:12px;line-height:18px}
+.details div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;font-size:calc(12px * var(--app-font-scale,1));line-height:calc(18px * var(--app-font-scale,1))}
 .details dt{color:var(--text-3)}
 .details dd{min-width:0;margin:0;overflow-wrap:anywhere}
-.status-note{margin-top:12px;color:var(--warning);font-size:12px;line-height:18px}
-.text-content{margin:0;padding:12px;border-radius:7px;background:var(--control-bg);font-family:inherit;font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.status-note{margin-top:12px;color:var(--warning);font-size:calc(12px * var(--app-font-scale,1));line-height:calc(18px * var(--app-font-scale,1))}
+.text-content{margin:0;padding:12px;border-radius:7px;background:var(--control-bg);font-family:inherit;font-size:calc(12.5px * var(--app-font-scale,1));line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
 .terminal-line{display:inline-block;width:0;height:1em;pointer-events:none}
 .color-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
 .search-hit{background:var(--accent);color:var(--on-accent)}
 .text-card{display:flex;flex-direction:column}
-.record-preview-title{flex:none;margin-bottom:12px;color:var(--text-1);font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.record-preview-title{flex:none;margin-bottom:12px;color:var(--text-1);font-size:calc(13px * var(--app-font-scale,1));font-weight:600;line-height:1.5;overflow-wrap:anywhere}
 .text-card .details{flex:none}
 .text-card .text-content{min-height:0;max-height:320px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
 .media{position:relative;display:grid;place-items:center;min-height:120px;margin-bottom:14px;padding:8px;border-radius:7px;background:var(--control-bg)}
@@ -23,17 +23,17 @@ body{overflow:hidden}
 .media.multi > .page-indicators{visibility:hidden}
 .media.multi:hover > .page-indicators{visibility:visible}
 .media > img{display:block;max-width:100%;max-height:520px;object-fit:contain}
-.unavailable{margin:0;padding:20px;text-align:center;color:var(--text-3);font-size:12px}
+.unavailable{margin:0;padding:20px;text-align:center;color:var(--text-3);font-size:calc(12px * var(--app-font-scale,1))}
 .unavailable + .details{margin-top:0}
 .files{margin:0;padding:10px 12px 10px 29px;border-radius:7px;background:var(--control-bg)}
 .files.single-file{padding-left:12px;list-style:none}
-.file{padding:0;font-size:12px}
+.file{padding:0;font-size:calc(12px * var(--app-font-scale,1))}
 .file + .file{margin-top:10px}
 .file::marker{color:var(--text-2)}
 .path{color:var(--text-2);line-height:1.5;overflow-wrap:anywhere;user-select:text}
 .path strong{font-weight:600;color:var(--text-1)}
-.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:var(--surface);font-family:var(--app-font,ui-monospace,"Cascadia Code",Consolas,monospace);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
-.file-text-error{margin:8px 0 0;color:var(--text-3);font-size:12px}
-.color-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0 20px;font-size:13px;user-select:text}
+.file-text-content{max-height:320px;margin:10px 0 0;padding:10px;border-radius:6px;background:var(--surface);font-family:var(--app-font,ui-monospace,"Cascadia Code",Consolas,monospace);font-size:calc(12px * var(--app-font-scale,1));line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;user-select:text;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
+.file-text-error{margin:8px 0 0;color:var(--text-3);font-size:calc(12px * var(--app-font-scale,1))}
+.color-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 0 20px;font-size:calc(13px * var(--app-font-scale,1));user-select:text}
 .color-disc{display:block;width:112px;height:112px;border-radius:50%;outline:1px solid rgba(23,28,40,.12)}
 [hidden]{display:none!important}

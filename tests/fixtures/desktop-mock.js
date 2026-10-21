@@ -52,7 +52,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "panel_ready") { setTimeout(() => window.__TP_TEST__.show(), 0); return null; }
     if (name === "get_state") return structuredClone(state);
     if (name === "get_theme") return state.settings.theme ?? "indigo";
-    if (name === "get_font") return { family: state.settings.fontFamily ?? "", style: state.settings.fontStyle };
+    if (name === "get_font") return { size: state.settings.fontSize ?? 14, family: state.settings.fontFamily ?? "", style: state.settings.fontStyle };
     if (name === "get_system_fonts") {
       if (window.__TP_TEST__.fontListPending) await window.__TP_TEST__.fontListPending;
       if (window.__TP_TEST__.fontListError) throw new Error("font list unavailable");

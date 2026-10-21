@@ -7,6 +7,8 @@ pub(super) struct Settings {
     pub(super) theme: String,
     #[serde(default)]
     pub(super) font_family: String,
+    #[serde(default = "default_font_size")]
+    pub(super) font_size: u16,
     #[serde(default)]
     pub(super) font_style: super::fonts::FontStyle,
     pub(super) max_ordinary: u16,
@@ -49,6 +51,9 @@ pub(super) const THEMES: [&str; 11] = [
     "violet",
     "charcoal",
 ];
+fn default_font_size() -> u16 {
+    14
+}
 fn default_theme() -> String {
     "indigo".into()
 }
@@ -134,6 +139,7 @@ impl Default for Settings {
         Self {
             theme: default_theme(),
             font_family: String::new(),
+            font_size: default_font_size(),
             font_style: super::fonts::FontStyle::default(),
             max_ordinary: 300,
             retention_days: 7,
@@ -159,6 +165,9 @@ impl Default for Settings {
 
 impl Settings {
     pub(super) fn validate(&self) -> Result<()> {
+        if !(10..=20).contains(&self.font_size) {
+            return Err("字号须为 10 至 20 之间的整数".into());
+        }
         if !THEMES.contains(&self.theme.as_str()) {
             return Err("无效的主题配色".into());
         }

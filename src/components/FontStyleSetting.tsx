@@ -19,7 +19,7 @@ export function FontStyleSetting({ value, styles, open, toggle, choose }: {
       else if (option.offsetTop + option.offsetHeight > container.scrollTop + container.clientHeight) container.scrollTop = option.offsetTop + option.offsetHeight - container.clientHeight;
     }
   };
-  return <div className="setting-field"><span id="font-style-label" className="setting-label">样式</span><div className="setting-select font-style-select">
+  return <div className="setting-field"><span id="font-style-label" className="setting-label">字重</span><div className="setting-select font-style-select">
     <button ref={trigger} id="font-style-trigger" type="button" aria-labelledby="font-style-label font-style-value" aria-haspopup="listbox" aria-expanded={open}
       aria-controls="font-style-menu" title={value.name} onClick={() => toggle(!open)} onKeyDown={event => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {

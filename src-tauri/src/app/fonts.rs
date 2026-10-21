@@ -47,6 +47,7 @@ pub(super) struct FontFamily {
 }
 #[derive(Serialize)]
 pub(super) struct FontSelection {
+    pub size: u16,
     pub family: String,
     pub style: FontStyle,
 }

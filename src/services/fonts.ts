@@ -12,7 +12,9 @@ export function onFontChange(listener: () => void) {
 
 export function applyFont(value: unknown) {
   const style = document.documentElement.style;
-  const selection = typeof value === "string" ? { family: value, style: regularFontStyle } : value as FontSelection | undefined;
+  const selection = typeof value === "string" ? { family: value, style: regularFontStyle, size: 14 } : value as FontSelection | undefined;
+  const size = selection?.size;
+  style.setProperty("--app-font-scale", String(typeof size === "number" && Number.isInteger(size) && size >= 10 && size <= 20 ? size / 13 : 14 / 13));
   const validName = (name: unknown): name is string => typeof name === "string" && [...name].length <= 256 && !/[\u0000-\u001f\u007f-\u009f]/.test(name);
   if (!selection || !validName(selection.family) || !selection.family) {
     style.removeProperty("--app-font");
