@@ -1,4 +1,5 @@
 mod app;
+mod clipboard_diagnostics;
 mod clipboard_text;
 mod platform;
 

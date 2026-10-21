@@ -475,7 +475,13 @@ pub fn normalize_clipboard_text(
     original: &str,
     text: &str,
 ) -> std::io::Result<bool> {
+    use crate::clipboard_diagnostics::{event, text_metadata};
     use clipboard_win::{formats, options, raw, register_format, Clipboard};
+    use serde_json::json;
+    event(
+        "normalize_begin",
+        || json!({"revision": revision, "current_revision": clipboard_revision(), "original": text_metadata(original), "cleaned": text_metadata(text)}),
+    );
     let io_err = |e: clipboard_win::ErrorCode| std::io::Error::other(e.to_string());
     use windows::{
         core::w,
@@ -513,12 +519,20 @@ pub fn normalize_clipboard_text(
     );
     let _clipboard = Clipboard::new_attempts_for(owner.0 .0, 10).map_err(io_err)?;
     if revision.is_none() || clipboard_revision() != revision {
+        event(
+            "normalize_stale",
+            || json!({"revision": revision, "current_revision": clipboard_revision()}),
+        );
         return Ok(false);
     }
     let mut current = Vec::new();
     raw::get_string(&mut current)
         .map_err(|e| std::io::Error::other(format!("读取剪贴板纯文本失败: {e}")))?;
     if current != original.as_bytes() {
+        event(
+            "normalize_text_mismatch",
+            || json!({"revision": revision, "current_bytes": current.len()}),
+        );
         return Ok(false);
     }
     // Retain every representation before taking ownership. Windows requires
@@ -526,6 +540,7 @@ pub fn normalize_clipboard_text(
     // ANSI/OEM variants are synthesized from the new Unicode text by Windows.
     let mut retained = Vec::new();
     for format in raw::EnumFormats::new() {
+        event("normalize_format", || json!({"format": format}));
         if [
             formats::CF_TEXT,
             formats::CF_OEMTEXT,
@@ -539,6 +554,10 @@ pub fn normalize_clipboard_text(
         let mut bytes = Vec::new();
         raw::get_vec(format, &mut bytes)
             .map_err(|e| std::io::Error::other(format!("读取剪贴板格式 {format} 失败: {e}")))?;
+        event(
+            "normalize_format_read",
+            || json!({"format": format, "bytes": bytes.len(), "current_revision": clipboard_revision()}),
+        );
         retained.push((format, bytes));
     }
     let html_format = register_format("HTML Format")
@@ -573,6 +592,7 @@ pub fn normalize_clipboard_text(
         }
     }
     if !changed {
+        event("normalize_unchanged", || json!({"revision": revision}));
         return Ok(false);
     }
     raw::empty().map_err(|e| std::io::Error::other(format!("接管剪贴板失败: {e}")))?;
@@ -582,6 +602,11 @@ pub fn normalize_clipboard_text(
     }
     raw::set_string_with(text, options::NoClear)
         .map_err(|e| std::io::Error::other(format!("写回剪贴板纯文本失败: {e}")))?;
+
+    event(
+        "normalize_written",
+        || json!({"revision": revision, "current_revision": clipboard_revision()}),
+    );
 
     Ok(true)
 }

@@ -35,9 +35,12 @@ pub fn run() {
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("store")
                 .setup(|app, _| {
-                    app.manage(
-                        initialize(app.path().app_data_dir()?).map_err(std::io::Error::other)?,
-                    );
+                    let data_dir = app.path().app_data_dir()?;
+                    #[cfg(debug_assertions)]
+                    let data_dir = std::env::var_os("TP_DIAGNOSTIC_DATA_DIR")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or(data_dir);
+                    app.manage(initialize(data_dir).map_err(std::io::Error::other)?);
                     Ok(())
                 })
                 .build(),
@@ -48,7 +51,13 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
-            if let Err(error) = settings::restore_saved_autostart(app.handle()) {
+            let isolated_diagnostic =
+                cfg!(debug_assertions) && std::env::var_os("TP_DIAGNOSTIC_DATA_DIR").is_some();
+            if let Err(error) = if isolated_diagnostic {
+                Ok(())
+            } else {
+                settings::restore_saved_autostart(app.handle())
+            } {
                 eprintln!("Failed to restore autostart: {error}");
             }
             let shortcut = {
@@ -69,6 +78,9 @@ pub fn run() {
             }
             runtime::start(app.handle());
             runtime::install_tray(app)?;
+            if isolated_diagnostic {
+                panel::request_panel(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

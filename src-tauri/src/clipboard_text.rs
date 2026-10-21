@@ -116,8 +116,47 @@ pub fn trim_html(source: &str) -> String {
     }
 }
 
-// CF_HTML offsets are UTF-8 byte offsets. Keep the original surrounding document,
-// source URL and selection fragment; only replace the selected fragment itself.
+// Rich-text readers may parse the whole CF_HTML document rather than just its
+// fragment. Newlines in the closing context then become visible trailing spaces.
+// Compact only an end context made entirely of closing tags/comments/ASCII space;
+// leave any following source content or opening elements byte-for-byte intact.
+fn compact_html_end_context(source: &str) -> String {
+    let mut rest = source;
+    let mut compact = String::with_capacity(source.len());
+    while !rest.is_empty() {
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if rest.is_empty() {
+            break;
+        }
+        let length = if let Some(comment) = rest.strip_prefix("<!--") {
+            let Some(end) = comment.find("-->") else {
+                return source.to_owned();
+            };
+            4 + end + 3
+        } else if let Some(closing) = rest.strip_prefix("</") {
+            let Some(end) = closing.find('>') else {
+                return source.to_owned();
+            };
+            let name = closing[..end].trim_end_matches(|c: char| c.is_ascii_whitespace());
+            if !name.starts_with(|c: char| c.is_ascii_alphabetic())
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == ':')
+            {
+                return source.to_owned();
+            }
+            2 + end + 1
+        } else {
+            return source.to_owned();
+        };
+        compact.push_str(&rest[..length]);
+        rest = &rest[length..];
+    }
+    compact
+}
+
+// CF_HTML offsets are UTF-8 byte offsets. Preserve the source URL, styles and
+// selection boundaries while trimming the fragment and its inert end context.
 pub fn trim_windows_html(bytes: &[u8]) -> Option<Vec<u8>> {
     let source = std::str::from_utf8(bytes).ok()?.trim_end_matches('\0');
     let offset = |key: &str| -> Option<usize> {
@@ -129,17 +168,15 @@ pub fn trim_windows_html(bytes: &[u8]) -> Option<Vec<u8>> {
     let end = offset("EndFragment:")?;
     let html_start = offset("StartHTML:")?;
     let html_end = offset("EndHTML:")?;
+    let before = source.get(html_start..start)?;
+    let after = source.get(end..html_end)?;
     let fragment = source.get(start..end)?;
     let trimmed = trim_html(fragment);
-    if trimmed == fragment {
+    let compact_after = compact_html_end_context(after);
+    if trimmed == fragment && compact_after == after {
         return Some(bytes.to_vec());
     }
-    let html = format!(
-        "{}{}{}",
-        source.get(html_start..start)?,
-        trimmed,
-        source.get(end..html_end)?
-    );
+    let html = format!("{}{}{}", before, trimmed, compact_after);
     let before_fragment = start.checked_sub(html_start)?;
     let mut header = String::from("Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n");
     if let Some(url) = source.lines().find(|line| line.starts_with("SourceURL:")) {
@@ -305,6 +342,98 @@ pub fn trim_rtf(source: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn windows_html_fixture(before: &str, fragment: &str, after: &str) -> Vec<u8> {
+        let mut header = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\nSourceURL:http://localhost:5173/\r\n".to_owned();
+        let start = header.len() + before.len();
+        for (key, offset) in [
+            ("StartHTML", header.len()),
+            ("EndHTML", start + fragment.len() + after.len()),
+            ("StartFragment", start),
+            ("EndFragment", start + fragment.len()),
+        ] {
+            header = header.replace(&format!("{key}:0000000000"), &format!("{key}:{offset:010}"));
+        }
+        format!("{header}{before}{fragment}{after}\0").into_bytes()
+    }
+
+    #[test]
+    fn cf_html_removes_footer_whitespace_that_codex_turns_into_two_spaces() {
+        let text = "开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。";
+        let fragment = format!("<span style=\"color:rgb(91,100,114)\">{text}</span>");
+        let before = "<html>\r\n<body>\r\n<!--StartFragment-->";
+        let source = windows_html_fixture(
+            before,
+            &fragment,
+            "<!--EndFragment-->\r\n</body>\r\n</html>",
+        );
+        let original = String::from_utf8(source.clone()).unwrap();
+        let body_text = |html: &str| {
+            Html::parse_document(html)
+                .select(&scraper::Selector::parse("body").unwrap())
+                .next()
+                .unwrap()
+                .text()
+                .collect::<String>()
+        };
+        // Codex's HTML reader replaces each DOM text-node newline with a space.
+        assert!(body_text(&original[original.find("<html>").unwrap()..]).ends_with("\n\n"));
+        let cleaned = trim_windows_html(&source).unwrap();
+        let output = String::from_utf8(cleaned.clone()).unwrap();
+        let offset = |key: &str| -> usize {
+            output
+                .lines()
+                .find_map(|line| line.strip_prefix(key)?.parse().ok())
+                .unwrap()
+        };
+        let html = &output[offset("StartHTML:")..offset("EndHTML:")];
+        assert_eq!(body_text(html).trim_start(), text);
+        assert_eq!(
+            &output[offset("StartFragment:")..offset("EndFragment:")],
+            fragment
+        );
+        assert_eq!(offset("EndHTML:"), output.len() - 1);
+        assert!(output.contains("SourceURL:http://localhost:5173/"));
+        assert_eq!(trim_windows_html(&cleaned).unwrap(), cleaned);
+    }
+
+    #[test]
+    fn cf_html_keeps_following_source_content_and_selection_whitespace() {
+        let fragment = "<b>  first</b><br>    second";
+        let source = windows_html_fixture(
+            "<html><head><style>b{color:red}</style></head><body><!--StartFragment-->",
+            fragment,
+            "<!--EndFragment-->\n<p>following source text </p>\n</body>\n</html>",
+        );
+        assert_eq!(trim_windows_html(&source).unwrap(), source);
+        assert_eq!(
+            compact_html_end_context("<!--EndFragment-->\r\n</span>\n</body>\n</html>"),
+            "<!--EndFragment--></span></body></html>"
+        );
+        for suffix in [
+            "<!--EndFragment-->\n<img src='x'>",
+            "<!--unfinished\n",
+            "</span extra>\n",
+            "</span>\nvisible",
+            "</span>\u{00a0}",
+        ] {
+            assert_eq!(compact_html_end_context(suffix), suffix);
+        }
+    }
+
+    #[test]
+    fn mac_html_full_document_also_cleans_footer_without_losing_formatting() {
+        let output = trim_html("<html>\r\n<body>\r\n<!--StartFragment--><b>  first</b><br>    second<!--EndFragment-->\r\n</body>\r\n</html>");
+        let doc = Html::parse_document(&output);
+        let body = doc
+            .select(&scraper::Selector::parse("body").unwrap())
+            .next()
+            .unwrap();
+        assert!(body.inner_html().contains("<b>  first</b><br>    second"));
+        assert!(!body
+            .text()
+            .collect::<String>()
+            .ends_with(char::is_whitespace));
+    }
     #[test]
     fn html_keeps_styles_links_and_inner_whitespace() {
         let html = trim_html("<div style=\"color:red\"><b>  first  </b><br><a href=\"https://example.com\">second&nbsp; </a><br><p><br></p></div>");

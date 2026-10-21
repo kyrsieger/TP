@@ -10,11 +10,13 @@ use super::{
     panel::hide_panel,
     storage::{settings, Store},
 };
+use crate::clipboard_diagnostics::{event, text_metadata};
 use crate::platform;
 use clipboard_rs::{
     common::RustImage, Clipboard, ClipboardContext, ClipboardHandler, RustImageData,
 };
 use rusqlite::{params, OptionalExtension};
+use serde_json::json;
 use std::{fs, path::Path, thread};
 use tauri::Manager;
 use uuid::Uuid;
@@ -184,6 +186,7 @@ pub(super) fn apply_record(
 fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     let store = app.state::<Store>();
     let revision = platform::clipboard_revision();
+    event("capture_begin", || json!({"revision": revision}));
     let files = ctx.get_files().unwrap_or_default();
     // 写回图片记录时会把本工具保存的图片文件放上剪贴板，且一次写回可能触发多次更新通知；
     // 这类自有文件不再记入历史，避免重复记录。
@@ -229,13 +232,26 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
         let digest = hash(kind, text.as_bytes());
         (kind.into(), text, Vec::new(), None, digest)
     } else {
+        event(
+            "capture_unreadable",
+            || json!({"revision": revision, "current_revision": platform::clipboard_revision()}),
+        );
         return Ok(());
     };
+    event(
+        "capture_read",
+        || json!({"revision": revision, "current_revision": platform::clipboard_revision(), "kind": kind, "text": text_metadata(&body)}),
+    );
     if is_suppressed_copy(&store, &digest, revision)? {
+        event("capture_suppressed", || json!({"revision": revision}));
         return Ok(());
     }
     let sensitive = platform::source_is_1password();
     let config = settings(&*store.db.lock().map_err(err)?)?;
+    event(
+        "capture_settings",
+        || json!({"revision": revision, "enabled": config.remove_trailing_newlines}),
+    );
     let expires = sensitive.then(|| now() + i64::from(config.sensitive_seconds) * 1000);
     let id = Uuid::new_v4().to_string();
     let existing = {
@@ -263,11 +279,15 @@ fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
     };
     // Normalize only after the original is safely stored, including duplicates.
     if matches!(kind.as_str(), "text" | "link" | "color") {
-        if let Err(error) =
+        let result =
             normalize_copied_text(&store, &body, config.remove_trailing_newlines, |text| {
                 platform::normalize_clipboard_text(revision, &body, text).map_err(err)
-            })
-        {
+            });
+        event(
+            "capture_cleanup_result",
+            || json!({"revision": revision, "current_revision": platform::clipboard_revision(), "result": result}),
+        );
+        if let Err(error) = result {
             eprintln!("Clipboard whitespace cleanup failed: {error}");
         }
     }

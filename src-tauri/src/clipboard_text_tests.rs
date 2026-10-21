@@ -2,6 +2,53 @@
 use crate::platform;
 use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext};
 
+#[cfg(windows)]
+#[test]
+#[ignore = "uses the real system clipboard; run with an external clipboard backup"]
+fn native_clean_text_removes_html_document_footer_spaces() {
+    let ctx = ClipboardContext::new().unwrap();
+    let text = "  first\n    后台常驻";
+    ctx.set(vec![
+        ClipboardContent::Text(text.into()),
+        ClipboardContent::Html("<b style=\"color:red\">  first</b><br>    后台常驻".into()),
+    ])
+    .unwrap();
+    let body_text = || {
+        let bytes = ctx.get_buffer("HTML Format").unwrap();
+        let source = std::str::from_utf8(&bytes).unwrap().trim_end_matches('\0');
+        let start: usize = source
+            .lines()
+            .find_map(|line| line.strip_prefix("StartHTML:")?.trim().parse().ok())
+            .unwrap();
+        let end: usize = source
+            .lines()
+            .find_map(|line| line.strip_prefix("EndHTML:")?.trim().parse().ok())
+            .unwrap();
+        scraper::Html::parse_document(&source[start..end])
+            .select(&scraper::Selector::parse("body").unwrap())
+            .next()
+            .unwrap()
+            .text()
+            .collect::<String>()
+    };
+    assert!(
+        body_text().ends_with("\n\n"),
+        "fixture must reproduce the two footer newlines"
+    );
+    assert!(
+        platform::normalize_clipboard_text(platform::clipboard_revision(), text, text).unwrap()
+    );
+    assert_eq!(ctx.get_text().unwrap(), text);
+    assert!(!body_text().ends_with(char::is_whitespace));
+    assert!(ctx
+        .get_html()
+        .unwrap()
+        .contains("<b style=\"color:red\">  first</b><br>    后台常驻"));
+    let revision = platform::clipboard_revision();
+    assert!(!platform::normalize_clipboard_text(revision, text, text).unwrap());
+    assert_eq!(platform::clipboard_revision(), revision);
+}
+
 #[test]
 #[ignore = "uses the real system clipboard; run with an external clipboard backup"]
 fn native_clipboard_cleanup_preserves_formats_and_rejects_a_newer_copy() {
