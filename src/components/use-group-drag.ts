@@ -71,7 +71,7 @@ export function useGroupDrag(ref: RefObject<HTMLElement | null>, enabled: boolea
               update(); current.frame = requestAnimationFrame(tick);
             };
             tick();
-          }, 400) };
+          }, 200) };
         press.current = current;
         button.setPointerCapture(event.pointerId);
       },

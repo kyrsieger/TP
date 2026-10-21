@@ -235,7 +235,7 @@ SQLite 和附件是持久化数据来源，Rust 统一读写它们。面板可�
 
 “默认”和“收藏”是视图，不是 `groups` 表中的分组。普通记录由 `favorite = 0 AND group_id IS NULL` 判定。`records_used` 索引支持按最后使用时间访问；快照排序顺序为置顶记录优先、置顶时间降序、最后使用时间降序。
 
-分组栏由 [use-group-drag.ts](../src/components/use-group-drag.ts) 使用 Pointer Events 处理长按拖拽，Windows 与 macOS 共用实现。按住 400 毫秒后激活，边缘逐帧横向滚动，拖动标签限制在栏内以免撑大滚动范围；松开后由 `GroupController.reorder` 即时显示新顺序并调用宿主保存，失败恢复顺序并提示。Esc、指针取消、失焦或面板隐藏清理计时器、动画和指针捕获；拖动不切换当前视图或记录选择。
+分组栏由 [use-group-drag.ts](../src/components/use-group-drag.ts) 使用 Pointer Events 处理长按拖拽，Windows 与 macOS 共用实现。按住 200 毫秒后激活，边缘逐帧横向滚动，拖动标签限制在栏内以免撑大滚动范围；松开后由 `GroupController.reorder` 即时显示新顺序并调用宿主保存，失败恢复顺序并提示。Esc、指针取消、失焦或面板隐藏清理计时器、动画和指针捕获；拖动不切换当前视图或记录选择。
 
 2026-10-20 分组拖拽排序验证：188 项前端单元测试、36 项原有主面板界面回归、4 项新增拖拽界面回归及前端构建通过；69 项 Rust 测试通过，随后新增旧分组表迁移测试单独运行通过。覆盖长按排序、取消、固定内置入口、原单击与双击、两端自动滚动、保存失败恢复、数据库重开、旧数据迁移与新增分组追加。界面回归使用 Windows Edge 和模拟 IPC；Codex 内置浏览器连接超时，未完成内置浏览器检查。未在真实 Tauri 桌面窗口或 macOS 实机运行验证。
 

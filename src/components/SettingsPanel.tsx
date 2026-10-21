@@ -153,6 +153,7 @@ function ShortcutTable({ shortcut, renameShortcut }: { shortcut: string; renameS
     ["Ctrl+D", "收藏或取消收藏所有选中记录"], [isMacOS ? "Ctrl+Delete" : "Ctrl+Backspace / Delete", "搜索框未聚焦时删除所有选中记录"],
     ["Ctrl+G", "打开分组菜单，移动所有选中记录"], ["Ctrl+P", "置顶或取消置顶所有选中记录"],
     ["Ctrl+A", "输入框聚焦时全选框内文字；面板其他区域禁用全选"],
+    ["长按分组并拖拽", "长按自建分组 200 毫秒后左右拖拽排序，松开保存；默认和收藏不参与排序"],
   ];
   return <table className="shortcut-table"><thead><tr><th scope="col">按键</th><th scope="col">作用</th></tr></thead><tbody>{rows.map(([key, label]) => <tr key={label}><td><kbd>{key}</kbd></td><td>{label}</td></tr>)}</tbody></table>;
 }
