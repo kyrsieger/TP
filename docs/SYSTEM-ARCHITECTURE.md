@@ -65,6 +65,7 @@ flowchart TB
 | 界面组装 | 挂载 React、组合主面板、组装控制器和事件监听 | [src/main.ts](../src/main.ts)、[src/App.tsx](../src/App.tsx)、[src/application.ts](../src/application.ts) |
 | 主面板组件 | 搜索与类型筛选、分组页签、虚拟列表和记录行、设置、弹出菜单与确认弹窗 | [src/components](../src/components) |
 | 界面图标 | `lucide-react` 具名导入经公共 `Icon` 组件映射，统一尺寸、线宽与颜色继承；主面板与两个预览页面复用，收藏保留实心状态，分页指示器使用圆形与短线；许可声明随前端资源打包 | [components/Icon.tsx](../src/components/Icon.tsx)、[media-indicators.css](../src/media-indicators.css)、[third-party-notices.txt](../public/third-party-notices.txt) |
+| 应用标志 | TP 标志的 SVG 母版生成墨绿应用图标；标题栏使用小尺寸单色 SVG，Windows 使用专用彩色托盘 PNG，macOS 使用透明单色 PNG 与模板模式；原有 `bundle.icon` 路径继续引用更新后的 ICO/ICNS/PNG。生成脚本核验格式，macOS 未运行验证 | [design/logo/final](../design/logo/final/README.md)、[icons](../src-tauri/icons)、[runtime.rs](../src-tauri/src/app/runtime.rs)、[tp-mark.svg](../public/tp-mark.svg) |
 | 面板状态 | 完整快照读取与请求合并、拒绝过期响应、浏览会话、选中范围、隐藏后释放快照 | [src/state/panel.ts](../src/state/panel.ts) |
 | 记录标题编辑 | 原地编辑、标题校验、保存与失败恢复、取消及异步生命周期保护 | [src/state/record-rename.ts](../src/state/record-rename.ts) |
 | 设置与分组状态 | 串行设置提交、清理确认和恢复、快捷键注册回退、缓存与登录启动；分组编辑、名称校验和排序保存及失败恢复 | [src/state/settings.ts](../src/state/settings.ts)、[src/state/groups.ts](../src/state/groups.ts)、[src/state/menus.ts](../src/state/menus.ts) |

@@ -71,7 +71,7 @@ export function App() {
     }}>
       {["left", "right", "top", "bottom"].map(edge => <div key={edge} className={`resize-edge ${edge}`} data-resize-edge={edge} onPointerDown={event => { void app.geometry.resize(event.nativeEvent, event.currentTarget); }} />)}
       <header className="titlebar" onPointerDown={event => { if (event.button === 0 && !(event.target as HTMLElement).closest("button")) void panelWindow.startDragging().catch(error => app.toasts.show(String(error))); }}>
-        <Icon name="clipboard" className="logo" size={13} /><span className="appname">TP</span>
+        <img src="/tp-mark.svg" className="logo" width={16} height={16} alt="" aria-hidden="true" /><span className="appname">TP</span>
         <div className="winbtns"><button id="minimize" className="winbtn" title="最小化" aria-label="最小化" onClick={() => { void panelWindow.minimize().catch(error => app.toasts.show(String(error))); }}><Icon name="minus" size={13} /></button>
           <button id="maximize" className="winbtn" title="最大化或还原" aria-label="最大化或还原" onClick={() => { void panelWindow.toggleMaximize().catch(error => app.toasts.show(String(error))); }}><Icon name="square" size={11} /></button>
           <button id="close" className="winbtn close" title="隐藏面板" aria-label="隐藏面板" onClick={() => { app.previews.largePreviewId = null; void app.history.action("hide_panel"); }}><Icon name="x" size={13} /></button></div>

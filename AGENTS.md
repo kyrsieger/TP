@@ -11,6 +11,7 @@
 - [产品设计](docs/DESIGN.md)：记录、文件、清理、分组、面板和操作规则。
 - [系统架构](docs/SYSTEM-ARCHITECTURE.md)：系统边界、模块协作、数据与关键流程、平台适配及验证状态。
 - [术语表](docs/GLOSSARY.md)：统一术语；发现歧义时先查阅此文档。
+- [应用标志](design/logo/final/README.md)：`design/logo/` 保存正式 logo 的标准与小尺寸 SVG 源文件、配色说明和图标生成脚本。修改标志时从源文件重新生成；应用实际使用的资源位于 `src-tauri/icons/` 和 `public/`，候选稿、预览图和临时导出不在该目录保留。
 
 ## 文档同步
 
