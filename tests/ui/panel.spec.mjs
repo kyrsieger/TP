@@ -187,6 +187,7 @@ test("Esc hides without background refresh; idle release clears DOM before ackno
   await page.evaluate(() => window.__TP_TEST__.idle());
   await expect(page.locator(".record")).toHaveCount(0); await expect(page.locator("#groups button")).toHaveCount(0);
   expect(await page.evaluate(() => window.__TP_TEST__.released)).toMatchObject({ rows: 0, images: 0 });
+  await expect(page.locator('.titlebar .logo')).toHaveAttribute('src', '/tp-mark.svg');
   await page.evaluate(() => window.__TP_TEST__.show()); await expect(page.locator(".record").first()).toBeVisible();
 });
 

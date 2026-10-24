@@ -138,17 +138,3 @@ pub(super) fn forget_panel() {
     #[cfg(target_os = "macos")]
     macos::forget();
 }
-
-#[cfg(not(any(windows, target_os = "macos")))]
-pub(super) fn suspend_panel(
-    _window: &WebviewWindow,
-    finished: impl FnOnce(bool) + Send + 'static,
-) -> tauri::Result<()> {
-    finished(false);
-    Ok(())
-}
-
-#[cfg(not(any(windows, target_os = "macos")))]
-pub(super) fn resume_panel(_window: &WebviewWindow) -> tauri::Result<()> {
-    Ok(())
-}

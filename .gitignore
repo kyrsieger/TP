@@ -7,5 +7,32 @@ src-tauri/gen/schemas/
 Thumbs.db
 test-results/
 playwright-report/
-.prototype/
 .agents/
+
+# Local configuration and sensitive runtime data
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Signing material
+*.key
+*.pem
+*.p12
+*.pfx
+*.p8
+*.mobileprovision
+
+# Private local tool settings
+.aws/
+.codex/
+__pycache__/
+*.py[cod]

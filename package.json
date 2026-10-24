@@ -2,6 +2,15 @@
   "name": "tp",
   "private": true,
   "version": "1.0.21",
+  "description": "Local clipboard history for Windows and macOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kyrsieger/TP.git"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

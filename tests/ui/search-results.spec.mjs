@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("search excerpts use the available row width and keep distant hits visible", async ({ page }) => {
+test("search excerpts use the available row width and keep distant hits visible", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 714, height: 674 });
   await page.goto("/tests/fixtures/search-results.html");
   await expect(page.locator('.record[data-id="short"]')).toBeVisible();
@@ -21,7 +21,7 @@ test("search excerpts use the available row width and keep distant hits visible"
   await check(page.locator(".media-search-match"));
   await expect(long).toHaveText(/^….*micai-.*…$/);
   const wide = await long.textContent();
-  await page.screenshot({ path: ".prototype/search-results.png" });
+  await page.screenshot({ path: testInfo.outputPath("search-results.png") });
   await page.setViewportSize({ width: 420, height: 600 });
   await check(long);
   await expect.poll(async () => (await long.textContent()).length).toBeLessThan(wide.length);

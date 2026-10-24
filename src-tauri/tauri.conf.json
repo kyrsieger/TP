@@ -61,6 +61,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../public/third-party-notices.txt": "third-party-notices.txt"
+    },
     "windows": {
       "nsis": {
         "languages": ["SimpChinese"],

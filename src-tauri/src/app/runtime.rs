@@ -53,7 +53,7 @@ pub(super) fn install_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open, &quit])?;
     #[cfg(target_os = "macos")]
     let icon_bytes = include_bytes!("../../icons/tray-template.png").as_slice();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
     let icon_bytes = include_bytes!("../../icons/tray-windows.png").as_slice();
     let rgba = image::load_from_memory(icon_bytes)
         .map_err(|error| {

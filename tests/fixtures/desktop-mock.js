@@ -77,7 +77,8 @@ window.__TAURI_INTERNALS__ = {
     }
     if (name === "apply_record") { if (!state.settings.alwaysOnTop) window.__TP_TEST__.hide(); return; }
     if (name === "panel_content_released") {
-      window.__TP_TEST__.released = { generation: args.generation, rows: document.querySelectorAll('.record').length, images: document.querySelectorAll('img[src]').length };
+      // The static titlebar logo is not clipboard content and stays mounted.
+      window.__TP_TEST__.released = { generation: args.generation, rows: document.querySelectorAll('.record').length, images: document.querySelectorAll('img[src]:not(.logo)').length };
       return;
     }
     if (name === "save_panel_geometry") { state.settings = { ...state.settings, ...args.value }; return; }

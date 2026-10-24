@@ -270,11 +270,6 @@ fn platform_fonts() -> Result<Vec<(String, FontStyle, Vec<String>)>> {
     }
     Ok(faces)
 }
-#[cfg(not(any(windows, target_os = "macos")))]
-fn platform_fonts() -> Result<Vec<(String, FontStyle, Vec<String>)>> {
-    Err("当前平台不支持读取系统字体".into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

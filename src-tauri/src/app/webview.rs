@@ -23,7 +23,7 @@ pub(super) fn set_window_memory_mode(window: &tauri::WebviewWindow, low: bool) {
     }) {
         eprintln!("Failed to access WebView: {error}");
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     let _ = (window, low);
 }
 

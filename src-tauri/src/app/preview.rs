@@ -24,7 +24,7 @@ pub(super) async fn ensure_preview_window(app: tauri::AppHandle, label: String) 
             .map_err(err)?;
         #[cfg(windows)]
         filter_browser_context_menu(&window).map_err(err)?;
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
         let _ = window;
     }
     app.emit_to("main", "preview-window-used", &label)
