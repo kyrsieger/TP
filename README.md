@@ -58,7 +58,7 @@ npm ci
 npm run tauri dev
 ```
 
-仓库保持私有期间，克隆需要有访问权限的 GitHub 账户。开发服务使用 `http://localhost:5173`。只运行 `npm run dev` 会启动前端服务，完整剪贴板功能需要 Tauri 桌面宿主。
+开发服务使用 `http://localhost:5173`。只运行 `npm run dev` 会启动前端服务，完整剪贴板功能需要 Tauri 桌面宿主。
 
 ## 构建安装包
 
