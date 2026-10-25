@@ -125,9 +125,14 @@ test("font controls fit selected labels, truncate at half a row and resize menus
   await expect(page.getByRole("option", { name: "Medium length font family", exact: true })).toHaveCount(0);
   await expect.poll(async () => (await page.locator("#font-menu").boundingBox()).width).toBeLessThan(medium);
   await page.setViewportSize({ width: 340, height: 500 });
-  const bounds = await page.locator("#font-menu").boundingBox();
-  expect(bounds.x).toBeGreaterThanOrEqual(0);
-  expect(bounds.x + bounds.width).toBeLessThanOrEqual(340);
+  await expect.poll(async () => {
+    const bounds = await page.locator("#font-menu").boundingBox();
+    return bounds.x;
+  }).toBeGreaterThanOrEqual(0);
+  await expect.poll(async () => {
+    const bounds = await page.locator("#font-menu").boundingBox();
+    return bounds.x + bounds.width;
+  }).toBeLessThanOrEqual(340);
 });
 
 test("font search finds Chinese names by pinyin initials, full pinyin and English aliases without saving until confirmation", async ({ page }) => {
