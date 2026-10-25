@@ -2,11 +2,11 @@
 
 本文描述 TP 的系统边界、运行组成、数据模型、关键流程与平台适配，以截至 2026-10-15 的仓库代码为依据。产品行为以[产品设计](DESIGN.md)为准，术语以[术语表](GLOSSARY.md)为准；本文将当前实现及其限制与产品要求区分开来，不把代码存在等同于平台验收通过。
 
-原创代码采用根目录 MIT 许可证，第三方依赖仍按各自许可分发。Tauri 的 `bundle.resources` 将项目 `LICENSE` 和 `public/third-party-notices.txt` 作为独立资源随安装包分发，前端构建也保留该声明。更新依赖时同步核对第三方声明。GitHub Actions 检查前端、模拟浏览器回归及 Windows / macOS 构建；配置存在不代表远端运行或 macOS 实机验收通过。使用与构建入口见 README。
+原创代码采用根目录 MIT 许可证，第三方依赖仍按各自许可分发。Tauri 的 `bundle.resources` 将项目 `LICENSE` 和 `public/third-party-notices.txt` 作为独立资源随安装包分发，前端构建也保留该声明。更新依赖时同步核对第三方声明。GitHub Actions 当前检查前端、模拟浏览器回归及 Windows 构建；macOS 构建检查暂未启用，仍待适配和验证。使用与构建入口见 README。
 
 ## 1. 系统定位与边界
 
-平台代码分别按 Windows 和 macOS 编译，字体读取和面板挂起只提供这两个平台的实现。自动检查中的前端和浏览器回归使用 Windows 环境，桌面构建分别使用 Windows 和 macOS 环境。
+平台代码使用 Windows 和 macOS 条件编译，字体读取和面板挂起只提供这两个平台的实现。自动检查中的前端和浏览器回归使用 Windows 环境，桌面构建目前也只使用 Windows 环境；macOS 适配时再恢复对应的构建检查。
 
 TP 是面向 Windows 11 和 macOS 的本地剪贴板历史工具，以托盘或菜单栏常驻应用运行。它监听系统剪贴板，保存历史记录，让用户通过小面板检索、整理和再次应用记录。
 
