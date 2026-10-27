@@ -55,12 +55,21 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' data: blob:",
+        "style-src": "'self' 'unsafe-inline'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "useLocalToolsDir": true,
     "resources": {
       "../LICENSE": "LICENSE",
       "../public/third-party-notices.txt": "third-party-notices.txt"

@@ -86,6 +86,12 @@ npm run tauri -- build --bundles app,dmg -- --locked
 
 应用、主程序和安装包名称为 TP，npm 与 Rust 包名为 `tp`，应用标识为 `com.tp.clipboard`。升级时保持应用标识，以沿用已有安装身份和本地数据目录。
 
+## 开发方式与贡献
+
+本项目完全由 AI 开发，开发过程中使用了 [mattpocock/skills](https://github.com/mattpocock/skills) 技能库中的部分技能。
+
+文档管理主要使用其中的 [domain-modeling](https://github.com/mattpocock/skills/tree/main/skills/engineering/domain-modeling) 技能，维护[领域术语表](GLOSSARY.md)和[架构决策记录（ADR）](docs/adr/)。参与贡献时，你也可以选择使用该技能，配合 AI 维护这些文档；具体贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 许可证
 
 项目原创代码采用 [MIT 许可证](LICENSE)，Copyright (c) 2026 kyrsieger。第三方依赖和参考资料保留各自许可，详见[第三方声明](public/third-party-notices.txt)。更新依赖时需同步核对声明，分发安装包时保留许可证和第三方声明。
