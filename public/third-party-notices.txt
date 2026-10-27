@@ -4269,13 +4269,13 @@ LICENSE-ZLIB.md: see full text 943f36fd309fb5ea67a82f577433f4ed3bc877e5b00f9b874
 
 ========================================================================
 
-cargo: tokio 1.53.1
+cargo: tokio 1.53.3
 
 License: MIT
 
 Targets: x86_64-pc-windows-msvc, x86_64-apple-darwin, aarch64-apple-darwin
 
-https://crates.io/api/v1/crates/tokio/1.53.1/download
+https://crates.io/api/v1/crates/tokio/1.53.3/download
 
 LICENSE: see full text 3e1bef82aa0dfee4504ad211f7e4895153e3191db6ab179f94a7e20f990a0b67
 
