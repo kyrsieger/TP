@@ -7,6 +7,7 @@ mod files;
 mod filesystem;
 mod fonts;
 mod media;
+mod migration;
 mod model;
 mod panel;
 mod panel_geometry;
@@ -40,6 +41,11 @@ pub fn run() {
                     let data_dir = std::env::var_os("TP_DIAGNOSTIC_DATA_DIR")
                         .map(std::path::PathBuf::from)
                         .unwrap_or(data_dir);
+                    if data_dir.file_name().is_some_and(|name| name == "TP") {
+                        let legacy = data_dir.with_file_name("com.tp.clipboard");
+                        migration::migrate_data_directory(&legacy, &data_dir)
+                            .map_err(std::io::Error::other)?;
+                    }
                     app.manage(initialize(data_dir).map_err(std::io::Error::other)?);
                     Ok(())
                 })
