@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { extractNotes, publishDraft, selectCiRun, validateVersions, versionFromTag, waitForCi } from '../scripts/release.mjs';
+import { extractNotes, publishRelease, selectCiRun, validateVersions, versionFromTag, waitForCi } from '../scripts/release.mjs';
 
 test('release accepts stable version tags and rejects malformed or prerelease tags', () => {
   assert.equal(versionFromTag('v1.0.22'), '1.0.22');
@@ -82,40 +82,75 @@ test('release times out on missing or unfinished CI, and propagates API errors',
   await assert.rejects(waitForCi({ ...clock(), sha: 'abc', listRuns: async () => { throw new Error('API denied'); } }), /API denied/);
 });
 
-const draftOptions = { tag: 'v1.0.22', repo: 'owner/tp', paths: ['setup.exe', 'setup.msi'], notesPath: 'notes with spaces.md' };
+const releaseOptions = { tag: 'v1.0.22', repo: 'owner/tp', paths: ['setup.exe', 'setup.msi'], notesPath: 'notes with spaces.md' };
 
 test('published releases cannot be edited or have installers overwritten', () => {
-  assert.throws(() => publishDraft({ ...draftOptions, releases: [{ tag_name: 'v1.0.22', draft: false }],
+  assert.throws(() => publishRelease({ ...releaseOptions, releases: [{ tag_name: 'v1.0.22', draft: false }],
     execute: () => assert.fail('must not mutate published release') }), /already published/);
 });
 
-test('first release creation stays draft and uses prepared notes and both installers', () => {
+test('first release uploads prepared notes and both installers before publishing the draft', () => {
   const calls = [];
-  publishDraft({ ...draftOptions, releases: [], execute: (program, args) => calls.push({ program, args }) });
-  assert.equal(calls.length, 1);
+  publishRelease({ ...releaseOptions, releases: [], execute: (program, args) => calls.push({ program, args }) });
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].program, 'gh');
   const args = calls[0].args;
   assert.deepEqual(args.slice(0, 5), ['release', 'create', 'v1.0.22', 'setup.exe', 'setup.msi']);
   assert.ok(args.includes('--draft'));
   assert.ok(args.includes('--verify-tag'));
-  assert.equal(args[args.indexOf('--notes-file') + 1], draftOptions.notesPath);
+  assert.equal(args[args.indexOf('--notes-file') + 1], releaseOptions.notesPath);
   assert.ok(!args.includes('--generate-notes'));
+  assert.deepEqual(calls[1], { program: 'gh', args: ['release', 'edit', 'v1.0.22', '--repo', 'owner/tp', '--draft=false'] });
 });
 
-test('retry updates the existing draft and uploads installers without publishing', () => {
+test('retry updates the existing draft and uploads installers before publishing', () => {
   const calls = [];
-  publishDraft({ ...draftOptions, releases: [{ tag_name: 'v1.0.22', draft: true }],
+  publishRelease({ ...releaseOptions, releases: [{ tag_name: 'v1.0.22', draft: true }],
     execute: (_program, args) => calls.push(args) });
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.equal(calls[0][1], 'edit');
   assert.ok(calls[0].includes('--draft'));
   assert.equal(calls[1][1], 'upload');
   assert.ok(calls[1].includes('--clobber'));
+  assert.deepEqual(calls[2], ['release', 'edit', 'v1.0.22', '--repo', 'owner/tp', '--draft=false']);
 });
 
-test('draft update errors stop the installer upload', () => {
+test('draft update errors stop the installer upload and publishing', () => {
   let count = 0;
-  assert.throws(() => publishDraft({ ...draftOptions, releases: [{ tag_name: 'v1.0.22', draft: true }],
+  assert.throws(() => publishRelease({ ...releaseOptions, releases: [{ tag_name: 'v1.0.22', draft: true }],
     execute: () => { count++; throw new Error('Permission denied'); } }), /Permission denied/);
   assert.equal(count, 1);
+});
+
+test('failed draft creation does not publish the release', () => {
+  const calls = [];
+  assert.throws(() => publishRelease({ ...releaseOptions, releases: [],
+    execute: (_program, args) => { calls.push(args); throw new Error('Creation failed'); } }), /Creation failed/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1], 'create');
+  assert.ok(!calls.some(args => args.includes('--draft=false')));
+});
+
+test('failed installer upload leaves the existing draft unpublished', () => {
+  const calls = [];
+  assert.throws(() => publishRelease({ ...releaseOptions, releases: [{ tag_name: 'v1.0.22', draft: true }],
+    execute: (_program, args) => {
+      calls.push(args);
+      if (args[1] === 'upload') throw new Error('Upload failed');
+    } }), /Upload failed/);
+  assert.equal(calls.length, 2);
+  assert.ok(!calls.some(args => args.includes('--draft=false')));
+});
+
+test('final publishing errors propagate after installers are ready for new and existing drafts', () => {
+  for (const releases of [[], [{ tag_name: 'v1.0.22', draft: true }]]) {
+    const calls = [];
+    assert.throws(() => publishRelease({ ...releaseOptions, releases,
+      execute: (_program, args) => {
+        calls.push(args);
+        if (args.includes('--draft=false')) throw new Error('Publishing denied');
+      } }), /Publishing denied/);
+    assert.equal(calls.length, releases.length ? 3 : 2);
+    assert.deepEqual(calls.at(-1), ['release', 'edit', 'v1.0.22', '--repo', 'owner/tp', '--draft=false']);
+  }
 });

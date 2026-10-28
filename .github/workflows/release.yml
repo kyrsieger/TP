@@ -1,4 +1,4 @@
-name: Release draft
+name: Release
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   release:
-    name: Wait for CI, package Windows and create draft
+    name: Wait for CI, package Windows and publish release
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -38,7 +38,7 @@ jobs:
       - run: npm ci
       - name: Build Windows installers
         run: npm run tauri -- build --ci --bundles nsis,msi -- --locked
-      - name: Create or update Release draft from CHANGELOG
+      - name: Upload Windows installers and publish Release from CHANGELOG
         run: node scripts/release.mjs publish
         env:
           GH_TOKEN: ${{ github.token }}

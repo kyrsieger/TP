@@ -98,7 +98,7 @@ export function validateVersions(version, packageJson, lock, tauri, cargo, cargo
   }
 }
 
-export function publishDraft({ tag, repo, paths, notesPath, releases, execute = command }) {
+export function publishRelease({ tag, repo, paths, notesPath, releases, execute = command }) {
   const existing = releases.find(release => release.tag_name === tag);
   if (existing && !existing.draft) throw new Error(`Release ${tag} is already published; refusing to modify it`);
   if (existing) {
@@ -108,6 +108,8 @@ export function publishDraft({ tag, repo, paths, notesPath, releases, execute = 
     execute('gh', ['release', 'create', tag, ...paths, '--repo', repo, '--verify-tag', '--draft',
       '--title', `TP ${tag}`, '--notes-file', notesPath]);
   }
+  // Keep the release in draft until both installers have uploaded successfully.
+  execute('gh', ['release', 'edit', tag, '--repo', repo, '--draft=false']);
 }
 
 async function main(mode) {
@@ -135,8 +137,8 @@ async function main(mode) {
     // Listing releases lets authentication/network errors fail instead of being
     // mistaken for a missing release. Pagination also finds older drafts.
     const releases = ghJson(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat();
-    publishDraft({ tag, repo, paths, notesPath: releaseNotesPath(), releases });
-    console.log(`Release draft ready: ${tag}`);
+    publishRelease({ tag, repo, paths, notesPath: releaseNotesPath(), releases });
+    console.log(`Release published: ${tag}`);
   } else throw new Error(`Unknown release operation: ${mode}`);
 }
 
