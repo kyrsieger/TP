@@ -325,7 +325,7 @@ for (const choice of ["confirm", "cancel", "escape", "enter", "hide"]) test(`man
   await page.locator("#settings-button").click();
   await page.locator("#clear-cache").click();
   await expect(page.locator("#settings-cleanup-confirmation")).toBeVisible();
-  await expect(page.locator("#cleanup-confirmation-title")).toHaveText("清理缓存？");
+  await expect(page.locator("#cleanup-confirmation-title")).toHaveText("清空数据？");
   await expect(page.locator("#settings-cleanup-confirmation [data-cancel]")).toBeFocused();
   expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "clear_cache").length)).toBe(0);
   if (choice === "escape") await page.keyboard.press("Escape");
@@ -406,4 +406,22 @@ test("clipboard cleanup switch reflects confirmed settings while saving and afte
   await expect(toggle).toBeEnabled();
   await expect(toggle).not.toBeChecked();
   expect(await page.evaluate(() => window.__TP_TEST__.state.settings.removeTrailingNewlines)).toBe(false);
+});
+
+
+test("clear all records requires explicit scope selection and resets to ordinary", async ({ page }) => {
+  await page.locator("#settings-button").click();
+  await page.locator("#clear-cache").click();
+  const dialog = page.locator("#settings-cleanup-confirmation");
+  await expect(dialog.getByRole("radio", { name: "普通记录", exact: true })).toBeChecked();
+  await expect(dialog).toContainText("无法找回");
+  await dialog.getByRole("radio", { name: "全部记录", exact: true }).check();
+  await dialog.locator("[data-cancel]").click();
+  await page.locator("#clear-cache").click();
+  await expect(dialog.getByRole("radio", { name: "普通记录", exact: true })).toBeChecked();
+  await dialog.getByRole("radio", { name: "全部记录", exact: true }).check();
+  await dialog.locator("[data-confirm]").click();
+  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.state.records.length)).toBe(0);
+  const call = await page.evaluate(() => window.__TP_TEST__.calls.find(call => call.name === "clear_cache"));
+  expect(call.args).toEqual({ allRecords: true });
 });

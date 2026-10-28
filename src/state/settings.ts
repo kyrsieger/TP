@@ -39,6 +39,7 @@ export class SettingsController extends Observable<SettingsValue> {
   private activeShortcut = "";
   private cacheRequest = 0;
   private cacheClearQueued = false;
+  private clearAllRecords = false;
   private queue: Promise<void> = Promise.resolve();
   private pending: Settings | null = null;
   private resolveConfirmation: ((confirmed: boolean) => void) | null = null;
@@ -54,6 +55,12 @@ export class SettingsController extends Observable<SettingsValue> {
     if (error) this.effects.toast(error);
   }
   syncShortcut() { this.activeShortcut = this.value.shortcutError ? "" : this.history.value.settings?.shortcut ?? ""; }
+  runDataTask(task: () => Promise<void>): Promise<void> {
+    this.flushTheme();
+    const run = this.queue.then(task);
+    this.queue = run.catch(() => {});
+    return run;
+  }
   selectFont(fontFamily: string, fontStyle: FontStyle = regularFontStyle) {
     const previous = this.value.fontDraft ?? { family: this.history.value.settings?.fontFamily ?? "", style: this.history.value.settings?.fontStyle ?? regularFontStyle };
     if (fontFamily === previous.family && fontStyleKey(fontStyle) === fontStyleKey(previous.style)) return;
@@ -128,23 +135,25 @@ export class SettingsController extends Observable<SettingsValue> {
       if (!this.value.open || !this.history.value.active || generation !== this.history.generation) return;
       const confirmed = await new Promise<boolean>(resolve => {
         this.resolveConfirmation = resolve;
+        this.clearAllRecords = false;
         this.update({ cacheConfirmationOpen: true });
       });
       if (!confirmed || !this.value.open || !this.history.value.active || generation !== this.history.generation) return;
       this.update({ clearingCache: true });
       try {
-        const count = await this.call<number>("clear_cache");
+        const count = await this.call<number>("clear_cache", { allRecords: this.clearAllRecords });
         await this.history.refresh();
-        this.effects.toast(`已清理 ${count} 条普通记录及孤立附件`);
+        this.effects.toast(`已清空 ${count} 条${this.clearAllRecords ? "" : "普通"}记录及孤立附件`);
       } catch (error) {
         await this.history.refresh().catch(() => {});
-        this.effects.toast(`清理缓存失败：${String(error)}`);
+        this.effects.toast(`清空数据失败：${String(error)}`);
       } finally { this.update({ clearingCache: false }); }
     });
     try { await this.queue; }
     finally { this.cacheClearQueued = false; }
   }
-  confirm(confirmed: boolean) {
+  confirm(confirmed: boolean, allRecords = false) {
+    this.clearAllRecords = allRecords;
     const resolve = this.resolveConfirmation;
     this.resolveConfirmation = null;
     this.update({ confirmationCount: null, cacheConfirmationOpen: false });

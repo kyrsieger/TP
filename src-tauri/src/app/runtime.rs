@@ -23,6 +23,9 @@ pub(super) fn start(app: &tauri::AppHandle) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(1));
         if let Some(store) = handle.try_state::<Store>() {
+            let Ok(_data) = store.read_data() else {
+                continue;
+            };
             if matches!(clean(&store), Ok(true)) {
                 changed(&handle);
             }

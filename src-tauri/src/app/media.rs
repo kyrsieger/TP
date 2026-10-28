@@ -151,6 +151,7 @@ pub(super) fn file_text_preview(
     id: String,
     index: usize,
 ) -> Result<Option<String>> {
+    let _data = store.read_data()?;
     let path = {
         let conn = store.db.lock().map_err(err)?;
         file_text_preview_path(&conn, &id, index)?
@@ -168,6 +169,7 @@ pub(super) fn preview_data(
     role: Option<String>,
     index: Option<usize>,
 ) -> Result<String> {
+    let _data = store.read_data()?;
     let (kind, files): (String, String) = {
         let conn = store.db.lock().map_err(err)?;
         conn.query_row("SELECT kind,files FROM records WHERE id=?1", [&id], |r| {

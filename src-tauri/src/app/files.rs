@@ -80,6 +80,7 @@ fn record_action_paths(store: &Store, id: &str, stored_only: bool) -> Result<Vec
 
 #[tauri::command]
 pub(super) fn copy_record_paths(store: tauri::State<Store>, id: String) -> Result<()> {
+    let _data = store.read_data()?;
     let paths = record_action_paths(&store, &id, false)?;
     let text = paths
         .iter()
@@ -95,12 +96,14 @@ pub(super) fn copy_record_paths(store: tauri::State<Store>, id: String) -> Resul
 
 #[tauri::command]
 pub(super) fn open_record_directory(store: tauri::State<Store>, id: String) -> Result<()> {
+    let _data = store.read_data()?;
     let paths = record_action_paths(&store, &id, false)?;
     platform::reveal_files(&paths_by_directory(&paths)?).map_err(err)
 }
 
 #[tauri::command]
 pub(super) fn save_record_files(store: tauri::State<Store>, id: String) -> Result<()> {
+    let _data = store.read_data()?;
     let files = record_action_paths(&store, &id, true)?;
     let Some(destination) = rfd::FileDialog::new()
         .set_title("选择保存目录")
@@ -131,6 +134,20 @@ pub(super) fn save_files(
     mut files: Vec<FileItem>,
 ) {
     let store = app.state::<Store>();
+    let Ok(_data) = store.read_data() else {
+        return;
+    };
+    // A deleted record must not leave a queued worker writing orphaned attachments.
+    if !store.db.lock().is_ok_and(|conn| {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM records WHERE id=?1 AND status='pending')",
+            [&id],
+            |r| r.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }) {
+        return;
+    }
     let total = files.iter().try_fold(0u64, |sum, file| {
         file_size(Path::new(&file.original))
             .ok()

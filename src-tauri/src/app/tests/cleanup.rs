@@ -219,7 +219,7 @@ fn retention_uses_last_use_time_for_every_supported_duration() {
 fn count_limit_keeps_latest_ordinary_records_at_supported_limits() {
     let store = test_store();
     let timestamp = now();
-    for limit in [1, 300, 500] {
+    for limit in [1, 300, 500, 700] {
         {
             let conn = store.db.lock().unwrap();
             conn.execute("DELETE FROM records", []).unwrap();
@@ -248,11 +248,11 @@ fn count_limit_keeps_latest_ordinary_records_at_supported_limits() {
             .iter()
             .filter(|r| !r.favorite && r.group_id.is_none())
             .collect();
-        assert_eq!(ordinary.len(), usize::from(limit));
+        assert_eq!(ordinary.len(), usize::try_from(limit).unwrap());
         assert!(ordinary
             .iter()
             .all(|r| r.used_at > timestamp - i64::from(limit)));
-        assert_eq!(records.len(), usize::from(limit) + 2);
+        assert_eq!(records.len(), usize::try_from(limit).unwrap() + 2);
         assert!(!clean_at(&store, timestamp).unwrap());
     }
     let dir = store.dir.clone();
@@ -350,7 +350,7 @@ fn clear_cache_removes_ordinary_records_and_orphan_assets() {
         }
     }
     assert_eq!(cache_size_data(&store).unwrap(), 26);
-    assert_eq!(clear_cache_data(&store).unwrap(), 5);
+    assert_eq!(clear_cache_data(&store, false).unwrap(), 5);
     assert_eq!(cache_size_data(&store).unwrap(), 0);
     let mut remaining: Vec<String> = snapshot(&store)
         .unwrap()
@@ -378,9 +378,21 @@ fn clear_cache_removes_ordinary_records_and_orphan_assets() {
     );
     fs::write(assets.join("late-orphan.bin"), b"orphan").unwrap();
     assert_eq!(cache_size_data(&store).unwrap(), 6);
-    assert_eq!(clear_cache_data(&store).unwrap(), 0);
+    assert_eq!(clear_cache_data(&store, false).unwrap(), 0);
     assert_eq!(cache_size_data(&store).unwrap(), 0);
     assert!(!assets.join("late-orphan.bin").exists());
+    assert_eq!(clear_cache_data(&store, true).unwrap(), 4);
+    assert!(snapshot(&store).unwrap().records.is_empty());
+    assert_eq!(fs::read_dir(&assets).unwrap().count(), 0);
+    assert!(source.exists());
+    let conn = store.db.lock().unwrap();
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM groups", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(settings(&conn).unwrap().max_ordinary, 300);
+    drop(conn);
     let dir = store.dir.clone();
     drop(store);
     fs::remove_dir_all(dir).unwrap();

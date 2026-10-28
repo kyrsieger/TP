@@ -270,6 +270,27 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .confirmation-actions button:hover{background:var(--hover)}
 .confirmation-actions .primary{border-color:var(--danger-bg);background:var(--danger-bg);color:var(--on-danger)}
 .confirmation-actions .primary:hover{background:var(--danger-bg-hover);border-color:var(--danger-bg-hover)}
+.data-transfer{display:flex;flex-direction:column;gap:14px;padding:14px;margin-bottom:14px}
+.transfer-copy{min-width:0}
+#settings .data-transfer h4{margin:0 0 6px;font-size:calc(13px * var(--app-font-scale,1));font-weight:500}
+.data-transfer .hint{margin:0;color:var(--text-2);font-size:calc(12px * var(--app-font-scale,1))}
+.transfer-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;gap:8px}
+.cleanup-scope{display:flex;flex-direction:column;gap:10px;border:0;padding:0;margin:16px 0}
+.cleanup-scope label{display:flex;align-items:center;gap:6px;font-size:calc(12px * var(--app-font-scale,1));line-height:1.6;color:var(--text-2)}
+.transfer-actions button{padding:7px 10px;border:1px solid var(--control-border);border-radius:6px;background:var(--control-bg);color:var(--text-1);font:inherit;font-size:calc(12px * var(--app-font-scale,1))}
+.transfer-actions button:hover{background:var(--hover)}
+#data-transfer-dialog details{max-height:160px;overflow:auto;overflow-wrap:anywhere}
+#data-transfer-dialog ul{padding-left:20px}
+#data-transfer-dialog{width:380px;max-width:calc(100% - 32px);max-height:calc(100% - 32px);overflow:auto;margin:auto;padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text-1);box-shadow:0 12px 28px rgba(23,28,40,.14);font-size:calc(12px * var(--app-font-scale,1));line-height:1.6}
+#data-transfer-dialog::backdrop{background:rgba(23,28,40,.18)}
+#data-transfer-dialog h2{margin:0 0 14px;font-size:calc(17px * var(--app-font-scale,1));font-weight:650}
+#data-transfer-dialog p{margin:0 0 10px;color:var(--text-2)}
+#data-transfer-dialog .keep-expired{display:flex;align-items:flex-start;gap:8px;margin:12px 0;color:var(--text-1)}
+.keep-expired input{margin:4px 0 0;accent-color:var(--accent)}
+#data-transfer-dialog .transfer-error{color:var(--danger)}
+#data-transfer-dialog .transfer-working{margin:16px 0 0;color:var(--accent)}
+#data-transfer-dialog[data-restore="false"] .confirmation-actions .primary{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+#data-transfer-dialog[data-restore="false"] .confirmation-actions .primary:hover{border-color:var(--accent-hover);background:var(--accent-hover)}
 #toast{position:absolute;right:16px;bottom:16px;left:16px;z-index:9;padding:10px 12px;border-radius:8px;background:var(--toast-bg);color:var(--toast-text);font-size:calc(12px * var(--app-font-scale,1));opacity:0;pointer-events:none;transition:opacity .18s}
 #toast.visible{opacity:1}
 .resize-edge{position:fixed;z-index:7}

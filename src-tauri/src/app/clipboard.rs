@@ -93,6 +93,7 @@ pub(super) fn apply_record(
     store: tauri::State<Store>,
     id: String,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let (kind, body, files, mode, remove_trailing_newlines): (
         String,
         String,
@@ -184,6 +185,8 @@ pub(super) fn apply_record(
 }
 
 fn ingest(app: &tauri::AppHandle, ctx: &ClipboardContext) -> Result<()> {
+    let store_gate = app.state::<Store>();
+    let _data = store_gate.read_data()?;
     let store = app.state::<Store>();
     let revision = platform::clipboard_revision();
     event("capture_begin", || json!({"revision": revision}));

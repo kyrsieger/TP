@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn ordinary_capacity_supports_import_headroom_above_500() {
+    let mut config = Settings::default();
+    for limit in [1, 500, 700, 65_636, u32::MAX] {
+        config.max_ordinary = limit;
+        config.validate().unwrap();
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.max_ordinary, limit);
+    }
+    config.max_ordinary = 0;
+    assert!(config.validate().is_err());
+}
+
+#[test]
 fn fonts_default_for_old_settings_and_validate_family_names() {
     let mut value = serde_json::to_value(Settings::default()).unwrap();
     value.as_object_mut().unwrap().remove("fontFamily");
@@ -205,7 +219,8 @@ fn font_size_defaults_validates_and_round_trips() {
     for size in [10, 13, 14, 16, 20] {
         config.font_size = size;
         assert!(config.validate().is_ok());
-        let restored: Settings = serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
         assert_eq!(restored.font_size, size);
     }
     for size in [0, 9, 21] {

@@ -19,6 +19,7 @@ pub(super) fn autostart_enabled(app: tauri::AppHandle) -> Result<bool> {
 #[tauri::command]
 pub(super) fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<()> {
     let store = app.state::<Store>();
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     let current = app.autolaunch().is_enabled().map_err(err)?;
     save_autostart(&conn, enabled, current, |value| {
@@ -134,6 +135,7 @@ fn persist_panel_geometry(conn: &Connection, value: PanelGeometry) -> Result<()>
 
 #[tauri::command]
 pub(super) fn save_panel_geometry(store: tauri::State<Store>, value: PanelGeometry) -> Result<()> {
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     persist_panel_geometry(&conn, value)
 }
@@ -169,6 +171,7 @@ pub(super) fn save_settings(
     value: Settings,
     confirmed_count: Option<usize>,
 ) -> Result<SettingsSaveResult> {
+    let _data = store.read_data()?;
     value.validate()?;
     let conn = store.db.lock().map_err(err)?;
     let timestamp = now();

@@ -116,7 +116,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "rename_group") { state.groups.find(group => group.id === args.id).name = args.name; return; }
     if (name === "delete_group") { state.groups = state.groups.filter(group => group.id !== args.id); return; }
     if (name === "get_cache_size") return 1536;
-    if (name === "clear_cache") { const before = state.records.length; state.records = state.records.filter(record => record.favorite || record.groupId !== null); return before - state.records.length; }
+    if (name === "clear_cache") { const before = state.records.length; state.records = args.allRecords ? [] : state.records.filter(record => record.favorite || record.groupId !== null); return before - state.records.length; }
     if (name === "autostart_enabled") return false;
     if (name === "preview_data") return image;
     if (name === "file_text_preview") return "# 文件内容\n中文文本";

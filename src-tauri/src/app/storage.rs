@@ -11,14 +11,37 @@ use std::{
     ffi::OsString,
     fs,
     path::{Component, Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    },
 };
 pub(super) struct Store {
+    /// Transfer operations exclude capture, file workers, previews and mutations.
+    pub(super) data_gate: RwLock<()>,
+    pub(super) recovery_required: AtomicBool,
     pub(super) db: Mutex<Connection>,
     pub(super) dir: PathBuf,
     pub(super) media_lock: Mutex<()>,
     pub(super) paste_target: Mutex<Option<platform::PasteTarget>>,
     pub(super) suppressed_digest: Mutex<Option<(String, Option<u64>)>>,
+}
+
+impl Store {
+    pub(super) fn read_data(&self) -> Result<RwLockReadGuard<'_, ()>> {
+        let guard = self.data_gate.read().map_err(err)?;
+        if self.recovery_required.load(Ordering::SeqCst) {
+            return Err("恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复".into());
+        }
+        Ok(guard)
+    }
+    pub(super) fn write_data(&self) -> Result<RwLockWriteGuard<'_, ()>> {
+        let guard = self.data_gate.write().map_err(err)?;
+        if self.recovery_required.load(Ordering::SeqCst) {
+            return Err("恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复".into());
+        }
+        Ok(guard)
+    }
 }
 
 pub(super) fn settings(conn: &Connection) -> Result<Settings> {
@@ -31,6 +54,7 @@ pub(super) fn settings(conn: &Connection) -> Result<Settings> {
 }
 
 pub(super) fn initialize(dir: PathBuf) -> Result<Store> {
+    super::transfer::recover_interrupted_restore(&dir)?;
     fs::create_dir_all(dir.join("assets")).map_err(err)?;
     let conn = Connection::open(dir.join("history.sqlite3")).map_err(err)?;
     conn.execute_batch("PRAGMA journal_mode=WAL;
@@ -118,6 +142,8 @@ pub(super) fn initialize(dir: PathBuf) -> Result<Store> {
     }
     migrate_flat_file_copies(&conn, &dir)?;
     Ok(Store {
+        data_gate: RwLock::new(()),
+        recovery_required: AtomicBool::new(false),
         db: Mutex::new(conn),
         dir,
         media_lock: Mutex::new(()),
@@ -204,6 +230,7 @@ fn remove_numbered_dirs(files_dir: &Path) {
 }
 
 pub(super) fn snapshot(store: &Store) -> Result<Snapshot> {
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     let mut stmt = conn.prepare("SELECT id,kind,body,files,favorite,pinned_at,group_id,used_at,created_at,expires_at,storage_mode,status,preview,title FROM records ORDER BY pinned_at IS NULL, pinned_at DESC, used_at DESC").map_err(err)?;
     let mut records = stmt

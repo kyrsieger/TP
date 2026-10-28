@@ -11,6 +11,7 @@ import { MenuController } from "./state/menus";
 import { PanelController } from "./state/panel";
 import { SettingsController } from "./state/settings";
 import { ToastController } from "./state/toast";
+import { TransferController } from "./state/transfer";
 import type { PanelSession } from "./domain/types";
 import type { ListHandle } from "./services/viewport";
 import { createPanelKeydown, selectAllKeydown } from "./input/keyboard";
@@ -20,7 +21,7 @@ export function createApplication(list: ListHandle) {
   const toasts = new ToastController(), menus = new MenuController(), focus = new SettingsFocus();
   const toast = toasts.show;
   const history = new PanelController(call, {
-    reset: () => { previews.reset(); menus.reset(); groups.reset(); rename.reset(); settings.reset(); focus.reset(); list.reset(); },
+    reset: () => { previews.reset(); menus.reset(); groups.reset(); rename.reset(); settings.reset(); transfer.reset(); focus.reset(); list.reset(); },
     beforeRefresh: () => { previews.closePreview(); menus.update({ record: null, move: null }); list.cancelScroll(); },
     afterRefresh: () => { previews.reconcile(); rename.reconcile(); if (settings.value.open) void settings.refreshCacheSize(); },
     afterBrowse: () => { rename.cancel(false); previews.reconcile(); },
@@ -34,6 +35,7 @@ export function createApplication(list: ListHandle) {
   const groups = new GroupController(history, call, toast);
   const rename = new RecordRenameController(history, call, toast, id => list.row(id)?.focus({ preventScroll: true }));
   const settings = new SettingsController(history, call, { toast, place: () => geometry.placePanel(), position: () => panelWindow.outerPosition() });
+  const transfer = new TransferController(history, call, toast, task => settings.runDataTask(task));
   const geometry = new GeometryController(history, panelWindow, toast);
   const previews = new PreviewController(history, panelWindow, list, toast);
   function clearSearch(refocus = true) {
@@ -112,7 +114,7 @@ export function createApplication(list: ListHandle) {
       if (!disposed && generation === startGeneration) settings.ready(error);
     } catch (error) { if (!disposed && generation === startGeneration) toast(`启动失败：${String(error)}`); }
   }
-  return { history, groups, rename, settings, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, startRecordRename, start,
-    dispose() { disposed = true; startGeneration++; window.clearTimeout(blurTimer); disposers.splice(0).forEach(dispose => dispose()); geometry.dispose(); settings.reset(); toasts.dispose(); } };
+  return { history, groups, rename, settings, transfer, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, startRecordRename, start,
+    dispose() { disposed = true; startGeneration++; window.clearTimeout(blurTimer); disposers.splice(0).forEach(dispose => dispose()); geometry.dispose(); settings.reset(); transfer.reset(); toasts.dispose(); } };
 }
 export type Application = ReturnType<typeof createApplication>;

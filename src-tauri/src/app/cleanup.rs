@@ -126,12 +126,20 @@ fn cache_size_data(store: &Store) -> Result<u64> {
     Ok(size)
 }
 
-fn clear_cache_data(store: &Store) -> Result<usize> {
+fn clear_cache_data(store: &Store, all_records: bool) -> Result<usize> {
     let conn = store.db.lock().map_err(err)?;
     let assets = store.dir.join("assets");
-    let protected = protected_assets(&conn, &assets)?;
+    let protected = if all_records {
+        HashSet::new()
+    } else {
+        protected_assets(&conn, &assets)?
+    };
     let mut stmt = conn
-        .prepare("SELECT id FROM records WHERE favorite=0 AND group_id IS NULL")
+        .prepare(if all_records {
+            "SELECT id FROM records"
+        } else {
+            "SELECT id FROM records WHERE favorite=0 AND group_id IS NULL"
+        })
         .map_err(err)?;
     let ids = stmt
         .query_map([], |r| r.get::<_, String>(0))
@@ -162,14 +170,20 @@ fn clear_cache_data(store: &Store) -> Result<usize> {
 }
 
 #[tauri::command]
-pub(super) fn clear_cache(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<usize> {
-    let result = clear_cache_data(&store);
+pub(super) fn clear_cache(
+    app: tauri::AppHandle,
+    store: tauri::State<Store>,
+    all_records: bool,
+) -> Result<usize> {
+    let _data = store.write_data()?;
+    let result = clear_cache_data(&store, all_records);
     changed(&app);
     result
 }
 
 #[tauri::command]
 pub(super) fn get_cache_size(store: tauri::State<Store>) -> Result<u64> {
+    let _data = store.read_data()?;
     cache_size_data(&store)
 }
 

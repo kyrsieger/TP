@@ -24,6 +24,8 @@ export function createPanelKeydown(context: KeyboardContext) {
       return;
     if (document.querySelector<HTMLDialogElement>("#settings-cleanup-confirmation")?.open)
       return;
+    if (document.querySelector<HTMLDialogElement>("#data-transfer-dialog")?.open)
+      return;
     // 记录标题编辑保留输入法、数字、方向键和 Ctrl 组合键的文字编辑行为。
     if ((event.target as HTMLElement).matches(".record-rename-input")) return;
     for (const menuId of ["record", "group"] as const) {

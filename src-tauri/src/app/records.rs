@@ -14,6 +14,7 @@ pub(super) fn rename_record(
     id: String,
     title: String,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     set_title(&conn, &id, &title)?;
     drop(conn);
@@ -44,6 +45,7 @@ pub(super) fn add_group(
     store: tauri::State<Store>,
     name: String,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let name = name.trim();
     if name.is_empty() || name == "默认" || name == "收藏" || name.chars().count() > 40 {
         return Err("分组名称无效".into());
@@ -67,6 +69,7 @@ pub(super) fn reorder_groups(
     store: tauri::State<Store>,
     ids: Vec<i64>,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let mut conn = store.db.lock().map_err(err)?;
     set_group_order(&mut conn, &ids)?;
     drop(conn);
@@ -107,6 +110,7 @@ pub(super) fn rename_group(
     id: i64,
     name: String,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let name = name.trim();
     if name.is_empty() || name == "默认" || name == "收藏" || name.chars().count() > 40 {
         return Err("分组名称无效".into());
@@ -130,6 +134,7 @@ pub(super) fn delete_group(
     store: tauri::State<Store>,
     id: i64,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     store
         .db
         .lock()
@@ -148,6 +153,7 @@ pub(super) fn set_favorite(
     id: String,
     favorite: bool,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     store
         .db
         .lock()
@@ -169,6 +175,7 @@ pub(super) fn set_record_pinned(
     id: String,
     pinned: bool,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     set_pinned(&conn, &id, pinned)?;
     drop(conn);
@@ -192,6 +199,7 @@ pub(super) fn move_group(
     id: String,
     group_id: Option<i64>,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     store
         .db
         .lock()
@@ -212,6 +220,7 @@ pub(super) fn delete_record(
     store: tauri::State<Store>,
     id: String,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     let conn = store.db.lock().map_err(err)?;
     remove_record(&conn, &store.dir, &id)?;
     changed(&app);
@@ -270,6 +279,7 @@ pub(super) fn batch_records(
     ids: Vec<String>,
     operation: BatchOperation,
 ) -> Result<()> {
+    let _data = store.read_data()?;
     if ids.is_empty() {
         return Ok(());
     }

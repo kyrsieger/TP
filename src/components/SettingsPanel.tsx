@@ -11,6 +11,8 @@ import { useObservable } from "./use-observable";
 import { ThemeSetting } from "./ThemeSetting";
 import { FontSetting } from "./FontSetting";
 import { regularFontStyle } from "../domain/fonts";
+import { DataTransfer } from "./DataTransfer";
+import type { TransferController } from "../state/transfer";
 
 function NumberSetting({ id, label, value, min = 1, max, revision, save, toast }: { id: string; label: string; value: number; min?: number; max: number; revision: number; save: (value: number) => void; toast: (message: string) => void }) {
   const [draft, setDraft] = useState(String(value));
@@ -41,7 +43,7 @@ function NumberSetting({ id, label, value, min = 1, max, revision, save, toast }
 const retentionOptions = [[1, "24 小时"], [3, "3 天"], [5, "5 天"], [7, "7 天"], [30, "1 个月"]] as const;
 const positionOptions = [["left", "左下角"], ["right", "右下角"], ["center", "下方居中"]] as const;
 
-export function SettingsPanel({ controller, history, menus, toast }: { controller: SettingsController; history: PanelController; menus: MenuController; toast: (message: string) => void }) {
+export function SettingsPanel({ controller, history, menus, toast, transfer }: { controller: SettingsController; history: PanelController; menus: MenuController; toast: (message: string) => void; transfer: TransferController }) {
   const state = useObservable(controller), panel = useObservable(history), menu = useObservable(menus);
   const [draft, setDraft] = useState<Settings | null>(panel.settings);
   const [savingWhitespace, setSavingWhitespace] = useState(false);
@@ -97,7 +99,7 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     </section>
     <section className="settings-group" id="settings-records" aria-label="记录">
       <div className="settings-card">
-    <div className="settings-row"><span className="settings-copy">普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" label="普通记录数量上限" value={s.maxOrdinary} max={500} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></div>
+    <div className="settings-row"><span className="settings-copy">普通记录数量上限<span className="setting-count">{ordinaryCount}/{panel.settings!.maxOrdinary}</span></span><NumberSetting id="max-ordinary" label="普通记录数量上限" value={s.maxOrdinary} max={4294967295} revision={state.revision} save={maxOrdinary => save({ maxOrdinary })} toast={toast} /></div>
     <div className="setting-field"><span className="setting-label">普通记录保留时间</span><div className="setting-select retention-select">
       <button id="retention-trigger" type="button" aria-haspopup="listbox" aria-expanded={menu.retention} onClick={() => menus.update({ retention: !menu.retention })}><span className="retention-value">{retentionOptions.find(([value]) => value === s.retentionDays)?.[1] ?? `${s.retentionDays} 天`}</span><Icon name="chevron" /></button>
       <div id="retention-menu" role="listbox" hidden={!menu.retention}>{retentionOptions.map(([value, label]) => <button key={value} type="button" role="option" data-retention={value} aria-selected={s.retentionDays === value}
@@ -128,9 +130,10 @@ export function SettingsPanel({ controller, history, menus, toast }: { controlle
     <p className="settings-group-note">拖拽面板边缘调整大小；缩放光标出现时，双击左右边缘恢复默认宽度，双击上下边缘恢复默认高度，双击角落恢复两维。大小会在下次打开时恢复。</p>
     </section>
     <section className="settings-group" id="settings-storage" aria-label="存储">
-    <section className="settings-card cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h4 id="cache-cleanup-title">清理缓存</h4>
-      <p className="hint">删除所有普通记录、对应的本地文件及孤立附件。收藏和自建分组中的记录会保留。当前可清理缓存大小：<span id="cache-size">{state.cacheSizeText}</span>。此操作无法撤销。</p></div>
-      <button id="clear-cache" className="primary" disabled={state.clearingCache} onClick={() => { void controller.clearCache(); }}>{state.clearingCache ? "清理中…" : "清理缓存"}</button></section>
+    <DataTransfer controller={transfer} />
+    <section className="settings-card cache-cleanup" aria-labelledby="cache-cleanup-title"><div className="cache-cleanup-copy"><h4 id="cache-cleanup-title">清空数据</h4>
+      <p className="hint">可选择清空普通记录或全部记录，以及对应的本地文件和孤立附件。普通记录可清理大小：<span id="cache-size">{state.cacheSizeText}</span>。此操作无法撤销。</p></div>
+      <button id="clear-cache" className="primary" disabled={state.clearingCache} onClick={() => { void controller.clearCache(); }}>{state.clearingCache ? "清空中…" : "清空"}</button></section>
     <p className="settings-card app-version"><span>当前版本</span><span id="app-version">{version}</span></p>
     </section>
     <section className="settings-group" id="settings-shortcut-reference" aria-label="快捷键说明">

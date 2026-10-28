@@ -11,7 +11,7 @@ pub(super) struct Settings {
     pub(super) font_size: u16,
     #[serde(default)]
     pub(super) font_style: super::fonts::FontStyle,
-    pub(super) max_ordinary: u16,
+    pub(super) max_ordinary: u32,
     pub(super) retention_days: u16,
     pub(super) sensitive_seconds: u32,
     pub(super) shortcut: String,
@@ -179,7 +179,7 @@ impl Settings {
         {
             return Err("重命名快捷键无效或与其他操作冲突".into());
         }
-        if !(1..=500).contains(&self.max_ordinary)
+        if self.max_ordinary == 0
             || ![1, 3, 5, 7, 30].contains(&self.retention_days)
             || self.sensitive_seconds == 0
             || !["fixed", "cursor"].contains(&self.position_mode.as_str())

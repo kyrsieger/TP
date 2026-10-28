@@ -19,6 +19,7 @@ mod session;
 mod settings;
 mod storage;
 mod targets;
+mod transfer;
 mod webview;
 
 #[cfg(target_os = "macos")]
@@ -33,6 +34,7 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     tauri::Builder::default()
         .manage(PanelLifecycle::default())
+        .manage(transfer::TransferSessions::default())
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("store")
                 .setup(|app, _| {
@@ -121,6 +123,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             storage::get_state,
+            transfer::export_data,
+            transfer::inspect_backup,
+            transfer::restore_backup,
+            transfer::discard_backup,
             files::copy_record_paths,
             files::open_record_directory,
             files::save_record_files,

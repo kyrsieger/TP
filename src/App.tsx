@@ -15,6 +15,7 @@ import type { ListHandle } from "./services/viewport";
 import { PopupMenus } from "./components/PopupMenus";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { CleanupConfirmation } from "./components/CleanupConfirmation";
+import { TransferDialog } from "./components/DataTransfer";
 import { useObservable } from "./components/use-observable";
 
 export function App() {
@@ -25,6 +26,7 @@ export function App() {
     scrollBackToTop: () => listRef.current?.scrollBackToTop(), cancelScroll: () => listRef.current?.cancelScroll(),
   }));
   const panel = useObservable(app.history), settings = useObservable(app.settings), toast = useObservable(app.toasts);
+  const transfer = useObservable(app.transfer);
   const [backToTop, setBackToTop] = useState(false);
   const theme = settings.themeDraft ?? panel.settings?.theme ?? defaultTheme;
   useLayoutEffect(() => { applyTheme(theme); void emit("theme-changed", theme).catch(() => {}); }, [theme]);
@@ -56,7 +58,7 @@ export function App() {
     app.previews.closePreview(); app.menus.update({ record: { id: record.id, x: event.clientX, y: event.clientY, scrollTop: event.currentTarget.scrollTop } });
   };
   return <>
-    <div className="shell" onPointerDownCapture={event => {
+    <div className="shell" inert={transfer.busy} data-transfer-busy={transfer.busy} onPointerDownCapture={event => {
       const element = event.target as HTMLElement, patch: Partial<typeof app.menus.value> = {};
       if (!element.closest("#record-menu")) patch.record = null;
       if (!element.closest("#group-menu")) patch.group = null;
@@ -81,9 +83,10 @@ export function App() {
       <GroupTabs history={app.history} groups={app.groups} backToTop={backToTop} selectGroup={app.selectGroup} scrollBackToTop={() => listRef.current?.scrollBackToTop()} contextMenu={groupContextMenu} />
       <RecordList history={app.history} rename={app.rename} previews={app.previews} menus={app.menus} listRef={listRef} onBackToTop={setBackToTop} onContextMenu={recordContextMenu} />
       <PopupMenus menus={app.menus} history={app.history} groups={app.groups} toast={app.toasts.show} renameRecord={app.startRecordRename} />
-      <section id="settings" hidden={!settings.open}>{panel.active && settings.open && <SettingsPanel controller={app.settings} history={app.history} menus={app.menus} toast={app.toasts.show} />}</section>
+      <section id="settings" hidden={!settings.open}>{panel.active && settings.open && <SettingsPanel controller={app.settings} history={app.history} menus={app.menus} toast={app.toasts.show} transfer={app.transfer} />}</section>
       <div id="toast" role="status" className={toast.visible ? "visible" : ""}>{toast.message}</div>
     </div>
     {(settings.confirmationCount !== null || settings.cacheConfirmationOpen) && <CleanupConfirmation count={settings.confirmationCount} controller={app.settings} />}
+    {transfer.mode && <TransferDialog controller={app.transfer} />}
   </>;
 }
