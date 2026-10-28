@@ -15,7 +15,7 @@
 
 **剪贴板内容可能包含密码、令牌和私人文件。TP 在本机保存数据，但不加密，不能作为密码保险箱使用。**
 
-- 数据目录包含 SQLite 数据库、图片和部分文件副本。默认位置为 Windows 的 `%APPDATA%\com.tp.clipboard\`、macOS 的 `~/Library/Application Support/com.tp.clipboard/`；实际位置以系统返回的应用数据目录为准。
+- 数据目录包含 SQLite 数据库、图片和部分文件副本。默认位置为 Windows 的 `%APPDATA%\TP\`、macOS 的 `~/Library/Application Support/TP/`；实际位置以系统返回的应用数据目录为准。
 - 普通记录默认保留 300 条、7 天，保留时间从最后使用起算。收藏或加入自建分组的记录不受自动清理约束，需要手动删除。
 - 从 1Password **桌面应用**识别出的普通记录默认 90 秒后删除；这不代表能识别所有密码或所有密码管理器。收藏或移入自建分组后，也不再自动删除。
 - 到期清理删除 TP 中的记录及其附件，不会清空系统剪贴板，也没有实现安全擦除。
@@ -84,7 +84,7 @@ npm run tauri -- build --bundles app,dmg -- --locked
 
 默认输出位于 `src-tauri/target/release/bundle/` 下的 `nsis/`、`msi/`、`macos/` 或 `dmg/` 子目录。显式指定 Rust target 或 `CARGO_TARGET_DIR` 时，输出路径会相应变化。`npm run build` 只构建前端，不生成桌面程序或安装包。
 
-应用、主程序和安装包名称为 TP，npm 与 Rust 包名为 `tp`，应用标识为 `com.tp.clipboard`。升级时保持应用标识，以沿用已有安装身份和本地数据目录。
+应用、主程序和安装包名称为 TP，npm 与 Rust 包名为 `tp`，应用标识为 `TP`。后续升级保持该标识稳定；旧版本数据目录的迁移规则见[应用标识和数据目录决策](docs/adr/0009-app-identity-and-data-directory.md)。
 
 ## 开发方式与贡献
 
