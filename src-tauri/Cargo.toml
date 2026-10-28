@@ -1,6 +1,6 @@
 [package]
 name = "tp"
-version = "1.0.21"
+version = "1.0.22"
 description = "Local clipboard history for Windows and macOS"
 license = "MIT"
 repository = "https://github.com/kyrsieger/TP"
