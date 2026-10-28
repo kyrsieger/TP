@@ -3,7 +3,7 @@
   "productName": "TP",
   "mainBinaryName": "TP",
   "version": "1.0.21",
-  "identifier": "com.tp.clipboard",
+  "identifier": "TP",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
