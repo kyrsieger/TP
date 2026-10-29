@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { setTimeout as sleep } from 'node:timers/promises';
 
 export function versionFromTag(tag) {
   if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
@@ -45,22 +44,39 @@ export function selectCiRun(runs, sha) {
     .sort((a, b) => b.id - a.id)[0];
 }
 
-export async function waitForCi({ listRuns, sha, timeoutMs = 60 * 60 * 1000,
-  intervalMs = 30 * 1000, now = Date.now, pause = sleep, log = console.log }) {
-  const deadline = now() + timeoutMs;
-  let previous;
-  while (now() < deadline) {
-    const run = selectCiRun(await listRuns(), sha);
-    const state = run ? `${run.id}/${run.run_attempt}: ${run.status} (${run.conclusion ?? 'pending'})` : 'No matching main push CI yet';
-    if (state !== previous) { log(state); previous = state; }
-    if (run?.status === 'completed') {
-      if (run.conclusion !== 'success') throw new Error(`Main CI did not succeed: ${run.html_url} (${run.conclusion})`);
-      log(`Main CI passed: ${run.html_url}`);
-      return run;
-    }
-    await pause(Math.min(intervalMs, Math.max(0, deadline - now())));
-  }
-  throw new Error(`Timed out waiting for main push CI for ${sha}. Check Actions and rerun this release workflow.`);
+export function releaseState({ tag, sha, runs, releases }) {
+  if (releases.some(release => release.tag_name === tag && !release.draft)) return 'published';
+  const run = selectCiRun(runs, sha);
+  return run?.status === 'completed' && run.conclusion === 'success' ? 'ready' : 'ci-not-successful';
+}
+
+// Both events converge here. A tag arriving before CI exits immediately; the
+// later CI completion event will discover it, without keeping a runner alive.
+export function discoverCandidates({ eventName, event, repo, resolveTag, tagsAt,
+  assertMainAncestor, listRuns, listReleases }) {
+  let sha, tags;
+  if (eventName === 'push') {
+    if (event.deleted || !event.ref?.startsWith('refs/tags/')) return [];
+    const tag = event.ref.slice('refs/tags/'.length);
+    versionFromTag(tag);
+    sha = resolveTag(tag);
+    tags = [tag];
+  } else if (eventName === 'workflow_run') {
+    const run = event.workflow_run;
+    if (run?.event !== 'push' || run.head_branch !== 'main' || run.status !== 'completed' ||
+      run.conclusion !== 'success' || run.head_repository?.full_name !== repo) return [];
+    sha = run.head_sha;
+    if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid CI commit');
+    tags = tagsAt(sha).filter(tag => {
+      try { versionFromTag(tag); return true; } catch { return false; }
+    });
+  } else throw new Error(`Unsupported release event: ${eventName}`);
+  if (!tags.length) return [];
+  assertMainAncestor(sha);
+  const runs = listRuns(sha);
+  const releases = listReleases();
+  return tags.filter(tag => releaseState({ tag, sha, runs, releases }) === 'ready')
+    .map(tag => ({ tag, sha }));
 }
 
 function command(program, args) {
@@ -69,16 +85,52 @@ function command(program, args) {
 
 function ghJson(args) { return JSON.parse(command('gh', args)); }
 
+function listCiRuns(repo, sha) {
+  const query = new URLSearchParams({ branch: 'main', event: 'push', head_sha: sha, per_page: '100' });
+  return ghJson(['api', '--paginate', '--slurp',
+    `repos/${repo}/actions/workflows/ci.yml/runs?${query}`]).flatMap(page => page.workflow_runs);
+}
+
+function listReleases(repo) {
+  // API failures must fail closed, never masquerade as an unpublished version.
+  return ghJson(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat();
+}
+
+function output(name, value) {
+  if (!process.env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT is required');
+  appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+}
+
+function discover() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required');
+  const candidates = discoverCandidates({
+    eventName: process.env.GITHUB_EVENT_NAME,
+    event: JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')), repo,
+    resolveTag: tag => command('git', ['rev-parse', `refs/tags/${tag}^{commit}`]),
+    tagsAt: sha => command('git', ['tag', '--points-at', sha]).split(/\r?\n/).filter(Boolean),
+    assertMainAncestor: sha => command('git', ['merge-base', '--is-ancestor', sha, 'origin/main']),
+    listRuns: sha => listCiRuns(repo, sha), listReleases: () => listReleases(repo),
+  });
+  output('candidates', JSON.stringify(candidates));
+  output('ready', candidates.length > 0);
+  console.log(candidates.length ? `Ready: ${candidates.map(item => item.tag).join(', ')}` :
+    'No unpublished version with successful main CI; exiting without waiting.');
+}
+
+export function validateCheckout(sha, expectedSha, tagSha) {
+  if (sha !== expectedSha) throw new Error('Checked-out commit does not match the selected release commit');
+  if (tagSha !== sha) throw new Error('Checked-out commit does not match the version tag');
+}
+
 function context() {
-  const tag = process.env.GITHUB_REF_NAME;
+  const tag = process.env.RELEASE_TAG;
   const version = versionFromTag(tag);
   const repo = process.env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is required');
   const sha = command('git', ['rev-parse', 'HEAD']);
   // Peel annotated tags as well as lightweight tags; never package another commit.
-  if (command('git', ['rev-parse', `refs/tags/${tag}^{commit}`]) !== sha) {
-    throw new Error('Checked-out commit does not match the version tag');
-  }
+  validateCheckout(sha, process.env.RELEASE_SHA, command('git', ['rev-parse', `refs/tags/${tag}^{commit}`]));
   return { tag, version, repo, sha };
 }
 
@@ -113,8 +165,14 @@ export function publishRelease({ tag, repo, paths, notesPath, releases, execute 
 }
 
 async function main(mode) {
+  if (mode === 'discover') return discover();
   const { tag, version, repo, sha } = context();
-  if (mode === 'prepare') {
+  if (mode === 'ready') {
+    const state = releaseState({ tag, sha, runs: listCiRuns(repo, sha), releases: listReleases(repo) });
+    if (state === 'ci-not-successful') throw new Error(`Main push CI has not succeeded for ${sha}; not waiting`);
+    output('ready', state === 'ready');
+    console.log(state === 'published' ? `${tag} is already published; skipping build` : `Ready to build ${tag}`);
+  } else if (mode === 'prepare') {
     command('git', ['merge-base', '--is-ancestor', sha, 'origin/main']);
     const json = path => JSON.parse(readFileSync(path, 'utf8'));
     validateVersions(version, json('package.json'), json('package-lock.json'),
@@ -122,11 +180,10 @@ async function main(mode) {
       readFileSync('src-tauri/Cargo.lock', 'utf8'));
     writeFileSync(releaseNotesPath(), extractNotes(readFileSync('CHANGELOG.md', 'utf8'), version));
     console.log(`Prepared ${tag} at ${sha}; release notes extracted from CHANGELOG.md`);
-  } else if (mode === 'wait') {
-    const query = new URLSearchParams({ branch: 'main', event: 'push', head_sha: sha, per_page: '100' });
-    await waitForCi({ sha, listRuns: async () => ghJson(['api',
-      `repos/${repo}/actions/workflows/ci.yml/runs?${query}`]).workflow_runs });
   } else if (mode === 'publish') {
+    if (releaseState({ tag, sha, runs: listCiRuns(repo, sha), releases: [] }) !== 'ready') {
+      throw new Error(`Main push CI no longer successful for ${sha}; refusing to publish`);
+    }
     const paths = ['nsis', 'msi'].map(kind => {
       const dir = join('src-tauri', 'target', 'release', 'bundle', kind);
       const extension = kind === 'nsis' ? '.exe' : '.msi';
@@ -136,7 +193,7 @@ async function main(mode) {
     });
     // Listing releases lets authentication/network errors fail instead of being
     // mistaken for a missing release. Pagination also finds older drafts.
-    const releases = ghJson(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]).flat();
+    const releases = listReleases(repo);
     publishRelease({ tag, repo, paths, notesPath: releaseNotesPath(), releases });
     console.log(`Release published: ${tag}`);
   } else throw new Error(`Unknown release operation: ${mode}`);

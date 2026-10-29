@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { extractNotes, publishRelease, selectCiRun, validateVersions, versionFromTag, waitForCi } from '../scripts/release.mjs';
+import { extractNotes, publishRelease, selectCiRun, validateVersions, versionFromTag, discoverCandidates, releaseState, validateCheckout } from '../scripts/release.mjs';
 
 test('release accepts stable version tags and rejects malformed or prerelease tags', () => {
   assert.equal(versionFromTag('v1.0.22'), '1.0.22');
@@ -50,36 +50,84 @@ test('release ignores PR, manual, other branch and other commit results; chooses
   assert.equal(selectCiRun([run({ head_sha: 'def' })], 'abc'), undefined);
 });
 
-function clock() {
-  let time = 0;
-  return { now: () => time, pause: async ms => { time += ms; }, timeoutMs: 100, intervalMs: 10, log: () => {} };
+const sha = 'a'.repeat(40);
+const tag = 'v1.0.22';
+const repo = 'owner/tp';
+test('checkout must match both the selected CI commit and the peeled version tag', () => {
+  validateCheckout(sha, sha, sha);
+  assert.throws(() => validateCheckout('b'.repeat(40), sha, sha), /selected release commit/);
+  assert.throws(() => validateCheckout(sha, sha, 'b'.repeat(40)), /version tag/);
+  assert.throws(() => validateCheckout(sha, undefined, sha), /selected release commit/);
+});
+const completedEvent = overrides => ({ workflow_run: { ...run({ head_sha: sha }),
+  head_repository: { full_name: repo }, ...overrides } });
+function discovery(overrides = {}) {
+  return { eventName: 'push', event: { ref: `refs/tags/${tag}` }, repo,
+    resolveTag: value => { assert.equal(value, tag); return sha; },
+    tagsAt: value => { assert.equal(value, sha); return [tag]; },
+    assertMainAncestor: value => assert.equal(value, sha),
+    listRuns: value => { assert.equal(value, sha); return [run({ head_sha: sha })]; },
+    listReleases: () => [], ...overrides };
 }
 
-test('release waits for a run to appear and succeed without rerunning tests', async () => {
-  const responses = [[], [run({ status: 'queued', conclusion: null })],
-    [run({ status: 'in_progress', conclusion: null })], [run()]];
+test('tag before CI returns immediately; completion event discovers the same version', () => {
   let queries = 0;
-  const result = await waitForCi({ ...clock(), sha: 'abc', listRuns: async () => { queries++; return responses.shift(); } });
-  assert.equal(result.conclusion, 'success');
-  assert.equal(queries, 4);
+  assert.deepEqual(discoverCandidates(discovery({ listRuns: () => { queries++; return []; } })), []);
+  assert.equal(queries, 1);
+  assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent() })), [{ tag, sha }]);
 });
 
-test('release proceeds immediately when the matching CI already passed', async () => {
-  await waitForCi({ ...clock(), sha: 'abc', listRuns: async () => [run()],
-    pause: async () => assert.fail('should not wait') });
+test('CI before tag does nothing; later tag push discovers the ready version', () => {
+  assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent(),
+    tagsAt: () => [], listRuns: () => assert.fail('no need to query without a tag') })), []);
+  assert.deepEqual(discoverCandidates(discovery()), [{ tag, sha }]);
 });
 
-test('release stops on failed, cancelled, skipped or timed out CI', async () => {
-  for (const conclusion of ['failure', 'cancelled', 'skipped', 'timed_out', 'neutral']) {
-    await assert.rejects(waitForCi({ ...clock(), sha: 'abc', listRuns: async () => [run({ conclusion })] }), /did not succeed/);
+test('no release for missing, running, failed, cancelled or unrelated CI; retry can succeed', () => {
+  for (const runs of [[], [run()], [run({ head_sha: sha, event: 'pull_request' })],
+    [run({ head_sha: sha, event: 'workflow_dispatch' })],
+    ...['failure', 'cancelled', 'timed_out', 'skipped', 'neutral'].map(conclusion => [run({ head_sha: sha, conclusion })]),
+    [run({ head_sha: sha, status: 'in_progress', conclusion: null })]]) {
+    assert.deepEqual(discoverCandidates(discovery({ listRuns: () => runs })), []);
+  }
+  // A stale success event cannot override a newer run, or a rerun in progress.
+  assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent(),
+    listRuns: () => [run({ head_sha: sha }), run({ id: 11, head_sha: sha, conclusion: 'failure' })] })), []);
+  assert.deepEqual(discoverCandidates(discovery({ listRuns: () => [run({ head_sha: sha, run_attempt: 2,
+    status: 'in_progress', conclusion: null })] })), []);
+  assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent({ run_attempt: 2 }) })), [{ tag, sha }]);
+});
+
+test('completion events must come from successful main push CI in this repository', () => {
+  for (const overrides of [{ event: 'pull_request' }, { event: 'workflow_dispatch' },
+    { head_branch: 'feature' }, { conclusion: 'failure' }, { status: 'in_progress' },
+    { head_repository: { full_name: 'someone/fork' } }]) {
+    assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent(overrides),
+      tagsAt: () => assert.fail('must not inspect tags for unrelated events') })), []);
   }
 });
 
-test('release times out on missing or unfinished CI, and propagates API errors', async () => {
-  for (const runs of [[], [run({ status: 'in_progress', conclusion: null })]]) {
-    await assert.rejects(waitForCi({ ...clock(), sha: 'abc', listRuns: async () => runs }), /Timed out/);
+test('published versions are skipped after duplicate events, drafts remain retryable', () => {
+  for (const eventName of ['push', 'workflow_run']) {
+    const options = discovery({ eventName, event: eventName === 'push' ? { ref: `refs/tags/${tag}` } : completedEvent() });
+    assert.deepEqual(discoverCandidates({ ...options, listReleases: () => [{ tag_name: tag, draft: false }] }), []);
+    assert.deepEqual(discoverCandidates({ ...options, listReleases: () => [{ tag_name: tag, draft: true }] }), [{ tag, sha }]);
   }
-  await assert.rejects(waitForCi({ ...clock(), sha: 'abc', listRuns: async () => { throw new Error('API denied'); } }), /API denied/);
+  // Second queued job checks this again after the first job publishes.
+  assert.equal(releaseState({ tag, sha, runs: [run({ head_sha: sha })], releases: [{ tag_name: tag, draft: false }] }), 'published');
+});
+
+test('only stable tags are selected, and deleted tag pushes are ignored', () => {
+  assert.deepEqual(discoverCandidates(discovery({ event: { ref: `refs/tags/${tag}`, deleted: true } })), []);
+  assert.throws(() => discoverCandidates(discovery({ event: { ref: 'refs/tags/v1.0.22-beta.1' } })), /stable version tag/);
+  assert.deepEqual(discoverCandidates(discovery({ eventName: 'workflow_run', event: completedEvent(),
+    tagsAt: () => ['nightly', 'v1.0.22-beta.1', tag] })), [{ tag, sha }]);
+});
+
+test('ancestry and API failures stop discovery instead of releasing without evidence', () => {
+  for (const dependency of ['assertMainAncestor', 'listRuns', 'listReleases']) {
+    assert.throws(() => discoverCandidates(discovery({ [dependency]: () => { throw new Error('blocked'); } })), /blocked/);
+  }
 });
 
 const releaseOptions = { tag: 'v1.0.22', repo: 'owner/tp', paths: ['setup.exe', 'setup.msi'], notesPath: 'notes with spaces.md' };

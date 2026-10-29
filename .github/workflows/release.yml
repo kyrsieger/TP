@@ -3,42 +3,106 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  release:
-    name: Wait for CI, package Windows and publish release
-    runs-on: windows-latest
-    timeout-minutes: 120
+  discover:
+    name: Find versions with successful main CI
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       actions: read
-      contents: write
+      contents: read
+    outputs:
+      candidates: ${{ steps.discover.outputs.candidates }}
+      ready: ${{ steps.discover.outputs.ready }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - id: discover
+        run: node scripts/release.mjs discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  release:
+    name: Package and publish ${{ matrix.tag }}
+    needs: discover
+    if: needs.discover.outputs.ready == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.candidates) }}
+    concurrency:
+      group: release-${{ matrix.tag }}
+      cancel-in-progress: false
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: write
+    defaults:
+      run:
+        working-directory: source
+    env:
+      RELEASE_TAG: ${{ matrix.tag }}
+      RELEASE_SHA: ${{ matrix.sha }}
+    steps:
+      # Use current orchestration code even when retrying an older version tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.sha }}
+          path: source
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
-      - name: Validate version, main ancestry and CHANGELOG
-        run: node scripts/release.mjs prepare
-      - name: Wait for this commit's main CI (up to 60 minutes)
-        run: node scripts/release.mjs wait
+          cache-dependency-path: source/package-lock.json
+      - name: Recheck CI and publication after acquiring the tag lock
+        id: ready
+        run: node ../automation/scripts/release.mjs ready
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Validate version, main ancestry and CHANGELOG
+        if: steps.ready.outputs.ready == 'true'
+        run: node ../automation/scripts/release.mjs prepare
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        if: steps.ready.outputs.ready == 'true'
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          workspaces: source/src-tauri -> target
+          shared-key: windows-release
       - run: npm ci
+        if: steps.ready.outputs.ready == 'true'
       - name: Build Windows installers
+        if: steps.ready.outputs.ready == 'true'
         run: npm run tauri -- build --ci --bundles nsis,msi -- --locked
       - name: Upload Windows installers and publish Release from CHANGELOG
-        run: node scripts/release.mjs publish
+        if: steps.ready.outputs.ready == 'true'
+        run: node ../automation/scripts/release.mjs publish
         env:
           GH_TOKEN: ${{ github.token }}
