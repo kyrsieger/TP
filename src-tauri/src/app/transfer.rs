@@ -621,6 +621,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
 
 fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
     let mut archive = ZipArchive::new(File::open(source).map_err(err)?).map_err(err)?;
+    archive.validate_header_consistency().map_err(err)?;
     let manifest = {
         let mut entry = archive
             .by_name("records.json")
@@ -652,7 +653,8 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
         .collect();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(err)?;
-        if !seen.insert(entry.name().to_lowercase()) {
+        let entry_name = entry.name().map_err(err)?;
+        if !seen.insert(entry_name.to_lowercase()) {
             return Err("导出包包含重复路径".into());
         }
         if entry
@@ -662,17 +664,17 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
         {
             return Err("导出包包含不安全路径或链接".into());
         }
-        if matches!(entry.name(), "records.json" | "index.html") {
+        if matches!(entry_name.as_ref(), "records.json" | "index.html") {
             continue;
         }
-        let name = entry.name().trim_end_matches('/');
+        let name = entry_name.trim_end_matches('/');
         let asset = expected.get(name).ok_or("导出包附件未列入清单")?;
         let expected_name = if asset.directory {
             format!("{}/", asset.path)
         } else {
             asset.path.clone()
         };
-        if entry.name() != expected_name {
+        if entry_name != expected_name {
             return Err("导出包附件名称不规范".into());
         }
         if entry.is_dir() != asset.directory || entry.size() != asset.size {

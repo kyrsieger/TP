@@ -29,6 +29,29 @@ fn restore(target: &Store, source: &Path, keep: bool, timestamp: i64) -> Restore
 }
 
 #[test]
+fn import_rejects_conflicting_local_and_central_zip_filenames() {
+    let source = test_store();
+    let target = test_store();
+    record(&source, "new", "text", "新数据", now());
+    record(&target, "old", "text", "原数据", now());
+    let path = pack(&source);
+    assert!(prepare_archive(&target.dir, &path).is_ok());
+
+    let mut bytes = fs::read(&path).unwrap();
+    // Keep the central directory unchanged but disguise records.json in its
+    // local header. Both names have the same length, preserving ZIP offsets.
+    let header = bytes
+        .windows(30 + b"records.json".len())
+        .position(|window| window.starts_with(b"PK\x03\x04") && &window[30..] == b"records.json")
+        .unwrap();
+    bytes[header + 30..header + 30 + 12].copy_from_slice(b"payload.json");
+    fs::write(&path, bytes).unwrap();
+
+    assert!(prepare_archive(&target.dir, &path).is_err());
+    assert_eq!(snapshot(&target).unwrap().records[0].body, "原数据");
+}
+
+#[test]
 fn roundtrip_preserves_originals_organization_and_assets_without_settings_or_sensitive_data() {
     let source = test_store();
     let target = test_store();
