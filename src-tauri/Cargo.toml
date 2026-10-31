@@ -41,7 +41,7 @@ time = { version = "0.3", features = ["formatting"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_DirectWrite", "Win32_System_Com", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_Graphics_DirectWrite", "Win32_System_Com", "Win32_System_Registry", "Win32_System_LibraryLoader", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
 webview2-com = "0.38.2"
 clipboard-win = "5.4.1"
 
@@ -49,7 +49,7 @@ clipboard-win = "5.4.1"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["block2"] }
-objc2-foundation = "0.3"
+objc2-foundation = { version = "0.3", features = ["block2"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
 
 

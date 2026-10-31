@@ -1,11 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 
-type Label = "preview" | "large-preview";
+type Label = "preview";
 type WindowState = { opening: Promise<void> | null; releasing: Promise<void> | null; timer?: number };
 const windows: Record<Label, WindowState> = {
   preview: { opening: null, releasing: null },
-  "large-preview": { opening: null, releasing: null },
 };
 
 function cancelRelease(label: Label) {
@@ -59,5 +58,5 @@ export async function initPreviewWindows() {
         .finally(() => { state.releasing = null; });
     }, 30000);
   });
-  return () => { used(); hidden(); cancelRelease("preview"); cancelRelease("large-preview"); };
+  return () => { used(); hidden(); cancelRelease("preview"); };
 }

@@ -9,6 +9,7 @@ mod fonts;
 mod media;
 mod migration;
 mod model;
+mod native_preview;
 mod panel;
 mod panel_geometry;
 mod panel_runtime;
@@ -34,6 +35,7 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     tauri::Builder::default()
         .manage(PanelLifecycle::default())
+        .manage(native_preview::Requests::default())
         .manage(transfer::TransferSessions::default())
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("store")
@@ -103,7 +105,7 @@ pub fn run() {
                 panel_runtime::forget_panel();
             }
             if matches!(event, tauri::WindowEvent::Destroyed)
-                && matches!(window.label(), "preview" | "large-preview")
+                && window.label() == "preview"
             {
                 let _ = window.app_handle().emit_to(
                     "main",
@@ -166,7 +168,7 @@ pub fn run() {
             preview::show_preview,
             preview::hide_preview,
             preview::preview_focused,
-            preview::show_large_preview,
+            native_preview::open_native_large_preview,
             preview::hide_large_preview,
             clipboard::apply_record
         ])

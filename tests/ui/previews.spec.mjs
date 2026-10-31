@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 const payload = (id, kind, body = "", files = []) => ({ id, kind, body, files, groupName: "工作", preview: true, status: "ready", width: 420, maxHeight: 580, generation: 1, search: "中文" });
-async function openPreview(page, large = false) {
-  const label = large ? "large-preview" : "preview";
+async function openPreview(page) {
+  const label = "preview";
   await page.goto(`/tests/fixtures/${label}.html?window=${label}`);
   await expect.poll(() => page.evaluate(label => window.__TP_TEST__.calls.some(call => call.args.event === label + "-ready"), label)).toBe(true);
 }
@@ -121,17 +121,4 @@ test("hover carousel changes pages, preloads adjacent media and clears all slide
   await expect(page.locator('.page-indicator[data-index="2"]')).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.some(call => call.name === "preview_data" && call.args.index === 3))).toBe(true);
   await send(page, "preview-clear", null); await expect(page.locator(".media-slide")).toHaveCount(0);
-});
-test("large single-image preview reports native image size and closes by Space", async ({ page }) => {
-  await openPreview(page, true); await send(page, "large-preview-content", { id: "image", kind: "image", count: 1 });
-  await expect(page.locator("#image")).toBeVisible(); await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.findLast(call => call.args.event === "large-preview-loaded")?.args.payload)).toEqual({ id: "image", fixed: false, width: 320, height: 180 });
-  await page.keyboard.press("Space"); await expect(page.locator("#image")).not.toHaveAttribute("src", /.+/);
-  await expect.poll(() => page.evaluate(() => window.__TP_TEST__.calls.some(call => call.name === "hide_large_preview"))).toBe(true);
-});
-test("large video carousel uses first-frame previews, switches pages and releases content", async ({ page }) => {
-  await openPreview(page, true); await send(page, "large-preview-content", { id: "video", kind: "video", count: 3 });
-  await expect(page.locator("#kind")).toHaveText("视频首帧"); await expect(page.locator(".media-slide img")).toBeVisible();
-  await page.locator('.page-indicator[data-index="1"]').click(); await expect(page.locator('.page-indicator[data-index="1"]')).toHaveAttribute("aria-pressed", "true");
-  expect(await page.evaluate(() => window.__TP_TEST__.calls.filter(call => call.name === "preview_data").every(call => call.args.role === "preview"))).toBe(true);
-  await send(page, "large-preview-clear", null); await expect(page.locator(".media-slide")).toHaveCount(0);
 });

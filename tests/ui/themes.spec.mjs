@@ -91,7 +91,7 @@ test("short windows keep keyboard options visible and Escape closes the dropdown
 
 test("preview entries restore a saved dark theme and react to live theme events",async({page})=>{
   await page.addInitScript(()=>window.__TP_TEST_INITIAL_THEME__='violet');
-  for(const entry of ['preview','large-preview']) {
+  for(const entry of ['preview']) {
     await page.goto(`/tests/fixtures/${entry}.html`);
     await expect(page.locator('html')).toHaveAttribute('data-theme','violet');
     await page.evaluate(()=>window.__TP_TEST__.emit('theme-changed','forest-mist'));

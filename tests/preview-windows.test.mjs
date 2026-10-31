@@ -61,7 +61,7 @@ function setup({ autoReady = true, autoDestroy = true } = {}) {
   };
 }
 
-test("startup leaves both preview windows uncreated; first use waits for ready", async () => {
+test("startup leaves the hover preview window uncreated; first use waits for ready", async () => {
   const app = setup({ autoReady: false });
   await app.initPreviewWindows();
   assert.equal(app.calls.length, 0);
@@ -86,7 +86,7 @@ test("concurrent requests share one window creation", async () => {
 test("hidden previews release after idle and recreate on the next use", async () => {
   const app = setup();
   await app.initPreviewWindows();
-  for (const label of ["preview", "large-preview"]) {
+  for (const label of ["preview"]) {
     await app.ensurePreviewWindow(label);
     app.emit("preview-window-hidden", label);
     app.fireIdle();
@@ -125,15 +125,15 @@ test("repeated hides do not postpone release of an already idle window", async (
 test("reopening while destruction is pending waits for the old window to disappear", async () => {
   const app = setup({ autoDestroy: false });
   await app.initPreviewWindows();
-  await app.ensurePreviewWindow("large-preview");
-  app.emit("preview-window-hidden", "large-preview");
+  await app.ensurePreviewWindow("preview");
+  app.emit("preview-window-hidden", "preview");
   app.fireIdle();
   await flush();
-  const reopening = app.ensurePreviewWindow("large-preview");
+  const reopening = app.ensurePreviewWindow("preview");
   await flush();
   assert.equal(app.calls.filter(([name]) => name === "ensure_preview_window").length, 1);
-  app.existing.delete("large-preview");
-  app.emit("large-preview-destroyed");
+  app.existing.delete("preview");
+  app.emit("preview-destroyed");
   await reopening;
   assert.equal(app.calls.filter(([name]) => name === "ensure_preview_window").length, 2);
 });

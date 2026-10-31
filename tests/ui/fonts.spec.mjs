@@ -238,12 +238,12 @@ test("a saved legacy Light family migrates to the family plus Light style", asyn
   await expect(page.locator("html")).toHaveCSS("font-weight", "290");
 });
 
-test("both preview windows restore and synchronize the family and selected style", async ({ page }) => {
+test("the hover preview window restore and synchronize the family and selected style", async ({ page }) => {
   await page.addInitScript(() => {
     window.__TP_TEST_INITIAL_FONT__ = "微软雅黑";
     window.__TP_TEST_INITIAL_FONT_STYLE__ = { name: "Light", family: "微软雅黑 Light", weight: 290, stretch: 100, style: "normal" };
   });
-  for (const entry of ["preview", "large-preview"]) {
+  for (const entry of ["preview"]) {
     await page.goto(`/tests/fixtures/${entry}.html`);
     await expect(page.locator("html")).toHaveCSS("font-weight", "290");
     await page.evaluate(() => window.__TP_TEST__.emit("font-changed", {
@@ -356,7 +356,7 @@ test("font enumeration failure supports retry and keeps the default usable", asy
 
 test("main and both preview entries restore a saved font and previews follow live changes", async ({ page }) => {
   await page.addInitScript(() => window.__TP_TEST_INITIAL_FONT__ = "Consolas");
-  for (const entry of ["panel", "preview", "large-preview"]) {
+  for (const entry of ["panel", "preview"]) {
     await page.goto(`/tests/fixtures/${entry}.html`);
     await expect.poll(() => fontOf(page, "html")).toMatch(/^Consolas,/);
     if (entry === "panel") continue;

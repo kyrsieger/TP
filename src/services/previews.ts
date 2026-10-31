@@ -156,13 +156,10 @@ export class PreviewController {
     this.largePreviewId = id;
     const request = ++this.largePreviewSizeRequest;
     try {
-      await ensurePreviewWindow("large-preview");
-      if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest) {
-        if (!this.largePreviewId)
-          void call("hide_large_preview").catch(() => { });
+      await call<boolean>("open_native_large_preview", { id, index: 0 });
+      if (request !== this.largePreviewSizeRequest)
         return;
-      }
-      await emitTo("large-preview", "large-preview-content", { id, kind: record.kind, count: Math.max(1, record.files.length), theme: this.history.value.settings?.theme });
+      if (this.largePreviewId !== id) await call("hide_large_preview");
     }
     catch (error) {
       if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest)
@@ -175,51 +172,8 @@ export class PreviewController {
   async start() {
     const disposeSubscriptions = await subscribeAll([
       initPreviewWindows(),
-      listen<{
-        id: string;
-        fixed: boolean;
-        width: number;
-        height: number;
-      }>("large-preview-loaded", async (event) => {
-        const request = ++this.largePreviewSizeRequest;
-        const { id, fixed, width: imageWidth, height: imageHeight } = event.payload;
-        if (this.largePreviewId !== id)
-          return;
-        if (this.history.value.selectedId !== id) {
-          this.largePreviewId = null;
-          void emitTo("large-preview", "large-preview-clear");
-          return;
-        }
-        try {
-          const [position, size, scale] = await Promise.all([this.panel.outerPosition(), this.panel.outerSize(), this.panel.scaleFactor()]);
-          const monitor = await monitorFromPoint(position.x + size.width / 2, position.y + size.height / 2);
-          if (this.largePreviewId !== id || request !== this.largePreviewSizeRequest)
-            return;
-          if (!monitor)
-            throw new Error("无法确定当前屏幕");
-          const area = monitor.workArea;
-          const maxWidth = Math.max(1, Math.round(Math.min(area.size.width * .9, 1600 * scale)));
-          const maxHeight = Math.max(1, Math.round(Math.min(area.size.height * .9, 1000 * scale)));
-          const imageScale = fixed ? 1 : Math.min(1, maxWidth / (imageWidth * scale), maxHeight / (imageHeight * scale));
-          const width = fixed ? maxWidth : Math.max(1, Math.round(imageWidth * scale * imageScale));
-          const height = fixed ? maxHeight : Math.max(1, Math.round(imageHeight * scale * imageScale));
-          const x = Math.round(area.position.x + (area.size.width - width) / 2);
-          const y = Math.round(area.position.y + (area.size.height - height) / 2);
-          if (request !== this.largePreviewSizeRequest)
-            return;
-          await call("show_large_preview", { x, y, width, height });
-          if (this.largePreviewId !== id)
-            await call("hide_large_preview");
-        }
-        catch (error) {
-          if (request !== this.largePreviewSizeRequest)
-            return;
-          this.largePreviewId = null;
-          void emitTo("large-preview", "large-preview-clear");
-          this.toast(`预览失败：${String(error)}`);
-        }
-      }),
       listen("large-preview-closed", () => { this.largePreviewId = null; }),
+      listen<string>("native-preview-error", event => { this.toast(`预览失败：${event.payload}`); }),
       listen<{
         id: string;
         generation: number;

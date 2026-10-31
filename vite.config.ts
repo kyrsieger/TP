@@ -9,7 +9,7 @@ export default defineConfig(() => ({
   plugins: [react()],
 
   build: {
-    rollupOptions: { input: ["index.html", "preview.html", "large-preview.html"] },
+    rollupOptions: { input: ["index.html", "preview.html"] },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

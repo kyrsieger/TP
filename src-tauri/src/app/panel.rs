@@ -284,7 +284,7 @@ pub(super) fn panel_content_released(app: tauri::AppHandle, generation: u64) -> 
         }
         state.reload_before_open = tauri::is_dev();
         drop(state);
-        for label in ["preview", "large-preview"] {
+        for label in ["preview"] {
             if let Some(window) = handle.get_webview_window(label) {
                 if window.is_visible().is_ok_and(|visible| !visible) {
                     if let Err(error) = window.destroy() {

@@ -31,4 +31,3 @@ export type PreviewPayload = {
   groupName: string | null; preview: boolean; status: string;
   width: number; maxHeight: number; generation: number; search: string;
 };
-export type LargePreviewPayload = { id: string; kind: "image" | "video"; count: number; theme?: ThemeId };

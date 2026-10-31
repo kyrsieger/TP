@@ -64,7 +64,7 @@ for (const [name, change, nextId] of [
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(events.findLast(event => event.event === "preview-content")?.payload.id, nextId);
     await app.previews.openLargePreview(nextId);
-    assert.equal(events.findLast(event => event.event === "large-preview-content")?.payload.id, nextId);
+    assert.equal(calls.findLast(call => call.name === "open_native_large_preview")?.args.id, nextId);
     assert.equal(app.previews.largePreviewId, nextId);
   } finally { app.dispose(); }
 });
