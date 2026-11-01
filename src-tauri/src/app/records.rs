@@ -25,7 +25,7 @@ pub(super) fn rename_record(
 fn set_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
     let title = title.trim();
     if title.chars().count() > 100 || title.contains(['\r', '\n']) {
-        return Err("记录标题最多 100 个字符，且不能换行".into());
+        return Err(crate::app::i18n::tr("记录标题最多 100 个字符，且不能换行").into());
     }
     let updated = conn
         .execute(
@@ -34,7 +34,7 @@ fn set_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
         )
         .map_err(err)?;
     if updated == 0 {
-        return Err("记录不存在".into());
+        return Err(crate::app::i18n::tr("记录不存在").into());
     }
     Ok(())
 }
@@ -47,8 +47,11 @@ pub(super) fn add_group(
 ) -> Result<()> {
     let _data = store.read_data()?;
     let name = name.trim();
-    if name.is_empty() || name == "默认" || name == "收藏" || name.chars().count() > 40 {
-        return Err("分组名称无效".into());
+    if name.is_empty()
+        || ["默认", "收藏", "Default", "Favorites"].contains(&name)
+        || name.chars().count() > 40
+    {
+        return Err(crate::app::i18n::tr("分组名称无效").into());
     }
     store
         .db
@@ -91,7 +94,7 @@ fn set_group_order(conn: &mut Connection, ids: &[i64]) -> Result<()> {
     let mut sorted = ids.to_vec();
     sorted.sort_unstable();
     if sorted != existing {
-        return Err("分组已变化，请重试".into());
+        return Err(crate::app::i18n::tr("分组已变化，请重试").into());
     }
     for (position, id) in ids.iter().enumerate() {
         tx.execute(
@@ -112,8 +115,11 @@ pub(super) fn rename_group(
 ) -> Result<()> {
     let _data = store.read_data()?;
     let name = name.trim();
-    if name.is_empty() || name == "默认" || name == "收藏" || name.chars().count() > 40 {
-        return Err("分组名称无效".into());
+    if name.is_empty()
+        || ["默认", "收藏", "Default", "Favorites"].contains(&name)
+        || name.chars().count() > 40
+    {
+        return Err(crate::app::i18n::tr("分组名称无效").into());
     }
     let updated = store
         .db
@@ -122,7 +128,7 @@ pub(super) fn rename_group(
         .execute("UPDATE groups SET name=?1 WHERE id=?2", params![name, id])
         .map_err(err)?;
     if updated == 0 {
-        return Err("分组不存在".into());
+        return Err(crate::app::i18n::tr("分组不存在").into());
     }
     changed(&app);
     Ok(())

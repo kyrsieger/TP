@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 
@@ -17,7 +18,7 @@ async function waitForWindowEvent(label: Label, event: string, action: () => Pro
   let rejectReady!: (error: Error) => void;
   const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   const unlisten = await listen(event, resolveReady);
-  const timer = window.setTimeout(() => rejectReady(new Error(`${label} 窗口响应超时`)), 10000);
+  const timer = window.setTimeout(() => rejectReady(new Error(t("{0} 窗口响应超时", label))), 10000);
   try {
     await Promise.all([ready, action().then(wait => { if (!wait) resolveReady(); })]);
   } finally {
@@ -54,7 +55,7 @@ export async function initPreviewWindows() {
       state.releasing = (async () => {
         await opening;
         await waitForWindowEvent(label, `${label}-destroyed`, () => invoke<boolean>("release_preview_window", { label }));
-      })().catch(error => { console.error("释放预览窗口失败", error); })
+      })().catch(error => { console.error(t("释放预览窗口失败"), error); })
         .finally(() => { state.releasing = null; });
     }, 30000);
   });

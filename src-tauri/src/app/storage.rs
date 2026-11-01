@@ -31,14 +31,20 @@ impl Store {
     pub(super) fn read_data(&self) -> Result<RwLockReadGuard<'_, ()>> {
         let guard = self.data_gate.read().map_err(err)?;
         if self.recovery_required.load(Ordering::SeqCst) {
-            return Err("恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复".into());
+            return Err(crate::app::i18n::tr(
+                "恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复",
+            )
+            .into());
         }
         Ok(guard)
     }
     pub(super) fn write_data(&self) -> Result<RwLockWriteGuard<'_, ()>> {
         let guard = self.data_gate.write().map_err(err)?;
         if self.recovery_required.load(Ordering::SeqCst) {
-            return Err("恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复".into());
+            return Err(crate::app::i18n::tr(
+                "恢复回退尚未完成，数据操作已暂停，请退出并重新打开 TP 自动恢复",
+            )
+            .into());
         }
         Ok(guard)
     }

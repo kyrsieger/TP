@@ -11,9 +11,11 @@ pub(super) fn migrate_data_directory(source: &Path, target: &Path) -> Result<()>
         return Ok(());
     }
     if target.exists() && fs::read_dir(target).map_err(err)?.next().is_some() {
-        return Err("新数据目录非空，停止迁移以避免覆盖已有文件".into());
+        return Err(crate::app::i18n::tr("新数据目录非空，停止迁移以避免覆盖已有文件").into());
     }
-    let parent = target.parent().ok_or("数据目录没有父目录")?;
+    let parent = target
+        .parent()
+        .ok_or(crate::app::i18n::tr("数据目录没有父目录"))?;
     fs::create_dir_all(parent).map_err(err)?;
     let staging = parent.join(format!(".TP-migration-{}", uuid::Uuid::new_v4()));
     fs::create_dir(&staging).map_err(err)?;
@@ -53,7 +55,7 @@ pub(super) fn migrate_data_directory(source: &Path, target: &Path) -> Result<()>
                             .components()
                             .any(|c| !matches!(c, std::path::Component::Normal(_)))
                         {
-                            return Err("附件路径包含非法相对路径".into());
+                            return Err(crate::app::i18n::tr("附件路径包含非法相对路径").into());
                         }
                         file["stored"] = target
                             .join("assets")
@@ -78,7 +80,7 @@ pub(super) fn migrate_data_directory(source: &Path, target: &Path) -> Result<()>
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))
             .map_err(err)?;
         if integrity != "ok" {
-            return Err("迁移后的数据库完整性检查失败".into());
+            return Err(crate::app::i18n::tr("迁移后的数据库完整性检查失败").into());
         }
         drop(conn);
         if target.exists() {

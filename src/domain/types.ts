@@ -1,3 +1,4 @@
+import type { LanguagePreference } from "../i18n";
 import type { ThemeId } from "./themes";
 import type { FontStyle } from "./fonts";
 export type Kind = "text" | "link" | "image" | "file" | "video" | "color";
@@ -10,6 +11,7 @@ export type RecordItem = {
 };
 export type Group = { id: number; name: string };
 export type Settings = {
+  language?: LanguagePreference;
   theme?: ThemeId;
   fontSize?: number;
   fontFamily?: string;

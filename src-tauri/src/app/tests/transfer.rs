@@ -601,3 +601,30 @@ fn interrupted_rollback_freezes_reads_and_writes_until_restart_recovery() {
     let reopened = initialize(dir).unwrap();
     assert_eq!(snapshot(&reopened).unwrap().records[0].body, "原数据");
 }
+
+#[test]
+fn english_export_translates_chrome_and_preserves_user_content() {
+    let source = test_store();
+    record(
+        &source,
+        "localized",
+        "text",
+        "用户内容：收藏 <script>",
+        now(),
+    );
+    let (manifest, _) = collect_manifest(&source.db.lock().unwrap(), &source.dir).unwrap();
+    crate::app::i18n::with_test_language(false, || {
+        let html = content_html(&manifest);
+        assert!(html.contains("lang=\"en\""));
+        assert!(html.contains("TP exported content"));
+        assert!(html.contains("Last used"));
+        assert!(html.contains("Ungrouped"));
+        assert!(html.contains("用户内容：收藏 &lt;script&gt;"));
+        assert!(!html.contains("最后使用时间"));
+    });
+    crate::app::i18n::with_test_language(true, || {
+        let html = content_html(&manifest);
+        assert!(html.contains("lang=\"zh-CN\""));
+        assert!(html.contains("最后使用时间"));
+    });
+}

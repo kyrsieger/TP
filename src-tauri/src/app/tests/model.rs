@@ -228,3 +228,22 @@ fn font_size_defaults_validates_and_round_trips() {
         assert!(config.validate().is_err());
     }
 }
+
+#[test]
+fn language_defaults_to_system_and_validates_explicit_choices() {
+    let mut value = serde_json::to_value(Settings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("language");
+    let mut config: Settings = serde_json::from_value(value).unwrap();
+    assert_eq!(config.language, "system");
+    for language in ["system", "zh-CN", "en"] {
+        config.language = language.into();
+        assert!(config.validate().is_ok());
+        let restored: Settings =
+            serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
+        assert_eq!(restored.language, language);
+    }
+    for language in ["", "zh", "fr", "EN"] {
+        config.language = language.into();
+        assert!(config.validate().is_err());
+    }
+}

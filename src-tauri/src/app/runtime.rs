@@ -31,6 +31,7 @@ pub(super) fn start(app: &tauri::AppHandle) {
             }
         }
         suspend_idle_panel(&handle);
+        super::i18n::refresh_system(&handle);
     });
     let handle = app.clone();
     thread::spawn(move || loop {
@@ -46,14 +47,34 @@ pub(super) fn start(app: &tauri::AppHandle) {
     });
 }
 
+struct TrayLabels {
+    open: tauri::menu::MenuItem<tauri::Wry>,
+    quit: tauri::menu::MenuItem<tauri::Wry>,
+}
+
+pub(super) fn update_tray_language(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(labels) = app.try_state::<TrayLabels>() {
+        labels.open.set_text(super::i18n::tr("打开剪贴板"))?;
+        labels.quit.set_text(super::i18n::tr("退出"))?;
+    }
+    Ok(())
+}
+
 pub(super) fn install_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::{
         menu::{Menu, MenuItem},
         tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     };
-    let open = MenuItem::with_id(app, "open", "打开剪贴板", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let open = MenuItem::with_id(
+        app,
+        "open",
+        super::i18n::tr("打开剪贴板"),
+        true,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(app, "quit", super::i18n::tr("退出"), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
+    app.manage(TrayLabels { open, quit });
     #[cfg(target_os = "macos")]
     let icon_bytes = include_bytes!("../../icons/tray-template.png").as_slice();
     #[cfg(windows)]

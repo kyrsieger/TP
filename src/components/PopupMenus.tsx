@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useLayoutEffect, useRef } from "react";
 import { call } from "../services/desktop";
 import type { GroupController } from "../state/groups";
@@ -45,17 +46,17 @@ export function PopupMenus({ menus, history, groups, toast, renameRecord }: { me
     || (contextRecord.files.length > 0 && contextRecord.files.every(file => !file.isDirectory)));
   return <>
     <div id="group-menu" ref={groupRef} role="menu" tabIndex={-1} hidden={!menu.group} data-group-id={menu.group?.id}>
-      <button type="button" data-group-action="rename" role="menuitem" onClick={() => { void groupAction(true); }}>重命名</button>
-      <button type="button" data-group-action="delete" role="menuitem" onClick={() => { void groupAction(false); }}>删除</button>
+      <button type="button" data-group-action="rename" role="menuitem" onClick={() => { void groupAction(true); }}>{t("重命名")}</button>
+      <button type="button" data-group-action="delete" role="menuitem" onClick={() => { void groupAction(false); }}>{t("删除")}</button>
     </div>
-    <div id="record-menu" ref={recordRef} role="menu" tabIndex={-1} aria-label="记录操作" hidden={!menu.record} data-record-id={menu.record?.id}>
-      <button type="button" data-record-action="rename" role="menuitem" onClick={() => { if (menu.record) renameRecord(menu.record.id); }}><span>重命名</span>
+    <div id="record-menu" ref={recordRef} role="menu" tabIndex={-1} aria-label={t("记录操作")} hidden={!menu.record} data-record-id={menu.record?.id}>
+      <button type="button" data-record-action="rename" role="menuitem" onClick={() => { if (menu.record) renameRecord(menu.record.id); }}><span>{t("重命名")}</span>
         {panel.settings?.renameShortcut && <span className="menu-shortcut" aria-hidden="true">{displayShortcut(panel.settings.renameShortcut)}</span>}</button>
-      {fileActions && [["copy-paths", "复制路径", "copy_record_paths"], ["open-directory", "打开所在目录", "open_record_directory"], ["save-as", "另存为", "save_record_files"]].map(([id, label, command]) =>
+      {fileActions && [["copy-paths", t("复制路径"), "copy_record_paths"], ["open-directory", t("打开所在目录"), "open_record_directory"], ["save-as", t("另存为"), "save_record_files"]].map(([id, label, command]) =>
         <button key={id} type="button" data-record-action={id} role="menuitem" onClick={() => { void recordAction(command); }}>{label}</button>)}
     </div>
-    <div id="move-group-menu" ref={moveRef} role="menu" aria-label="移动到分组" hidden={!menu.move} data-record-id={menu.move?.triggerId}>
-      {menu.move && [{ id: null, name: "未分组" }, ...(panel.snapshot?.groups ?? [])].map(group => <button key={group.id ?? "none"} type="button" role="menuitemradio" data-move-group={group.id ?? ""}
+    <div id="move-group-menu" ref={moveRef} role="menu" aria-label={t("移动到分组")} hidden={!menu.move} data-record-id={menu.move?.triggerId}>
+      {menu.move && [{ id: null, name: t("未分组") }, ...(panel.snapshot?.groups ?? [])].map(group => <button key={group.id ?? "none"} type="button" role="menuitemradio" data-move-group={group.id ?? ""}
         aria-checked={moveRecords.every(record => record.groupId === group.id)} onMouseEnter={event => event.currentTarget.focus()} onClick={() => {
           const ids = menu.move!.ids; menus.update({ move: null });
           if (moveRecords.some(record => record.groupId !== group.id)) void history.action("batch_records", { ids, operation: { kind: "move_group", groupId: group.id } });

@@ -8,7 +8,7 @@ async function openSettings(page) {
 async function selectFont(page, family) {
   await page.locator("#font-trigger").click();
   await page.locator("#font-search").fill(family || "系统默认");
-  await page.getByRole("option", { name: family || "系统默认", exact: true }).click();
+  await page.locator("#font-menu").getByRole("option", { name: family || "系统默认", exact: true }).click();
 }
 const fontOf = (page, selector) => page.locator(selector).evaluate(element => getComputedStyle(element).fontFamily);
 
@@ -150,7 +150,7 @@ test("font search finds Chinese names by pinyin initials, full pinyin and Englis
   await search.fill("not-a-font");
   await expect(page.locator("#font-list [role=option]")).toHaveCount(0);
   await search.fill("");
-  await expect(page.getByRole("option", { name: "系统默认", exact: true })).toBeVisible();
+  await expect(page.locator("#font-menu").getByRole("option", { name: "系统默认", exact: true })).toBeVisible();
   await search.fill("XW");
   await search.press("Enter");
   await expect(page.locator("#font-value")).toHaveText("霞鹜文楷");
@@ -347,7 +347,7 @@ test("font enumeration failure supports retry and keeps the default usable", asy
   await page.evaluate(() => window.__TP_TEST__.fontListError = true);
   await page.locator("#settings-button").click(); await page.locator("#font-trigger").click();
   await expect(page.getByRole("button", { name: "读取字体失败，点击重试" })).toBeVisible();
-  await expect(page.getByRole("option", { name: "系统默认", exact: true })).toBeVisible();
+  await expect(page.locator("#font-menu").getByRole("option", { name: "系统默认", exact: true })).toBeVisible();
   await page.evaluate(() => window.__TP_TEST__.fontListError = false);
   await page.getByRole("button", { name: "读取字体失败，点击重试" }).click();
   await page.locator("#font-search").fill("等线");

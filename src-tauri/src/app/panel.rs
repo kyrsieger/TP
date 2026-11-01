@@ -19,7 +19,7 @@ fn create_panel(app: &tauri::AppHandle) -> Result<()> {
         .windows
         .iter()
         .find(|config| config.label == "main")
-        .ok_or("面板窗口配置不存在")?;
+        .ok_or(crate::app::i18n::tr("面板窗口配置不存在"))?;
     let settings = {
         let store = app.state::<Store>();
         let conn = store.db.lock().map_err(err)?;
@@ -90,7 +90,9 @@ pub(super) fn open_panel(app: &tauri::AppHandle) -> Result<()> {
             return Err(error);
         }
     } else if ready {
-        let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
+        let window = app
+            .get_webview_window("main")
+            .ok_or(crate::app::i18n::tr("面板窗口不存在"))?;
         resume_panel(&window).map_err(err)?;
         if reload {
             window.reload().map_err(err)?;
@@ -240,7 +242,7 @@ pub(super) async fn debug_release_panel(app: tauri::AppHandle) -> Result<()> {
     #[cfg(not(debug_assertions))]
     {
         let _ = app;
-        Err("开发测试仅在开发构建中可用".into())
+        Err(crate::app::i18n::tr("开发测试仅在开发构建中可用").into())
     }
     #[cfg(debug_assertions)]
     {
@@ -248,10 +250,10 @@ pub(super) async fn debug_release_panel(app: tauri::AppHandle) -> Result<()> {
             let lifecycle = app.state::<PanelLifecycle>();
             let state = lifecycle.state.lock().map_err(err)?;
             if state.background_resident {
-                return Err("请先关闭后台常驻再测试".into());
+                return Err(crate::app::i18n::tr("请先关闭后台常驻再测试").into());
             }
             if !state.ready {
-                return Err("面板尚未就绪".into());
+                return Err(crate::app::i18n::tr("面板尚未就绪").into());
             }
         }
         hide_panel(app.clone())?;
@@ -326,7 +328,9 @@ fn finish_panel_suspend(app: &tauri::AppHandle, generation: u64, succeeded: bool
 #[tauri::command]
 pub(super) fn show_panel(app: tauri::AppHandle, store: tauri::State<Store>) -> Result<()> {
     remember_paste_target(store)?;
-    let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or(crate::app::i18n::tr("面板窗口不存在"))?;
     {
         let lifecycle = app.state::<PanelLifecycle>();
         let mut state = lifecycle.state.lock().map_err(err)?;

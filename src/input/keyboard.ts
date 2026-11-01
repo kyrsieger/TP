@@ -94,12 +94,16 @@ export function createPanelKeydown(context: KeyboardContext) {
     }
     if (settingsOpen) {
       if (event.key === "Escape") {
+        const languageMenu = document.querySelector<HTMLElement>("#language-menu");
         const themeMenu = document.querySelector<HTMLElement>("#theme-menu");
         const fontMenu = document.querySelector<HTMLElement>("#font-menu");
         const fontStyleMenu = document.querySelector<HTMLElement>("#font-style-menu");
         const retentionMenu = document.querySelector<HTMLElement>("#retention-menu");
         const fixedPositionMenu = document.querySelector<HTMLElement>("#fixed-position-menu");
-        if (themeMenu && !themeMenu.hidden) {
+        if (languageMenu && !languageMenu.hidden) {
+          menus.update({ language: false });
+          document.querySelector<HTMLElement>("#language-trigger")?.focus({ preventScroll: true });
+        } else if (themeMenu && !themeMenu.hidden) {
           menus.update({ theme: false });
           document.querySelector<HTMLElement>("#theme-trigger")?.focus({ preventScroll: true });
         }

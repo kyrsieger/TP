@@ -192,6 +192,26 @@ impl Surface {
         }
     }
 }
+pub(super) fn refresh_language() {
+    SURFACE.with(|surface| {
+        if let Some(surface) = surface.borrow_mut().as_mut() {
+            surface
+                .window
+                .setTitle(&NSString::from_str(if surface.picture.video {
+                    crate::app::i18n::tr("TP 视频首帧预览")
+                } else {
+                    crate::app::i18n::tr("TP 大图预览")
+                }));
+            surface
+                .message
+                .setStringValue(&NSString::from_str(crate::app::i18n::tr(
+                    surface.picture.unavailable.unwrap_or(""),
+                )));
+            surface.draw();
+        }
+    });
+}
+
 pub(super) fn hide() {
     SURFACE.with(|s| {
         s.borrow_mut().take();
@@ -367,15 +387,15 @@ fn input(event: NonNull<NSEvent>) -> *mut NSEvent {
     }
 }
 pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
-    let mtm = MainThreadMarker::new().ok_or("预览需要主线程")?;
+    let mtm = MainThreadMarker::new().ok_or(crate::app::i18n::tr("预览需要主线程"))?;
     let work = SURFACE
         .with(|s| s.borrow().as_ref().map(|s| s.geometry.work))
         .or_else(|| NSScreen::mainScreen(mtm).map(|s| from_native(s.visibleFrame())))
-        .ok_or("无法确定当前屏幕")?;
+        .ok_or(crate::app::i18n::tr("无法确定当前屏幕"))?;
     let geometry = Geometry::new(picture.image.width(), picture.image.height(), 1., work);
     let native_image =
         NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(&picture.encoded))
-            .ok_or("无法读取图片")?;
+            .ok_or(crate::app::i18n::tr("无法读取图片"))?;
     picture.image = image::RgbaImage::new(0, 0);
     picture.encoded = Vec::new();
     let window: Retained<ImageWindow> = unsafe {
@@ -388,9 +408,9 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
     // AppKit's NSFloatingWindowLevel is only 3 and would remain behind that panel.
     window.setLevel(5);
     window.setTitle(&NSString::from_str(if picture.video {
-        "TP 视频首帧预览"
+        crate::app::i18n::tr("TP 视频首帧预览")
     } else {
-        "TP 大图预览"
+        crate::app::i18n::tr("TP 大图预览")
     }));
     window.setHasShadow(true);
     window.setOpaque(true);
@@ -410,8 +430,10 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
     image.setEditable(false);
     image.setAnimates(false);
     root.addSubview(&image);
-    let message =
-        NSTextField::labelWithString(&NSString::from_str(picture.unavailable.unwrap_or("")), mtm);
+    let message = NSTextField::labelWithString(
+        &NSString::from_str(crate::app::i18n::tr(picture.unavailable.unwrap_or(""))),
+        mtm,
+    );
     message.setAlignment(NSTextAlignment::Center);
     message.setTextColor(Some(&NSColor::whiteColor()));
     message.setHidden(picture.unavailable.is_none());
@@ -433,7 +455,7 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
             &RcBlock::new(input),
         )
     }
-    .ok_or("无法注册预览手势")?;
+    .ok_or(crate::app::i18n::tr("无法注册预览手势"))?;
     let timer = unsafe {
         NSTimer::scheduledTimerWithTimeInterval_repeats_block(
             0.016,

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { flushSync } from "react-dom";
 import { call, isMacOS, panelWindow } from "./services/desktop";
@@ -61,7 +62,7 @@ export function createApplication(list: ListHandle) {
     if (!id) return;
     const row = list.ensure(id); row?.scrollIntoView({ block: "nearest" }); row?.focus({ preventScroll: true });
   }
-  function closeSettings() { settings.flushTheme(); menus.update({ theme: false, font: false, fontStyle: false }); flushSync(() => settings.update({ open: false })); focus.restore(list); }
+  function closeSettings() { settings.flushTheme(); menus.update({ language: false, theme: false, font: false, fontStyle: false }); flushSync(() => settings.update({ open: false })); focus.restore(list); }
   function startRecordRename(id: string) {
     groups.cancel(); menus.closePopups(); previews.closePreview();
     list.ensure(id);
@@ -112,7 +113,7 @@ export function createApplication(list: ListHandle) {
       history.restore(session);
       const error = await call<string | null>("panel_ready");
       if (!disposed && generation === startGeneration) settings.ready(error);
-    } catch (error) { if (!disposed && generation === startGeneration) toast(`启动失败：${String(error)}`); }
+    } catch (error) { if (!disposed && generation === startGeneration) toast(t("启动失败：{0}", String(error))); }
   }
   return { history, groups, rename, settings, transfer, menus, geometry, previews, focus, toasts, clearSearch, selectGroup, closeSettings, startRecordRename, start,
     dispose() { disposed = true; startGeneration++; window.clearTimeout(blurTimer); disposers.splice(0).forEach(dispose => dispose()); geometry.dispose(); settings.reset(); transfer.reset(); toasts.dispose(); } };

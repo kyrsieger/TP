@@ -18,14 +18,20 @@ use std::{
 use tauri::Manager;
 fn paths_by_directory(paths: &[PathBuf]) -> Result<BTreeMap<PathBuf, Vec<PathBuf>>> {
     if paths.is_empty() {
-        return Err("文件路径不可用".into());
+        return Err(crate::app::i18n::tr("文件路径不可用").into());
     }
     let mut directories = BTreeMap::<PathBuf, Vec<PathBuf>>::new();
     for path in paths {
         if !path.is_absolute() || !path.is_file() {
-            return Err(format!("文件已不存在，无法选中：{}", path.display()));
+            return Err(crate::app::i18n::format_message!(
+                "文件已不存在，无法选中：{}",
+                "The file no longer exists and cannot be selected: {}",
+                path.display()
+            ));
         }
-        let directory = path.parent().ok_or("文件路径不可用")?;
+        let directory = path
+            .parent()
+            .ok_or(crate::app::i18n::tr("文件路径不可用"))?;
         directories
             .entry(directory.to_path_buf())
             .or_default()
@@ -44,9 +50,9 @@ fn record_action_paths(store: &Store, id: &str, stored_only: bool) -> Result<Vec
         })
         .optional()
         .map_err(err)?
-        .ok_or("记录不存在")?;
+        .ok_or(crate::app::i18n::tr("记录不存在"))?;
     if !matches!(kind.as_str(), "file" | "image" | "video") {
-        return Err("该记录不支持文件操作".into());
+        return Err(crate::app::i18n::tr("该记录不支持文件操作").into());
     }
     let files: Vec<FileItem> = serde_json::from_str(&files_json).map_err(err)?;
     if kind == "image" && files.is_empty() {
@@ -54,10 +60,10 @@ fn record_action_paths(store: &Store, id: &str, stored_only: bool) -> Result<Vec
         return path
             .is_file()
             .then_some(vec![path])
-            .ok_or("图片副本不可用".into());
+            .ok_or(crate::app::i18n::tr("图片副本不可用").into());
     }
     if files.is_empty() || files.iter().any(|file| file.is_directory) {
-        return Err("目录记录不支持此操作".into());
+        return Err(crate::app::i18n::tr("目录记录不支持此操作").into());
     }
     files
         .iter()
@@ -69,9 +75,13 @@ fn record_action_paths(store: &Store, id: &str, stored_only: bool) -> Result<Vec
             } else if let Some(path) = stored.filter(|path| path.is_file()) {
                 path
             } else if stored_only {
-                return Err("文件副本不可用".into());
+                return Err(crate::app::i18n::tr("文件副本不可用").into());
             } else {
-                return Err(format!("文件不可用：{}", file.original));
+                return Err(crate::app::i18n::format_message!(
+                    "文件不可用：{}",
+                    "File unavailable: {}",
+                    file.original
+                ));
             };
             Ok(path)
         })
@@ -106,7 +116,7 @@ pub(super) fn save_record_files(store: tauri::State<Store>, id: String) -> Resul
     let _data = store.read_data()?;
     let files = record_action_paths(&store, &id, true)?;
     let Some(destination) = rfd::FileDialog::new()
-        .set_title("选择保存目录")
+        .set_title(crate::app::i18n::tr("选择保存目录"))
         .pick_folder()
     else {
         return Ok(());
@@ -114,12 +124,14 @@ pub(super) fn save_record_files(store: tauri::State<Store>, id: String) -> Resul
     let targets = files
         .iter()
         .map(|source| {
-            let name = source.file_name().ok_or("文件名不可用")?;
+            let name = source
+                .file_name()
+                .ok_or(crate::app::i18n::tr("文件名不可用"))?;
             Ok(destination.join(name))
         })
         .collect::<Result<Vec<_>>>()?;
     if targets.iter().any(|target| target.exists()) {
-        return Err("目标目录中已有同名文件，未保存任何文件".into());
+        return Err(crate::app::i18n::tr("目标目录中已有同名文件，未保存任何文件").into());
     }
     for (source, target) in files.iter().zip(targets) {
         fs::copy(source, target).map_err(err)?;

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useRef, type Ref } from "react";
 import { createMediaCarousel } from "../media-carousel";
 import { Icon } from "./Icon";
@@ -24,8 +25,8 @@ export function MediaCarousel({ count, load, unavailable, anchor = "image", caro
       else if (carouselRef) carouselRef.current = null;
     };
   }, [count, unavailable, anchor, carouselRef]);
-  const buttons = <div className="page-indicators" ref={indicators} role="group" aria-label="预览页码">{Array.from({ length: count }, (_, index) =>
-    <button key={index} className="page-indicator" type="button" data-index={index} aria-label={`查看第 ${index + 1} 项预览`} aria-pressed={index === 0}>
+  const buttons = <div className="page-indicators" ref={indicators} role="group" aria-label={t("预览页码")}>{Array.from({ length: count }, (_, index) =>
+    <button key={index} className="page-indicator" type="button" data-index={index} aria-label={t("查看第 {0} 项预览", index + 1)} aria-pressed={index === 0}>
       <Icon name="circle" className="page-dot" size={6} fill="currentColor" strokeWidth={0} />
       <Icon name="minus" className="page-current" size={14} strokeWidth={8} />
     </button>)}</div>;

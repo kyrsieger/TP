@@ -23,7 +23,7 @@ export function buildFontSearchIndex(fonts: readonly FontFamily[], selectedFamil
     return terms;
   };
   const entries = new Map<string, FontSearchEntry>();
-  entries.set("", { family: "", terms: termsFor("系统默认") });
+  entries.set("", { family: "", terms: [...termsFor("系统默认"), ...termsFor("System default")] });
   for (const font of fonts) {
     if (!font.name || entries.has(font.name)) continue;
     const names = [font.name, ...font.aliases];

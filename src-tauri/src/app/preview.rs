@@ -8,7 +8,7 @@ use tauri::{Emitter, Manager};
 #[tauri::command]
 pub(super) async fn ensure_preview_window(app: tauri::AppHandle, label: String) -> Result<()> {
     if label != "preview" {
-        return Err("无效的预览窗口".into());
+        return Err(crate::app::i18n::tr("无效的预览窗口").into());
     }
     if app.get_webview_window(&label).is_none() {
         let config = app
@@ -17,7 +17,7 @@ pub(super) async fn ensure_preview_window(app: tauri::AppHandle, label: String) 
             .windows
             .iter()
             .find(|config| config.label == label)
-            .ok_or("预览窗口配置不存在")?;
+            .ok_or(crate::app::i18n::tr("预览窗口配置不存在"))?;
         let builder = tauri::WebviewWindowBuilder::from_config(&app, config).map_err(err)?;
         let window = builder.build().map_err(err)?;
         #[cfg(windows)]
@@ -32,7 +32,7 @@ pub(super) async fn ensure_preview_window(app: tauri::AppHandle, label: String) 
 #[tauri::command]
 pub(super) async fn release_preview_window(app: tauri::AppHandle, label: String) -> Result<bool> {
     if label != "preview" {
-        return Err("无效的预览窗口".into());
+        return Err(crate::app::i18n::tr("无效的预览窗口").into());
     }
     if let Some(window) = app.get_webview_window(&label) {
         if !window.is_visible().map_err(err)? {
@@ -67,7 +67,9 @@ pub(super) fn show_preview(
     width: u32,
     height: u32,
 ) -> Result<()> {
-    let preview = app.get_webview_window("preview").ok_or("预览窗口不存在")?;
+    let preview = app
+        .get_webview_window("preview")
+        .ok_or(crate::app::i18n::tr("预览窗口不存在"))?;
     preview
         .set_size(tauri::PhysicalSize::new(width, height))
         .map_err(err)?;
@@ -90,7 +92,7 @@ pub(super) fn hide_preview(app: tauri::AppHandle) -> Result<()> {
     hide_preview_window(&app, "preview")?;
     if focused {
         app.get_webview_window("main")
-            .ok_or("面板窗口不存在")?
+            .ok_or(crate::app::i18n::tr("面板窗口不存在"))?
             .set_focus()
             .map_err(err)?;
     }
@@ -109,7 +111,7 @@ pub(super) fn preview_focused(app: tauri::AppHandle) -> Result<bool> {
 pub(super) fn hide_large_preview(app: tauri::AppHandle) -> Result<()> {
     hide_preview_window(&app, "large-preview")?;
     app.get_webview_window("main")
-        .ok_or("面板窗口不存在")?
+        .ok_or(crate::app::i18n::tr("面板窗口不存在"))?
         .set_focus()
         .map_err(err)
 }

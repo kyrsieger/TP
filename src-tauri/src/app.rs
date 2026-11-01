@@ -6,6 +6,7 @@ mod events;
 mod files;
 mod filesystem;
 mod fonts;
+pub(crate) mod i18n;
 mod media;
 mod migration;
 mod model;
@@ -75,15 +76,17 @@ pub fn run() {
                 let conn = store
                     .db
                     .lock()
-                    .map_err(|_| std::io::Error::other("无法读取设置"))?;
-                settings(&conn).map_err(std::io::Error::other)?.shortcut
+                    .map_err(|_| std::io::Error::other(crate::app::i18n::tr("无法读取设置")))?;
+                let preferences = settings(&conn).map_err(std::io::Error::other)?;
+                i18n::set_preference(&preferences.language);
+                preferences.shortcut
             };
             if let Err(error) = register_panel_shortcut_inner(app.handle(), &shortcut) {
                 eprintln!("Failed to register panel shortcut: {error}");
                 app.state::<PanelLifecycle>()
                     .state
                     .lock()
-                    .map_err(|_| std::io::Error::other("无法读取面板状态"))?
+                    .map_err(|_| std::io::Error::other(crate::app::i18n::tr("无法读取面板状态")))?
                     .shortcut_error = Some(error);
             }
             runtime::start(app.handle());
@@ -104,9 +107,7 @@ pub fn run() {
                 };
                 panel_runtime::forget_panel();
             }
-            if matches!(event, tauri::WindowEvent::Destroyed)
-                && window.label() == "preview"
-            {
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "preview" {
                 let _ = window.app_handle().emit_to(
                     "main",
                     &format!("{}-destroyed", window.label()),
@@ -137,6 +138,7 @@ pub fn run() {
             settings::save_settings,
             settings::save_panel_geometry,
             settings::get_theme,
+            i18n::get_language,
             settings::get_font,
             fonts::get_system_fonts,
             records::add_group,

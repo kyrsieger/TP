@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { deltaE2000, hexToLab } from "./color-distance";
 
 export type ThemeId = "indigo" | "forest-mist" | "forest-night" | "oat" | "graphite" | "clay" | "olive" | "ice" | "berry" | "violet" | "charcoal";
@@ -6,9 +7,9 @@ export type Theme = {
   accent: string; bg: string; surface: string; control: string; soft: string;
   selected: string; text: string; muted: string; line: string; buttonText: string;
 };
-const theme = (id: ThemeId, name: string, dark: boolean, colors: string[]): Theme => {
+const theme = (id: ThemeId, name: Parameters<typeof t>[0], dark: boolean, colors: string[]): Theme => {
   const [accent, bg, surface, control, soft, selected, text, muted, line, buttonText] = colors;
-  return { id, name, dark, accent, bg, surface, control, soft, selected, text, muted, line, buttonText };
+  return { id, get name() { return t(name); }, dark, accent, bg, surface, control, soft, selected, text, muted, line, buttonText };
 };
 export const themes: readonly Theme[] = [
   theme("indigo", "靛蓝", false, ["#4F46E5", "#FFFFFF", "#FFFFFF", "#F3F4F8", "#EEF0FF", "#312E81", "#171C28", "#5B6472", "#EEF0F5", "#FFFFFF"]),

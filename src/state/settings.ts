@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { Settings, SettingsSaveResult } from "../domain/types";
 import type { CommandCall } from "../services/desktop";
 import type { PanelController } from "./panel";
@@ -47,7 +48,7 @@ export class SettingsController extends Observable<SettingsValue> {
   private themeGeneration = 0;
   private fontGeneration = 0;
   constructor(private history: PanelController, private call: CommandCall, private effects: SettingsEffects) {
-    super({ themeDraft: null, fontDraft: null, open: false, clearingCache: false, releasingPanel: false, cacheSizeText: "计算中…", shortcutDraft: null,
+    super({ themeDraft: null, fontDraft: null, open: false, clearingCache: false, releasingPanel: false, cacheSizeText: t("计算中…"), shortcutDraft: null,
       shortcutError: null, renameShortcutDraft: null, renameShortcutError: null, autostartEnabled: null, autostartSaving: false, confirmationCount: null, cacheConfirmationOpen: false, revision: 0 });
   }
   ready(error: string | null) {
@@ -91,7 +92,7 @@ export class SettingsController extends Observable<SettingsValue> {
     });
   }
   async open() {
-    this.update({ open: true, cacheSizeText: "计算中…" });
+    this.update({ open: true, cacheSizeText: t("计算中…") });
     void this.refreshCacheSize();
     if (this.value.autostartSaving) return;
     try { this.update({ autostartEnabled: await this.call<boolean>("autostart_enabled") }); }
@@ -101,7 +102,7 @@ export class SettingsController extends Observable<SettingsValue> {
     const request = ++this.cacheRequest;
     let cacheSizeText: string;
     try { cacheSizeText = formatCacheSize(await this.call<number>("get_cache_size")); }
-    catch { cacheSizeText = "无法获取"; }
+    catch { cacheSizeText = t("无法获取"); }
     if (request === this.cacheRequest && this.value.open) this.update({ cacheSizeText });
   }
   async setAutostart(enabled: boolean) {
@@ -119,11 +120,11 @@ export class SettingsController extends Observable<SettingsValue> {
       await this.queue;
       if (!this.value.open || !this.history.value.active) return;
       if (this.history.value.settings?.backgroundResident) {
-        this.effects.toast("请先关闭后台常驻再测试");
+        this.effects.toast(t("请先关闭后台常驻再测试"));
         return;
       }
       await this.call("debug_release_panel");
-    } catch (error) { this.effects.toast(`释放面板失败：${String(error)}`); }
+    } catch (error) { this.effects.toast(t("释放面板失败：{0}", String(error))); }
     finally { this.update({ releasingPanel: false }); }
   }
   async clearCache() {
@@ -143,10 +144,10 @@ export class SettingsController extends Observable<SettingsValue> {
       try {
         const count = await this.call<number>("clear_cache", { allRecords: this.clearAllRecords });
         await this.history.refresh();
-        this.effects.toast(`已清空 ${count} 条${this.clearAllRecords ? "" : "普通"}记录及孤立附件`);
+        this.effects.toast(t("已清空 {0} 条{1}记录及孤立附件", count, this.clearAllRecords ? "" : t("普通")));
       } catch (error) {
         await this.history.refresh().catch(() => {});
-        this.effects.toast(`清空数据失败：${String(error)}`);
+        this.effects.toast(t("清空数据失败：{0}", String(error)));
       } finally { this.update({ clearingCache: false }); }
     });
     try { await this.queue; }
@@ -175,7 +176,7 @@ export class SettingsController extends Observable<SettingsValue> {
     const shortcut = event.key === "Backspace" || event.key === "Delete" ? "" : shortcutFromKey(event);
     if (shortcut === null) return;
     if (shortcut && shortcut === (this.history.value.settings?.renameShortcut ?? "F2")) {
-      this.update({ shortcutDraft: shortcut, shortcutError: "此快捷键已用于记录重命名，请更换组合键。" });
+      this.update({ shortcutDraft: shortcut, shortcutError: t("此快捷键已用于记录重命名，请更换组合键。") });
       return;
     }
     this.update({ shortcutDraft: shortcut, shortcutError: null });
@@ -227,7 +228,7 @@ export class SettingsController extends Observable<SettingsValue> {
       } catch (error) {
         if (patch.shortcut !== undefined) await this.registerShortcut(previous.shortcut).catch(() => {});
         if (patch.renameShortcut !== undefined) {
-          const message = `无法保存重命名快捷键：${String(error)}`;
+          const message = t("无法保存重命名快捷键：{0}", String(error));
           if (this.value.renameShortcutDraft === next.renameShortcut) this.update({ renameShortcutError: message });
           this.effects.toast(message);
           return;
@@ -235,9 +236,9 @@ export class SettingsController extends Observable<SettingsValue> {
         let shortcutError = this.value.shortcutError;
         if (patch.shortcut !== undefined && this.value.shortcutDraft === next.shortcut) {
           const detail = String(error);
-          shortcutError = !next.shortcut ? `无法清除快捷键：${detail}` : /already registered/i.test(detail)
-            ? `${displayShortcut(next.shortcut)} 已被占用，请更换组合键或解除占用。`
-            : `无法启用 ${displayShortcut(next.shortcut)}：${detail}`;
+          shortcutError = !next.shortcut ? t("无法清除快捷键：{0}", detail) : /already registered/i.test(detail)
+            ? t("{0} 已被占用，请更换组合键或解除占用。", displayShortcut(next.shortcut))
+            : t("无法启用 {0}：{1}", displayShortcut(next.shortcut), detail);
           this.update({ shortcutError });
         }
         this.effects.toast(shortcutError ?? String(error));

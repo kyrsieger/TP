@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCachedSystemFonts, loadSystemFonts } from "../services/font-catalog";
 import { Icon } from "./Icon";
@@ -38,7 +39,7 @@ export function FontSetting({ value, styleValue, open, toggle, choose, styleOpen
   const missingFamily = currentGroup ? "" : current.family;
   const searchIndex = useMemo(() => buildFontSearchIndex(fonts ?? [], missingFamily), [fonts, missingFamily]);
   const options = searchFontFamilies(searchIndex, query);
-  const { menu, width } = useFontMenuWidth(searchFontFamilies(searchIndex, "").map(name => name || "系统默认"), open, true);
+  const { menu, width } = useFontMenuWidth(searchFontFamilies(searchIndex, "").map(name => name || t("系统默认")), open, true);
   const activeIndex = options.includes(active) ? options.indexOf(active) : options.length ? 0 : -1;
   useLayoutEffect(() => {
     if (!open || activeIndex < 0) return;
@@ -53,16 +54,16 @@ export function FontSetting({ value, styleValue, open, toggle, choose, styleOpen
     const group = fonts?.find(font => font.name === family);
     choose(family, group ? defaultFontStyle(group) : regularFontStyle); toggleStyle(false); close();
   };
-  return <><div className="setting-field"><span id="font-label" className="setting-label">字体</span><div className="setting-select font-select">
+  return <><div className="setting-field"><span id="font-label" className="setting-label">{t("字体")}</span><div className="setting-select font-select">
     <button ref={trigger} id="font-trigger" type="button" aria-labelledby="font-label font-value" aria-haspopup="listbox" aria-expanded={open} aria-controls="font-list"
-      title={current.family || "系统默认"} onClick={() => toggle(!open)} onKeyDown={event => {
+      title={current.family || t("系统默认")} onClick={() => toggle(!open)} onKeyDown={event => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); toggle(true); }
-      }}><span id="font-value">{current.family || "系统默认"}</span><Icon name="chevron" /></button>
+      }}><span id="font-value">{current.family || t("系统默认")}</span><Icon name="chevron" /></button>
     <div ref={menu} id="font-menu" style={{ width }} hidden={!open} onKeyDown={event => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
       else if (event.key === "Tab") toggle(false);
     }}>
-      <input ref={search} id="font-search" type="search" role="combobox" aria-label="搜索字体" placeholder="字体名、拼音或首字母" autoComplete="off"
+      <input ref={search} id="font-search" type="search" role="combobox" aria-label={t("搜索字体")} placeholder={t("字体名、拼音或首字母")} autoComplete="off"
         aria-expanded={open} aria-controls="font-list" aria-autocomplete="list" aria-activedescendant={activeIndex >= 0 ? `font-option-${activeIndex}` : undefined}
         value={query} onChange={event => {
           const next = event.target.value; setQuery(next);
@@ -78,11 +79,11 @@ export function FontSetting({ value, styleValue, open, toggle, choose, styleOpen
           }
         }} />
       <div ref={list} id="font-list" role="listbox" aria-labelledby="font-label">{options.map((family, index) => <button key={family} id={`font-option-${index}`} type="button" role="option" tabIndex={-1}
-        aria-selected={current.family === family} className={activeIndex === index ? "font-active" : ""} title={family || "系统默认"}
-        onPointerEnter={() => setActive(family)} onMouseDown={event => event.preventDefault()} onClick={() => select(family)}>{family || "系统默认"}</button>)}</div>
-      {error ? <button type="button" className="font-status" onClick={() => setRequest(previous => previous + 1)}>读取字体失败，点击重试</button>
-        : fonts === null ? <p className="font-status" role="status">正在读取系统字体…</p>
-        : options.length === 0 && <p className="font-status" role="status">没有匹配的字体</p>}
+        aria-selected={current.family === family} className={activeIndex === index ? "font-active" : ""} title={family || t("系统默认")}
+        onPointerEnter={() => setActive(family)} onMouseDown={event => event.preventDefault()} onClick={() => select(family)}>{family || t("系统默认")}</button>)}</div>
+      {error ? <button type="button" className="font-status" onClick={() => setRequest(previous => previous + 1)}>{t("读取字体失败，点击重试")}</button>
+        : fonts === null ? <p className="font-status" role="status">{t("正在读取系统字体…")}</p>
+        : options.length === 0 && <p className="font-status" role="status">{t("没有匹配的字体")}</p>}
     </div>
   </div></div>{current.family && currentGroup && currentGroup.styles.length > 1 && <FontStyleSetting
     value={current.style} styles={currentGroup.styles} open={styleOpen} toggle={toggleStyle} choose={style => choose(current.family, style)} />}</>;

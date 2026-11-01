@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { PanelController } from "./panel";
 import type { CommandCall } from "../services/desktop";
 import { Observable } from "./observable";
@@ -36,8 +37,8 @@ export class GroupController extends Observable<{ edit: GroupEdit | null; saving
     const name = this.value.name.trim();
     const groups = this.panel.value.snapshot?.groups ?? [];
     if (edit.mode === "rename" && name === groups.find(group => group.id === edit.id)?.name) { this.cancel(); return; }
-    if (!name || name === "默认" || name === "收藏" || groups.some(group => group.name === name && group.id !== edit.id)) {
-      this.toast("分组名称不可用"); this.update({ focusRevision: this.value.focusRevision + 1 }); return;
+    if (!name || ["默认", "收藏", "Default", "Favorites"].includes(name) || groups.some(group => group.name === name && group.id !== edit.id)) {
+      this.toast(t("分组名称不可用")); this.update({ focusRevision: this.value.focusRevision + 1 }); return;
     }
     this.update({ saving: true });
     try {

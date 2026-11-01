@@ -40,7 +40,10 @@ pub fn reveal_files(groups: &BTreeMap<PathBuf, Vec<PathBuf>>) -> std::io::Result
 
     let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
     if com.is_err() && com != RPC_E_CHANGED_MODE {
-        return Err(io::Error::other(format!("COM 初始化失败：{com:?}")));
+        return Err(io::Error::other(crate::app::i18n::format_message!(
+            "COM 初始化失败：{com:?}",
+            "COM initialization failed: {com:?}"
+        )));
     }
     let result = (|| {
         for (directory, files) in groups {
@@ -101,9 +104,9 @@ pub fn set_clipboard_image_with_file(path: &Path) -> std::io::Result<()> {
     let dib = bitmap
         .get_bytes()
         .get(14..)
-        .ok_or_else(|| io_err("图片位图数据不完整".into()))?;
+        .ok_or_else(|| io_err(crate::app::i18n::tr("图片位图数据不完整").into()))?;
     let png_format = register_format("PNG")
-        .ok_or_else(|| io_err("注册 PNG 剪贴板格式失败".into()))?
+        .ok_or_else(|| io_err(crate::app::i18n::tr("注册 PNG 剪贴板格式失败").into()))?
         .get();
     // clipboard-rs 的多格式写入会在图片分支提前关闭剪贴板，导致文件写入失败；
     // Windows 的 OpenClipboard 不是引用计数，因此这里在同一会话内自己按顺序写入。
@@ -304,7 +307,7 @@ pub fn install_panel_resize_double_click_macos(
     use objc2_app_kit::{NSEvent, NSEventMask, NSWindow};
 
     let native = NonNull::new(ns_window.cast::<NSWindow>())
-        .ok_or_else(|| std::io::Error::other("面板窗口不存在"))?;
+        .ok_or_else(|| std::io::Error::other(crate::app::i18n::tr("面板窗口不存在")))?;
     remove_panel_resize_double_click_macos();
     let window_number = unsafe { native.as_ref().windowNumber() };
     let window_pointer = native.as_ptr() as usize;
@@ -343,7 +346,9 @@ pub fn install_panel_resize_double_click_macos(
         });
         Ok(())
     } else {
-        Err(std::io::Error::other("无法监听面板边框双击"))
+        Err(std::io::Error::other(crate::app::i18n::tr(
+            "无法监听面板边框双击",
+        )))
     }
 }
 
@@ -526,8 +531,12 @@ pub fn normalize_clipboard_text(
         return Ok(false);
     }
     let mut current = Vec::new();
-    raw::get_string(&mut current)
-        .map_err(|e| std::io::Error::other(format!("读取剪贴板纯文本失败: {e}")))?;
+    raw::get_string(&mut current).map_err(|e| {
+        std::io::Error::other(crate::app::i18n::format_message!(
+            "读取剪贴板纯文本失败: {e}",
+            "Could not read clipboard text: {e}"
+        ))
+    })?;
     if current != original.as_bytes() {
         event(
             "normalize_text_mismatch",
@@ -552,8 +561,12 @@ pub fn normalize_clipboard_text(
             continue;
         }
         let mut bytes = Vec::new();
-        raw::get_vec(format, &mut bytes)
-            .map_err(|e| std::io::Error::other(format!("读取剪贴板格式 {format} 失败: {e}")))?;
+        raw::get_vec(format, &mut bytes).map_err(|e| {
+            std::io::Error::other(crate::app::i18n::format_message!(
+                "读取剪贴板格式 {format} 失败: {e}",
+                "Could not read clipboard format {format}: {e}"
+            ))
+        })?;
         event(
             "normalize_format_read",
             || json!({"format": format, "bytes": bytes.len(), "current_revision": clipboard_revision()}),
@@ -561,17 +574,20 @@ pub fn normalize_clipboard_text(
         retained.push((format, bytes));
     }
     let html_format = register_format("HTML Format")
-        .ok_or_else(|| std::io::Error::other("无法注册 HTML 剪贴板格式"))?
+        .ok_or_else(|| std::io::Error::other(crate::app::i18n::tr("无法注册 HTML 剪贴板格式")))?
         .get();
     let rtf_format = register_format("Rich Text Format")
-        .ok_or_else(|| std::io::Error::other("无法注册 RTF 剪贴板格式"))?
+        .ok_or_else(|| std::io::Error::other(crate::app::i18n::tr("无法注册 RTF 剪贴板格式")))?
         .get();
     let html = retained
         .iter()
         .find(|(format, _)| *format == html_format)
         .map(|(_, bytes)| {
-            crate::clipboard_text::trim_windows_html(bytes)
-                .ok_or_else(|| std::io::Error::other("HTML 剪贴板偏移无效，保留原始复制内容"))
+            crate::clipboard_text::trim_windows_html(bytes).ok_or_else(|| {
+                std::io::Error::other(crate::app::i18n::tr(
+                    "HTML 剪贴板偏移无效，保留原始复制内容",
+                ))
+            })
         })
         .transpose()?;
     let rtf = retained
@@ -595,13 +611,26 @@ pub fn normalize_clipboard_text(
         event("normalize_unchanged", || json!({"revision": revision}));
         return Ok(false);
     }
-    raw::empty().map_err(|e| std::io::Error::other(format!("接管剪贴板失败: {e}")))?;
+    raw::empty().map_err(|e| {
+        std::io::Error::other(crate::app::i18n::format_message!(
+            "接管剪贴板失败: {e}",
+            "Could not acquire the clipboard: {e}"
+        ))
+    })?;
     for (format, bytes) in retained {
-        raw::set_without_clear(format, &bytes)
-            .map_err(|e| std::io::Error::other(format!("写回剪贴板格式 {format} 失败: {e}")))?;
+        raw::set_without_clear(format, &bytes).map_err(|e| {
+            std::io::Error::other(crate::app::i18n::format_message!(
+                "写回剪贴板格式 {format} 失败: {e}",
+                "Could not write clipboard format {format}: {e}"
+            ))
+        })?;
     }
-    raw::set_string_with(text, options::NoClear)
-        .map_err(|e| std::io::Error::other(format!("写回剪贴板纯文本失败: {e}")))?;
+    raw::set_string_with(text, options::NoClear).map_err(|e| {
+        std::io::Error::other(crate::app::i18n::format_message!(
+            "写回剪贴板纯文本失败: {e}",
+            "Could not write clipboard text: {e}"
+        ))
+    })?;
 
     event(
         "normalize_written",
@@ -636,13 +665,13 @@ pub fn normalize_clipboard_text(
         }
         let types = board
             .types()
-            .ok_or_else(|| std::io::Error::other("无法读取剪贴板格式"))?;
+            .ok_or_else(|| std::io::Error::other(crate::app::i18n::tr("无法读取剪贴板格式")))?;
         let mut data = Vec::new();
         let mut changed = original != text;
         for kind in types.iter() {
             let value = board
                 .dataForType(&kind)
-                .ok_or_else(|| std::io::Error::other("无法保留剪贴板格式"))?;
+                .ok_or_else(|| std::io::Error::other(crate::app::i18n::tr("无法保留剪贴板格式")))?;
             let bytes = if &*kind == unsafe { NSPasteboardTypeHTML } {
                 let source = String::from_utf8(value.to_vec()).map_err(std::io::Error::other)?;
                 crate::clipboard_text::trim_html(&source).into_bytes()
@@ -667,7 +696,9 @@ pub fn normalize_clipboard_text(
         unsafe { board.declareTypes_owner(&types, None) };
         for (kind, value) in data {
             if !board.setData_forType(Some(&value), &kind) {
-                return Err(std::io::Error::other("写回剪贴板格式失败"));
+                return Err(std::io::Error::other(crate::app::i18n::tr(
+                    "写回剪贴板格式失败",
+                )));
             }
         }
 

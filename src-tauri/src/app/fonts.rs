@@ -107,7 +107,7 @@ fn group_fonts(faces: Vec<(String, FontStyle, Vec<String>)>) -> Vec<FontFamily> 
 pub(super) fn get_system_fonts() -> Result<Vec<FontFamily>> {
     let groups = group_fonts(platform_fonts()?);
     if groups.is_empty() {
-        return Err("未能读取系统字体，请重试".into());
+        return Err(crate::app::i18n::tr("未能读取系统字体，请重试").into());
     }
     Ok(groups)
 }
@@ -209,7 +209,8 @@ fn platform_fonts() -> Result<Vec<(String, FontStyle, Vec<String>)>> {
     use objc2::MainThreadMarker;
     use objc2_app_kit::{NSFontManager, NSFontTraitMask};
     use objc2_foundation::{NSNumber, NSString};
-    let mtm = MainThreadMarker::new().ok_or("读取系统字体需要在主线程执行")?;
+    let mtm =
+        MainThreadMarker::new().ok_or(crate::app::i18n::tr("读取系统字体需要在主线程执行"))?;
     let manager = NSFontManager::sharedFontManager(mtm);
     let mut faces = Vec::new();
     for family in manager.availableFontFamilies().iter() {

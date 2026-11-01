@@ -3,6 +3,7 @@ const callbacks = new Map(), listeners = new Map();
 let nextId = 1, visible = false, confirmationCount = 0, generation = 0;
 const label = new URLSearchParams(location.search).get("window") || "main";
 const settings = { maxOrdinary: 300, retentionDays: 7, sensitiveSeconds: 90, shortcut: "", renameShortcut: "F2", positionMode: "fixed", fixedPosition: "right",
+  language: window.__TP_TEST_INITIAL_LANGUAGE__ ?? "system",
   theme: window.__TP_TEST_INITIAL_THEME__ ?? "indigo", fontFamily: window.__TP_TEST_INITIAL_FONT__ ?? "",
   fontStyle: window.__TP_TEST_INITIAL_FONT_STYLE__ ?? { name: "Regular", family: "", weight: 400, stretch: 100, style: "normal" }, backgroundResident: false, retainTypeFilter: true, removeTrailingNewlines: true,
   rememberPosition: false, panelWidth: 420, panelHeight: 600, panelX: null, panelY: null, alwaysOnTop: false, retainSearchInput: true, showTaskbarIcon: true };
@@ -20,6 +21,12 @@ const state = { records: [
 ], groups: [{ id: 1, name: "工作" }, { id: 2, name: "资料" }], settings };
 let session = { view: "default", kindFilter: "all", search: "" };
 const calls = [];
+function languageState() {
+  const preference = state.settings.language ?? "system";
+  const systemLanguage = window.__TP_TEST_SYSTEM_LANGUAGE__ ?? navigator.language;
+  const system = /^zh(?:-|$)/i.test(systemLanguage) ? "zh-CN" : "en";
+  return { preference, resolved: preference === "system" ? system : preference, system };
+}
 function emit(event, payload = null) {
   for (const [id, item] of [...listeners]) if (item.event === event) callbacks.get(item.handler)?.({ event, id, payload });
 }
@@ -51,6 +58,7 @@ window.__TAURI_INTERNALS__ = {
     if (name === "save_panel_session") { session = { ...args.session }; return; }
     if (name === "panel_ready") { setTimeout(() => window.__TP_TEST__.show(), 0); return null; }
     if (name === "get_state") return structuredClone(state);
+    if (name === "get_language") return languageState();
     if (name === "get_theme") return state.settings.theme ?? "indigo";
     if (name === "get_font") return { size: state.settings.fontSize ?? 14, family: state.settings.fontFamily ?? "", style: state.settings.fontStyle };
     if (name === "get_system_fonts") {
@@ -87,7 +95,10 @@ window.__TAURI_INTERNALS__ = {
       if (window.__TP_TEST__.settingsError) throw new Error(window.__TP_TEST__.settingsError);
       if ((args.value.maxOrdinary !== state.settings.maxOrdinary || args.value.retentionDays !== state.settings.retentionDays) && confirmationCount > (args.confirmedCount ?? 0))
         return { status: "confirmation_required", count: confirmationCount };
-      state.settings = { ...args.value }; return { status: "saved" };
+      const previousLanguage = state.settings.language;
+      state.settings = { ...args.value };
+      if (previousLanguage !== state.settings.language) emit("language-changed", languageState());
+      return { status: "saved" };
     }
     if (name === "set_favorite" || name === "set_record_pinned") {
       const record = state.records.find(record => record.id === args.id);

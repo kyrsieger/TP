@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useRef } from "react";
 import { getTheme, sortedThemes, themeSwatches, type ThemeId } from "../domain/themes";
 import { Icon } from "./Icon";
@@ -19,7 +20,7 @@ export function ThemeSetting({ value, open, toggle, choose }: {
     focusOption(options[(index + direction + options.length) % options.length]);
   };
   const close = () => { toggle(false); trigger.current?.focus({ preventScroll: true }); };
-  return <div className="setting-field"><span id="theme-label" className="setting-label">主题配色</span><div className="setting-select theme-select">
+  return <div className="setting-field"><span id="theme-label" className="setting-label">{t("主题配色")}</span><div className="setting-select theme-select">
     <button ref={trigger} id="theme-trigger" type="button" aria-labelledby="theme-label theme-value" aria-haspopup="listbox" aria-expanded={open} aria-controls="theme-menu"
       onClick={() => toggle(!open)} onKeyDown={event => {
         if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); }

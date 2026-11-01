@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { flushSync } from "react-dom";
 import { backToTopOffset, listOffsets, rowScrollTop, visibleRange } from "../list-layout";
@@ -101,6 +102,6 @@ export function RecordList({ history, rename, previews, menus, listRef, onBackTo
         move={trigger => { if (menu.move?.triggerId === record.id) menus.update({ move: null }); else menus.openMove(trigger, trigger, [record]); }}
         hover={() => { if (!edit.id && !menu.record) previews.hoverRecord(record.id); }} leave={() => previews.leave(record.id)} />)}
       <div className="list-spacer" style={{ height: offsets[records.length] - offsets[range.end] }} aria-hidden="true" />
-    </> : <div className="empty">这里还没有记录</div>)}
+    </> : <div className="empty">{t("这里还没有记录")}</div>)}
   </main>;
 }

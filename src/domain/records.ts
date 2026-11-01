@@ -1,5 +1,6 @@
+import { t } from "../i18n";
 import type { FileItem, Kind, PanelSession, RecordItem } from "./types";
-export const labels: Record<Kind, string> = { text: "文本", link: "链接", image: "图片", file: "文件", video: "视频", color: "颜色" };
+export const labels: Record<Kind, string> = { get text() { return t("文本"); }, get link() { return t("链接"); }, get image() { return t("图片"); }, get file() { return t("文件"); }, get video() { return t("视频"); }, get color() { return t("颜色"); } };
 /** Only trailing Unicode whitespace is removed; leading indentation and internal lines remain exact. */
 export function textForUse(body: string, removeTrailingNewlines = true): string {
   return removeTrailingNewlines ? body.replace(/\p{White_Space}+$/u, "") : body;
@@ -18,14 +19,14 @@ export function firstLineText(body: string): string {
   const lines = body.split(/\r\n|\r|\n/);
   const first = lines[0];
   const hasMore = lines.slice(1).some(line => line.trim() !== "");
-  if (!first) return hasMore ? "..." : "空文本";
+  if (!first) return hasMore ? "..." : t("空文本");
   return hasMore ? `${first} ...` : first;
 }
 
 export function recordListText(record: RecordItem, search: string, removeTrailingNewlines = true): string {
   const body = textForUse(record.body, removeTrailingNewlines);
-  const usual = record.files.length > 1 ? `${record.files.length} 个文件 · ${record.files.map(file => file.original.split(/[\\/]/).pop()).join("、")}`
-    : record.files.length === 1 ? record.files[0].original.split(/[\\/]/).pop() || "文件"
+  const usual = record.files.length > 1 ? t("{0} 个文件 · {1}", record.files.length, record.files.map(file => file.original.split(/[\\/]/).pop()).join(t("、")))
+    : record.files.length === 1 ? record.files[0].original.split(/[\\/]/).pop() || t("文件")
     : firstLineText(body);
   if (!search) return usual;
   const needle = search.toLocaleLowerCase();
@@ -37,12 +38,12 @@ export function recordListText(record: RecordItem, search: string, removeTrailin
 
 export function fileTagText(files: FileItem[]): string {
   const extensions = files.map(file => {
-    if (file.isDirectory) return "目录";
+    if (file.isDirectory) return t("目录");
     const name = file.original.split(/[\\/]/).pop() || "";
     const dot = name.lastIndexOf(".");
-    return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : "文件";
+    return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : t("文件");
   });
-  return extensions.every(extension => extension === extensions[0]) ? extensions[0] || "文件" : "多格式";
+  return extensions.every(extension => extension === extensions[0]) ? extensions[0] || t("文件") : t("多格式");
 }
 
 export function previewPaths(record: RecordItem): FileItem[] {

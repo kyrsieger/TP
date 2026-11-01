@@ -181,8 +181,10 @@ fn portable_path(path: &Path) -> Result<String> {
                 .to_str()
                 .filter(|name| safe_component(name))
                 .map(str::to_string)
-                .ok_or_else(|| "附件名称无法在 Windows 和 macOS 间迁移".to_string()),
-            _ => Err("附件路径无效".into()),
+                .ok_or_else(|| {
+                    crate::app::i18n::tr("附件名称无法在 Windows 和 macOS 间迁移").to_string()
+                }),
+            _ => Err(crate::app::i18n::tr("附件路径无效").into()),
         })
         .collect::<Result<Vec<_>>>()
         .map(|parts| parts.join("/"))
@@ -197,7 +199,7 @@ fn ensure_settled(conn: &Connection) -> Result<()> {
         )
         .map_err(err)?;
     if pending {
-        return Err("仍有文件副本待保存，请稍后重试".into());
+        return Err(crate::app::i18n::tr("仍有文件副本待保存，请稍后重试").into());
     }
     Ok(())
 }
@@ -258,29 +260,36 @@ fn collect_manifest(conn: &Connection, dir: &Path) -> Result<(Manifest, usize)> 
     let mut warnings = Vec::new();
     for record in &mut records {
         if !safe_component(&record.id) {
-            return Err("记录标识无效，无法导出".into());
+            return Err(crate::app::i18n::tr("记录标识无效，无法导出").into());
         }
         for file in &mut record.files {
             file.stored = match file.stored.as_deref() {
                 Some(stored) => {
-                    let relative = Path::new(stored)
-                        .strip_prefix(dir)
-                        .map_err(|_| "文件副本位于应用数据目录之外".to_string())?;
+                    let relative = Path::new(stored).strip_prefix(dir).map_err(|_| {
+                        crate::app::i18n::tr("文件副本位于应用数据目录之外").to_string()
+                    })?;
                     let relative = portable_path(relative)?;
                     if !relative.starts_with(&format!("assets/{}/", record.id)) {
-                        return Err("文件副本不属于该记录".into());
+                        return Err(crate::app::i18n::tr("文件副本不属于该记录").into());
                     }
                     if !Path::new(stored).exists() {
-                        warnings.push(format!("{}：文件已不可用（{}）", record.id, file.original));
+                        warnings.push(crate::app::i18n::format_message!(
+                            "{}：文件已不可用（{}）",
+                            "{}: File unavailable ({})",
+                            record.id,
+                            file.original
+                        ));
                     }
                     Some(relative)
                 }
                 None => None,
             };
             if record.storage_mode != "copy" || file.stored.is_none() {
-                warnings.push(format!(
+                warnings.push(crate::app::i18n::format_message!(
                     "{}：仅包含原路径，未包含文件本体（{}）",
-                    record.id, file.original
+                    "{}: Only the original path is included, not the file itself ({})",
+                    record.id,
+                    file.original
                 ));
             }
         }
@@ -292,7 +301,11 @@ fn collect_manifest(conn: &Connection, dir: &Path) -> Result<(Manifest, usize)> 
                 .join("image.png")
                 .is_file()
         {
-            warnings.push(format!("{}：图片副本不可用", record.id));
+            warnings.push(crate::app::i18n::format_message!(
+                "{}：图片副本不可用",
+                "{}: Image copy unavailable",
+                record.id
+            ));
         }
     }
     Ok((
@@ -331,9 +344,10 @@ fn add_asset(
     #[cfg(not(windows))]
     let reparse = false;
     if metadata.file_type().is_symlink() || reparse {
-        manifest
-            .warnings
-            .push(format!("{relative}：跳过链接，未读取链接指向的内容"));
+        manifest.warnings.push(crate::app::i18n::format_message!(
+            "{relative}：跳过链接，未读取链接指向的内容",
+            "{relative}: Link skipped; its target was not read"
+        ));
         return Ok(());
     }
     if metadata.is_dir() {
@@ -376,9 +390,10 @@ fn add_asset(
             sha256: format!("{:x}", hash.finalize()),
         });
     } else {
-        manifest
-            .warnings
-            .push(format!("{relative}：附件类型不支持"));
+        manifest.warnings.push(crate::app::i18n::format_message!(
+            "{relative}：附件类型不支持",
+            "{relative}: Unsupported attachment type"
+        ));
     }
     Ok(())
 }
@@ -410,16 +425,21 @@ fn display_time(value: i64) -> String {
             date.format(&time::format_description::well_known::Rfc3339)
                 .ok()
         })
-        .unwrap_or_else(|| "未知".into())
+        .unwrap_or_else(|| super::i18n::choose("未知", "Unknown").into())
 }
 fn filename_time(date: chrono::DateTime<chrono::FixedOffset>) -> String {
     date.format("%Y%m%d-%H%M%S").to_string()
 }
 fn content_html(manifest: &Manifest) -> String {
-    let mut html = String::from("<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\"><title>TP 导出内容</title><style>body{font:15px/1.6 system-ui;max-width:900px;margin:32px auto;padding:0 20px;color:#222;background:#f7f7f8}article{padding:20px;margin:16px 0;border:1px solid #ddd;border-radius:12px;background:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;max-height:420px}small{color:#666}a{overflow-wrap:anywhere}li{margin:6px 0}</style><h1>TP 导出内容</h1>");
-    html.push_str(&format!("<p>共 {} 条记录。完整原文与整理信息见 <a href=\"records.json\">JSON 数据</a>。此导出包未加密，不包含应用设置和敏感到期标记记录。</p>", manifest.records.len()));
+    let language = super::i18n::choose("zh-CN", "en");
+    let title = super::i18n::choose("TP 导出内容", "TP exported content");
+    let mut html = format!("<!doctype html><html lang=\"{language}\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\"><title>{title}</title><style>body{{font:15px/1.6 system-ui;max-width:900px;margin:32px auto;padding:0 20px;color:#222;background:#f7f7f8}}article{{padding:20px;margin:16px 0;border:1px solid #ddd;border-radius:12px;background:white}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}img{{max-width:100%;max-height:420px}}small{{color:#666}}a{{overflow-wrap:anywhere}}li{{margin:6px 0}}</style><h1>{title}</h1>");
+    html.push_str(&crate::app::i18n::format_message!("<p>共 {} 条记录。完整原文与整理信息见 <a href=\"records.json\">JSON 数据</a>。此导出包未加密，不包含应用设置和敏感到期标记记录。</p>", "<p>{} records. See <a href=\"records.json\">JSON data</a> for full contents and organization. This archive is not encrypted and excludes application settings and records marked for sensitive expiry.</p>", manifest.records.len()));
     if !manifest.warnings.is_empty() {
-        html.push_str("<details open><summary>文件可用性说明</summary><ul>");
+        html.push_str(super::i18n::choose(
+            "<details open><summary>文件可用性说明</summary><ul>",
+            "<details open><summary>File availability</summary><ul>",
+        ));
         for warning in &manifest.warnings {
             html.push_str(&format!("<li>{}</li>", escape_html(warning)));
         }
@@ -430,30 +450,35 @@ fn content_html(manifest: &Manifest) -> String {
             .group_id
             .and_then(|id| manifest.groups.iter().find(|g| g.id == id))
             .map(|g| g.name.as_str())
-            .unwrap_or("未分组");
+            .unwrap_or(super::i18n::choose("未分组", "Ungrouped"));
         let kind = match record.kind.as_str() {
-            "text" => "文字",
-            "link" => "链接",
-            "color" => "颜色",
-            "image" => "图片",
-            "video" => "视频",
-            _ => "文件",
+            "text" => super::i18n::choose("文字", "Text"),
+            "link" => super::i18n::choose("链接", "Link"),
+            "color" => super::i18n::choose("颜色", "Color"),
+            "image" => super::i18n::choose("图片", "Image"),
+            "video" => super::i18n::choose("视频", "Video"),
+            _ => super::i18n::choose("文件", "File"),
         };
         let heading = if record.title.is_empty() {
             record.body.trim().chars().take(80).collect::<String>()
         } else {
             record.title.clone()
         };
-        html.push_str(&format!(
+        html.push_str(&crate::app::i18n::format_message!(
             "<article><h2>{}</h2><small>{kind} · {}{} · 最后使用时间 {} · 创建时间 {}</small>",
+            "<article><h2>{}</h2><small>{kind} · {}{} · Last used {} · Created {}</small>",
             escape_html(if heading.is_empty() { kind } else { &heading }),
             escape_html(group),
-            if record.favorite { " · 收藏" } else { "" },
+            if record.favorite {
+                super::i18n::choose(" · 收藏", " · Favorite")
+            } else {
+                ""
+            },
             display_time(record.used_at),
             record
                 .created_at
                 .map(display_time)
-                .unwrap_or_else(|| "未知".into())
+                .unwrap_or_else(|| super::i18n::choose("未知", "Unknown").into())
         ));
         if !record.body.is_empty() {
             html.push_str(&format!("<pre>{}</pre>", escape_html(&record.body)));
@@ -474,9 +499,12 @@ fn content_html(manifest: &Manifest) -> String {
                 "<img src=\"{}\" alt=\"{}\">",
                 href(&image),
                 if record.kind == "video" {
-                    "视频首帧预览，不能代替视频本体"
+                    super::i18n::choose(
+                        "视频首帧预览，不能代替视频本体",
+                        "Video first frame preview; not a substitute for the video file",
+                    )
                 } else {
-                    "图片"
+                    super::i18n::choose("图片", "Image")
                 }
             ));
         }
@@ -496,7 +524,10 @@ fn content_html(manifest: &Manifest) -> String {
                     ))
                 ));
             } else {
-                html.push_str(&format!("<li>{name} — 文件本体未包含，仅保留原路径</li>"));
+                html.push_str(&crate::app::i18n::format_message!(
+                    "<li>{name} — 文件本体未包含，仅保留原路径</li>",
+                    "<li>{name} — File contents not included; original path only</li>"
+                ));
             }
         }
         html.push_str("</ul></article>");
@@ -534,7 +565,7 @@ fn write_archive(conn: &Connection, dir: &Path, destination: &Path) -> Result<Tr
         let metadata = serde_json::to_vec_pretty(&manifest).map_err(err)?;
         validate_manifest(&manifest)?;
         if metadata.len() as u64 > MAX_MANIFEST {
-            return Err("记录清单超过 64 MiB，未生成导出包".into());
+            return Err(crate::app::i18n::tr("记录清单超过 64 MiB，未生成导出包").into());
         }
         writer.write_all(&metadata).map_err(err)?;
         writer.finish().map_err(err)?.sync_all().map_err(err)?;
@@ -554,7 +585,7 @@ fn write_archive(conn: &Connection, dir: &Path, destination: &Path) -> Result<Tr
 
 fn validate_manifest(manifest: &Manifest) -> Result<()> {
     if manifest.version != VERSION {
-        return Err("不支持此 TP 导出包的版本".into());
+        return Err(crate::app::i18n::tr("不支持此 TP 导出包的版本").into());
     }
     let mut ids = HashSet::new();
     let mut filesystem_ids = HashSet::new();
@@ -568,7 +599,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
             || group.name.chars().count() > 40
             || !names.insert(&group.name)
         {
-            return Err("导出包分组信息无效".into());
+            return Err(crate::app::i18n::tr("导出包分组信息无效").into());
         }
     }
     for record in &manifest.records {
@@ -592,7 +623,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
             || record.title.chars().count() > 100
             || record.title.contains(['\r', '\n'])
         {
-            return Err("导出包记录信息无效".into());
+            return Err(crate::app::i18n::tr("导出包记录信息无效").into());
         }
     }
     let mut paths = HashSet::new();
@@ -604,7 +635,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
                     || !asset.sha256.bytes().all(|b| b.is_ascii_hexdigit())))
             || (asset.directory && (asset.size != 0 || !asset.sha256.is_empty()))
         {
-            return Err("导出包附件路径或校验信息无效".into());
+            return Err(crate::app::i18n::tr("导出包附件路径或校验信息无效").into());
         }
     }
     for record in &manifest.records {
@@ -612,7 +643,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
             if file.stored.as_deref().is_some_and(|path| {
                 !safe_asset_path(path, &ids) || !path.starts_with(&format!("assets/{}/", record.id))
             }) {
-                return Err("导出包文件副本路径无效".into());
+                return Err(crate::app::i18n::tr("导出包文件副本路径无效").into());
             }
         }
     }
@@ -625,9 +656,9 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
     let manifest = {
         let mut entry = archive
             .by_name("records.json")
-            .map_err(|_| "导出包缺少 records.json，无法导入".to_string())?;
+            .map_err(|_| crate::app::i18n::tr("导出包缺少 records.json，无法导入").to_string())?;
         if entry.size() > MAX_MANIFEST {
-            return Err("记录清单过大".into());
+            return Err(crate::app::i18n::tr("记录清单过大").into());
         }
         let mut data = Vec::new();
         (&mut entry)
@@ -635,13 +666,15 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
             .read_to_end(&mut data)
             .map_err(err)?;
         if data.len() as u64 > MAX_MANIFEST {
-            return Err("记录清单过大".into());
+            return Err(crate::app::i18n::tr("记录清单过大").into());
         }
-        serde_json::from_slice::<Manifest>(&data).map_err(|e| format!("记录清单无效：{e}"))?
+        serde_json::from_slice::<Manifest>(&data).map_err(|e| {
+            crate::app::i18n::format_message!("记录清单无效：{e}", "Invalid record manifest: {e}")
+        })?
     };
     validate_manifest(&manifest)?;
     if archive.len() != manifest.assets.len() + 2 || archive.by_name("index.html").is_err() {
-        return Err("导出包缺少浏览目录或包含清单之外的文件".into());
+        return Err(crate::app::i18n::tr("导出包缺少浏览目录或包含清单之外的文件").into());
     }
     let workspace = Workspace::new(dir)?;
     fs::create_dir(workspace.path.join("assets")).map_err(err)?;
@@ -655,37 +688,44 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
         let mut entry = archive.by_index(index).map_err(err)?;
         let entry_name = entry.name().map_err(err)?;
         if !seen.insert(entry_name.to_lowercase()) {
-            return Err("导出包包含重复路径".into());
+            return Err(crate::app::i18n::tr("导出包包含重复路径").into());
         }
         if entry
             .unix_mode()
             .is_some_and(|mode| mode & 0o170000 == 0o120000)
             || entry.enclosed_name().is_none()
         {
-            return Err("导出包包含不安全路径或链接".into());
+            return Err(crate::app::i18n::tr("导出包包含不安全路径或链接").into());
         }
         if matches!(entry_name.as_ref(), "records.json" | "index.html") {
             continue;
         }
         let name = entry_name.trim_end_matches('/');
-        let asset = expected.get(name).ok_or("导出包附件未列入清单")?;
+        let asset = expected
+            .get(name)
+            .ok_or(crate::app::i18n::tr("导出包附件未列入清单"))?;
         let expected_name = if asset.directory {
             format!("{}/", asset.path)
         } else {
             asset.path.clone()
         };
         if entry_name != expected_name {
-            return Err("导出包附件名称不规范".into());
+            return Err(crate::app::i18n::tr("导出包附件名称不规范").into());
         }
         if entry.is_dir() != asset.directory || entry.size() != asset.size {
-            return Err("导出包附件大小或类型不匹配".into());
+            return Err(crate::app::i18n::tr("导出包附件大小或类型不匹配").into());
         }
         let target = workspace.path.join(&asset.path);
         if asset.directory {
             fs::create_dir_all(&target).map_err(err)?;
             continue;
         }
-        fs::create_dir_all(target.parent().ok_or("附件路径无效")?).map_err(err)?;
+        fs::create_dir_all(
+            target
+                .parent()
+                .ok_or(crate::app::i18n::tr("附件路径无效"))?,
+        )
+        .map_err(err)?;
         let mut output = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -699,15 +739,17 @@ fn prepare_archive(dir: &Path, source: &Path) -> Result<Prepared> {
             if size == 0 {
                 break;
             }
-            count = count.checked_add(size as u64).ok_or("附件过大")?;
+            count = count
+                .checked_add(size as u64)
+                .ok_or(crate::app::i18n::tr("附件过大"))?;
             if count > asset.size {
-                return Err("附件解压大小超过清单".into());
+                return Err(crate::app::i18n::tr("附件解压大小超过清单").into());
             }
             hash.update(&buffer[..size]);
             output.write_all(&buffer[..size]).map_err(err)?;
         }
         if count != asset.size || format!("{:x}", hash.finalize()) != asset.sha256 {
-            return Err("导出包附件校验失败，未恢复任何记录".into());
+            return Err(crate::app::i18n::tr("导出包附件校验失败，未恢复任何记录").into());
         }
         output.sync_all().map_err(err)?;
     }
@@ -729,9 +771,12 @@ fn restore_preview(
         .iter()
         .filter(|r| !r.favorite && r.group_id.is_none())
         .count();
-    let ordinary = u32::try_from(ordinary).map_err(|_| "导出包记录数量过多")?;
+    let ordinary =
+        u32::try_from(ordinary).map_err(|_| crate::app::i18n::tr("导出包记录数量过多"))?;
     let next = if ordinary > config.max_ordinary {
-        ordinary.checked_add(100).ok_or("导出包记录数量过多")?
+        ordinary
+            .checked_add(100)
+            .ok_or(crate::app::i18n::tr("导出包记录数量过多"))?
     } else {
         config.max_ordinary
     };
@@ -798,7 +843,7 @@ fn recover_restore_journal(dir: &Path) -> Result<()> {
     let journal: Journal =
         serde_json::from_slice(&fs::read(&journal_path).map_err(err)?).map_err(err)?;
     if Uuid::parse_str(&journal.stage).is_err() {
-        return Err("恢复日志路径无效".into());
+        return Err(crate::app::i18n::tr("恢复日志路径无效").into());
     }
     let stage = dir.join("transfers").join(&journal.stage);
     let committed = {
@@ -821,7 +866,10 @@ fn recover_restore_journal(dir: &Path) -> Result<()> {
             fs::rename(stage.join("previous-assets"), dir.join("assets")).map_err(err)?;
         }
         if !stage.join("previous.sqlite3").is_file() {
-            return Err("恢复中断，原数据库副本不存在；请保留数据目录以便排查".into());
+            return Err(crate::app::i18n::tr(
+                "恢复中断，原数据库副本不存在；请保留数据目录以便排查",
+            )
+            .into());
         }
         for suffix in ["-wal", "-shm"] {
             let path = dir.join(format!("history.sqlite3{suffix}"));
@@ -863,11 +911,11 @@ fn replace_data(
     let stage_id = stage
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or("恢复目录无效")?
+        .ok_or(crate::app::i18n::tr("恢复目录无效"))?
         .to_string();
     let journal_path = store.dir.join("restore-journal.json");
     if journal_path.exists() {
-        return Err("上次恢复尚未完成，请重启 TP 后重试".into());
+        return Err(crate::app::i18n::tr("上次恢复尚未完成，请重启 TP 后重试").into());
     }
     let mut journal = OpenOptions::new()
         .write(true)
@@ -951,8 +999,7 @@ fn replace_data(
             store
                 .recovery_required
                 .store(true, std::sync::atomic::Ordering::SeqCst);
-            return Err(format!(
-                "恢复失败且附件回退未完成，请重启 TP 自动恢复：{error}"
+            return Err(crate::app::i18n::format_message!("恢复失败且附件回退未完成，请重启 TP 自动恢复：{error}", "Restore failed and attachment rollback is incomplete. Restart TP to recover automatically: {error}"
             ));
         }
         prepared.workspace.persistent = false;
@@ -979,7 +1026,7 @@ pub(super) fn export_data(store: tauri::State<Store>) -> Result<Option<TransferR
         filename_time(chrono::Local::now().fixed_offset())
     );
     let Some(destination) = rfd::FileDialog::new()
-        .set_title("导出（ZIP 未加密）")
+        .set_title(crate::app::i18n::tr("导出（ZIP 未加密）"))
         .add_filter("ZIP", &["zip"])
         .set_file_name(name)
         .save_file()
@@ -988,11 +1035,11 @@ pub(super) fn export_data(store: tauri::State<Store>) -> Result<Option<TransferR
     };
     let parent = destination
         .parent()
-        .ok_or("保存路径无效")?
+        .ok_or(crate::app::i18n::tr("保存路径无效"))?
         .canonicalize()
         .map_err(err)?;
     if parent.starts_with(store.dir.canonicalize().map_err(err)?) {
-        return Err("请选择应用数据目录之外的位置保存".into());
+        return Err(crate::app::i18n::tr("请选择应用数据目录之外的位置保存").into());
     }
     let _data = store.write_data()?;
     let conn = store.db.lock().map_err(err)?;
@@ -1005,8 +1052,8 @@ pub(super) fn inspect_backup(
     sessions: tauri::State<TransferSessions>,
 ) -> Result<Option<RestorePreview>> {
     let Some(source) = rfd::FileDialog::new()
-        .set_title("选择 TP 导出包")
-        .add_filter("TP 导出 ZIP", &["zip"])
+        .set_title(crate::app::i18n::tr("选择 TP 导出包"))
+        .add_filter(crate::app::i18n::tr("TP 导出 ZIP"), &["zip"])
         .pick_file()
     else {
         return Ok(None);
@@ -1038,7 +1085,7 @@ pub(super) fn restore_backup(
     let prepared = session
         .as_mut()
         .filter(|p| p.token == token)
-        .ok_or("导入预览已失效，请重新选择备份")?;
+        .ok_or(crate::app::i18n::tr("导入预览已失效，请重新选择备份"))?;
     let _data = store.write_data()?;
     let mut conn = store.db.lock().map_err(err)?;
     let timestamp = now();

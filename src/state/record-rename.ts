@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { PanelController } from "./panel";
 import type { CommandCall } from "../services/desktop";
 import { Observable } from "./observable";
@@ -31,7 +32,7 @@ export class RecordRenameController extends Observable<{ id: string | null; titl
     if (!id || saving) return;
     const title = this.value.title.trim();
     if (Array.from(title).length > 100 || /[\r\n]/.test(title)) {
-      this.toast("记录标题最多 100 个字符，且不能换行");
+      this.toast(t("记录标题最多 100 个字符，且不能换行"));
       this.update({ focusRevision: this.value.focusRevision + 1 }); return;
     }
     if (title === (this.panel.value.snapshot?.records.find(record => record.id === id)?.title ?? "")) { this.cancel(); return; }

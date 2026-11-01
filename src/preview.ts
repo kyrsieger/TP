@@ -1,3 +1,4 @@
+import { startLanguageSync } from "./services/language";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { PreviewApp } from "./preview/PreviewApp";
@@ -8,4 +9,4 @@ import "./preview.css";
 import "./media-indicators.css";
 
 const render = () => createRoot(document.getElementById("app")!).render(createElement(PreviewApp));
-void Promise.all([startThemeSync(), startFontSync()]).then(render, render);
+void Promise.all([startThemeSync(), startFontSync(), startLanguageSync()]).then(render, render);

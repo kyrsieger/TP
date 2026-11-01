@@ -150,13 +150,13 @@ pub(super) fn apply_record(
                 })
                 .collect();
             if paths.iter().any(|path| !Path::new(path).exists()) {
-                return Err("文件已不存在，无法放回剪贴板".into());
+                return Err(crate::app::i18n::tr("文件已不存在，无法放回剪贴板").into());
             }
             *store.suppressed_digest.lock().map_err(err)? =
                 Some((file_digest(&paths, &kind)?, None));
             ctx.set_files(paths).map_err(err)?;
         }
-        _ => return Err("不支持的记录类型".into()),
+        _ => return Err(crate::app::i18n::tr("不支持的记录类型").into()),
     }
     if let Some((_, revision)) = store.suppressed_digest.lock().map_err(err)?.as_mut() {
         *revision = platform::clipboard_revision();

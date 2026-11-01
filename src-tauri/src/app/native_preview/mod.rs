@@ -9,10 +9,10 @@ use std::{
     time::Instant,
 };
 use tauri::{Emitter, Manager};
-#[cfg(target_os = "macos")]
-mod macos;
 #[cfg(any(target_os = "macos", test))]
 mod mac_drag;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(windows)]
 mod windows;
 #[cfg(target_os = "macos")]
@@ -36,7 +36,9 @@ pub(super) struct Picture {
 fn decode_picture(data: String) -> Result<image::RgbaImage> {
     use base64::Engine;
     use image::ImageDecoder;
-    let (_, data) = data.split_once(',').ok_or("无效的预览图片")?;
+    let (_, data) = data
+        .split_once(',')
+        .ok_or(crate::app::i18n::tr("无效的预览图片"))?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data)
         .map_err(err)?;
@@ -147,8 +149,15 @@ async fn load_picture(
         let _ = tx.try_send(result);
     })
     .map_err(err)?;
-    rx.recv().await.ok_or("预览加载已取消")??;
+    rx.recv()
+        .await
+        .ok_or(crate::app::i18n::tr("预览加载已取消"))??;
     Ok(true)
+}
+
+pub(super) fn refresh_language(app: &tauri::AppHandle) -> Result<()> {
+    app.run_on_main_thread(platform::refresh_language)
+        .map_err(err)
 }
 
 pub(crate) fn hide(app: &tauri::AppHandle) -> Result<()> {
@@ -379,9 +388,25 @@ pub(super) fn controls(
         return items;
     }
     add("−".into(), Some(Action::Smaller), size);
-    add("合适".into(), Some(Action::Fit), 40. * dpi);
-    add("撑满".into(), Some(Action::Fill), 40. * dpi);
-    add("原图".into(), Some(Action::Original), 40. * dpi);
+    add(
+        super::i18n::choose("合适", "Fit").into(),
+        Some(Action::Fit),
+        40. * dpi,
+    );
+    add(
+        super::i18n::choose("撑满", "Fill").into(),
+        Some(Action::Fill),
+        40. * dpi,
+    );
+    add(
+        super::i18n::choose("原图", "Original").into(),
+        Some(Action::Original),
+        if super::i18n::chinese() {
+            40. * dpi
+        } else {
+            64. * dpi
+        },
+    );
     if count > 1 {
         add("›".into(), Some(Action::Next), size);
         add(format!("{}/{}", index + 1, count), None, 48. * dpi);
@@ -393,3 +418,20 @@ pub(super) fn controls(
 #[cfg(test)]
 #[path = "tests/failed_items.rs"]
 mod failed_items_tests;
+
+#[cfg(test)]
+mod language_tests {
+    use super::*;
+    #[test]
+    fn english_controls_have_room_and_stay_inside_the_preview() {
+        crate::app::i18n::with_test_language(false, || {
+            let items = controls(800., 600., 1., 1., 0, 2);
+            let original = items.iter().find(|item| item.text == "Original").unwrap();
+            assert!(original.rect.w >= 64.);
+            assert!(items.iter().any(|item| item.text == "Fit"));
+            assert!(items
+                .iter()
+                .all(|item| item.rect.x >= 0. && item.rect.x + item.rect.w <= 800.));
+        });
+    }
+}

@@ -91,15 +91,16 @@ fn read_text_file_preview(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     }
     if fs::metadata(path).map_err(err)?.len() > 1024 * 1024 {
-        return Err("文件超过 1 MB，无法预览".into());
+        return Err(crate::app::i18n::tr("文件超过 1 MB，无法预览").into());
     }
     let bytes = fs::read(path).map_err(err)?;
     let text = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
-        String::from_utf8(bytes[3..].to_vec()).map_err(|_| "文件内容不是可预览的文本")?
+        String::from_utf8(bytes[3..].to_vec())
+            .map_err(|_| crate::app::i18n::tr("文件内容不是可预览的文本"))?
     } else if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
         let little_endian = bytes[0] == 0xff;
         if bytes.len() % 2 != 0 {
-            return Err("文件内容不是可预览的文本".into());
+            return Err(crate::app::i18n::tr("文件内容不是可预览的文本").into());
         }
         let units = bytes[2..].chunks_exact(2).map(|pair| {
             if little_endian {
@@ -108,15 +109,16 @@ fn read_text_file_preview(path: &Path) -> Result<Option<String>> {
                 u16::from_be_bytes([pair[0], pair[1]])
             }
         });
-        String::from_utf16(&units.collect::<Vec<_>>()).map_err(|_| "文件内容不是可预览的文本")?
+        String::from_utf16(&units.collect::<Vec<_>>())
+            .map_err(|_| crate::app::i18n::tr("文件内容不是可预览的文本"))?
     } else {
-        String::from_utf8(bytes).map_err(|_| "文件内容不是可预览的文本")?
+        String::from_utf8(bytes).map_err(|_| crate::app::i18n::tr("文件内容不是可预览的文本"))?
     };
     if text
         .chars()
         .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
     {
-        return Err("文件内容不是可预览的文本".into());
+        return Err(crate::app::i18n::tr("文件内容不是可预览的文本").into());
     }
     Ok(Some(text))
 }
@@ -133,12 +135,16 @@ fn file_text_preview_path(conn: &Connection, id: &str, index: usize) -> Result<O
         return Ok(None);
     }
     let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
-    let file = files.get(index).ok_or("无效的文件序号")?;
+    let file = files
+        .get(index)
+        .ok_or(crate::app::i18n::tr("无效的文件序号"))?;
     if !text_file_extension(Path::new(&file.original)) {
         return Ok(None);
     }
     let path = if mode == "copy" {
-        file.stored.as_deref().ok_or("文件副本不可用")?
+        file.stored
+            .as_deref()
+            .ok_or(crate::app::i18n::tr("文件副本不可用"))?
     } else {
         &file.original
     };
@@ -178,19 +184,19 @@ pub(super) fn preview_data(
         .map_err(err)?
     };
     if kind != "image" && kind != "video" {
-        return Err("此记录没有图片预览".into());
+        return Err(crate::app::i18n::tr("此记录没有图片预览").into());
     }
     let role = role.as_deref().unwrap_or("thumbnail");
     if !matches!(role, "thumbnail" | "preview" | "full") {
-        return Err("无效的预览类型".into());
+        return Err(crate::app::i18n::tr("无效的预览类型").into());
     }
     let files: Vec<FileItem> = serde_json::from_str(&files).map_err(err)?;
     let index = index.unwrap_or(0);
     if (files.is_empty() && index != 0) || (!files.is_empty() && index >= files.len()) {
-        return Err("无效的预览序号".into());
+        return Err(crate::app::i18n::tr("无效的预览序号").into());
     }
     if role == "thumbnail" && index != 0 {
-        return Err("缩略图只用于首个文件".into());
+        return Err(crate::app::i18n::tr("缩略图只用于首个文件").into());
     }
     let path = {
         let _media = store.media_lock.lock().map_err(err)?;

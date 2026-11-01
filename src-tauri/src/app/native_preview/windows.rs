@@ -1,6 +1,6 @@
 use super::*;
 use ::windows::{
-    core::w,
+    core::{w, PCWSTR},
     Win32::{
         Foundation::*,
         Graphics::Gdi::*,
@@ -208,7 +208,7 @@ impl Surface {
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, COLORREF(0x00ffffff));
             if let Some(message) = self.picture.unavailable {
-                let mut text: Vec<u16> = message.encode_utf16().collect();
+                let mut text: Vec<u16> = crate::app::i18n::tr(message).encode_utf16().collect();
                 let mut rect = RECT {
                     left: 0,
                     top: 0,
@@ -283,7 +283,7 @@ impl Surface {
                 );
             }
             if self.hovered && self.picture.video && height > 65 {
-                let mut text: Vec<u16> = "视频首帧".encode_utf16().collect();
+                let mut text: Vec<u16> = crate::app::i18n::tr("视频首帧").encode_utf16().collect();
                 let mut rect = RECT {
                     left: 8,
                     top: height - 28,
@@ -348,10 +348,14 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
                 ..Default::default()
             };
             RegisterClassW(&wc);
+            let title: Vec<u16> = crate::app::i18n::tr("TP 大图预览")
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
             let hwnd = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
                 w!("TPNativeImagePreview"),
-                w!("TP 大图预览"),
+                PCWSTR(title.as_ptr()),
                 WS_POPUP,
                 0,
                 0,
@@ -409,6 +413,7 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
         };
         surface.draw(hwnd)?;
         SURFACE.with(|s| *s.borrow_mut() = Some(surface));
+        refresh_language();
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);
         let _ = SetFocus(Some(hwnd));
@@ -416,6 +421,38 @@ pub(super) fn show(app: tauri::AppHandle, mut picture: Picture) -> Result<()> {
         Ok(())
     }
 }
+pub(super) fn refresh_language() {
+    WINDOW.with(|window| {
+        let hwnd = window.get();
+        if hwnd.is_invalid() {
+            return;
+        }
+        let video = SURFACE.with(|s| {
+            s.borrow()
+                .as_ref()
+                .is_some_and(|surface| surface.picture.video)
+        });
+        let title: Vec<u16> = crate::app::i18n::tr(if video {
+            "TP 视频首帧预览"
+        } else {
+            "TP 大图预览"
+        })
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+        unsafe {
+            let _ = SetWindowTextW(hwnd, PCWSTR(title.as_ptr()));
+        }
+        SURFACE.with(|surface| {
+            if let Some(surface) = surface.borrow_mut().as_mut() {
+                unsafe {
+                    let _ = surface.draw(hwnd);
+                }
+            }
+        });
+    });
+}
+
 pub(super) fn hide() {
     unsafe {
         WINDOW.with(|h| {

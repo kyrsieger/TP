@@ -37,7 +37,9 @@ fn panel_position(
 #[tauri::command]
 pub(super) fn place_panel(app: tauri::AppHandle, value: Settings) -> Result<()> {
     value.validate()?;
-    let window = app.get_webview_window("main").ok_or("面板窗口不存在")?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or(crate::app::i18n::tr("面板窗口不存在"))?;
     window
         .set_size(PhysicalSize::new(
             value.panel_width.round() as u32,

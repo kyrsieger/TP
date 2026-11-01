@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { Observable } from "./observable";
 import type { CommandCall } from "../services/desktop";
 import type { PanelController } from "./panel";
@@ -51,7 +52,7 @@ export class TransferController extends Observable<TransferValue> {
         }
         this.update({ preview, mode: preview ? "import" : null, keepExpired: false });
       });
-    } catch (error) { this.update({ mode: null }); this.toast(`无法读取导出包：${String(error)}`); }
+    } catch (error) { this.update({ mode: null }); this.toast(t("无法读取导出包：{0}", String(error))); }
     finally { this.update({ busy: false }); }
   }
   async confirm() {
@@ -70,18 +71,18 @@ export class TransferController extends Observable<TransferValue> {
           token: preview!.token, keepExpired, expectedCleanupCount: preview!.cleanupCount, expectedMaxOrdinary: preview!.nextMaxOrdinary,
         });
         if (result.status === "confirmation_required") {
-          this.update({ preview: result.preview, error: "保留规则或过期数量已变化，请核对后再次确认。" });
+          this.update({ preview: result.preview, error: t("保留规则或过期数量已变化，请核对后再次确认。") });
           return;
         }
         this.update({ mode: null, preview: null });
-        await this.history.refresh().catch(error => this.toast(`记录已导入，刷新界面失败：${String(error)}`));
+        await this.history.refresh().catch(error => this.toast(t("记录已导入，刷新界面失败：{0}", String(error))));
       });
     } catch (error) {
       if (mode === "import") {
         // A failed replacement consumes its prepared session. Require inspection again.
         this.update({ mode: null, preview: null });
-        this.toast(`导入失败：${String(error)}`);
-      } else this.update({ error: `保存失败：${String(error)}` });
+        this.toast(t("导入失败：{0}", String(error)));
+      } else this.update({ error: t("保存失败：{0}", String(error)) });
     } finally { this.update({ busy: false }); }
   }
 }

@@ -1,3 +1,4 @@
+import { useLanguage } from "../components/use-language";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { PreviewPayload } from "../domain/types";
@@ -6,6 +7,7 @@ import { PreviewCard } from "./PreviewCard";
 import { applyTheme } from "../services/theme";
 
 export function PreviewApp() {
+  useLanguage();
   const [payload, setPayload] = useState<PreviewPayload | null>(null);
   const current = useRef(payload), carousel = useRef<CarouselHandle | null>(null), version = useRef(0), lastWheel = useRef(0);
   current.current = payload;

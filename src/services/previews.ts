@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { monitorFromPoint, type Window } from "@tauri-apps/api/window";
 import { call } from "./desktop";
@@ -111,7 +112,7 @@ export class PreviewController {
       if (token !== this.previewGeneration)
         return;
       void call("hide_preview").catch(() => { });
-      this.toast(`预览失败：${String(error)}`);
+      this.toast(t("预览失败：{0}", String(error)));
     }
   }
   hoverRecord(id: string) {
@@ -149,7 +150,7 @@ export class PreviewController {
     if (!record || (record.kind !== "image" && record.kind !== "video"))
       return;
     if (record.kind === "video" && !record.preview && record.files.length < 2) {
-      this.toast("首帧预览不可用");
+      this.toast(t("首帧预览不可用"));
       return;
     }
     this.closePreview();
@@ -166,14 +167,14 @@ export class PreviewController {
         return;
       this.largePreviewId = null;
       void call("hide_large_preview").catch(() => { });
-      this.toast(`预览失败：${String(error)}`);
+      this.toast(t("预览失败：{0}", String(error)));
     }
   }
   async start() {
     const disposeSubscriptions = await subscribeAll([
       initPreviewWindows(),
       listen("large-preview-closed", () => { this.largePreviewId = null; }),
-      listen<string>("native-preview-error", event => { this.toast(`预览失败：${event.payload}`); }),
+      listen<string>("native-preview-error", event => { this.toast(t("预览失败：{0}", event.payload)); }),
       listen<{
         id: string;
         generation: number;
@@ -190,7 +191,7 @@ export class PreviewController {
         void call("show_preview", { x: placement.x, y, width: placement.width, height }).then(() => {
           if (token !== this.previewGeneration)
             void call("hide_preview").catch(() => { });
-        }).catch(error => this.toast(`预览失败：${String(error)}`));
+        }).catch(error => this.toast(t("预览失败：{0}", String(error))));
       }),
       listen<string>("preview-enter", event => {
         if (event.payload !== this.previewId)

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PreviewPayload } from "../domain/types";
 import { labels, textForUse, hasTrailingNewline } from "../domain/records";
@@ -15,7 +16,7 @@ function FileText({ id, index, measured }: { id: string; index: number; measured
   }, [id, index]);
   useLayoutEffect(() => { if (result) measured(); }, [result]);
   if (!result || (result.content === null && !result.error)) return null;
-  return result.content === null ? <p className="file-text-error">文本预览不可用：{result.error}</p> : <pre className="file-text-content">{result.content}</pre>;
+  return result.content === null ? <p className="file-text-error">{t("文本预览不可用：")}{result.error}</p> : <pre className="file-text-content">{result.content}</pre>;
 }
 function SingleMedia({ payload, onReady }: { payload: PreviewPayload; onReady: () => void }) {
   const ref = useRef<HTMLImageElement>(null);
@@ -34,8 +35,8 @@ function SingleMedia({ payload, onReady }: { payload: PreviewPayload; onReady: (
     return () => { alive = false; image.removeAttribute("src"); };
   }, [payload.id]);
   useLayoutEffect(() => { if (loaded || failed) onReady(); }, [loaded, failed, onReady]);
-  return <div className="media"><img id="large-preview" ref={ref} alt={`${labels[payload.kind]}预览`} hidden={!loaded} />
-    <p id="media-error" className="unavailable" hidden={!failed}>{failed ? payload.kind === "video" ? "首帧预览不可用" : "预览图不可用" : ""}</p></div>;
+  return <div className="media"><img id="large-preview" ref={ref} alt={t("{0}预览", labels[payload.kind])} hidden={!loaded} />
+    <p id="media-error" className="unavailable" hidden={!failed}>{failed ? payload.kind === "video" ? t("首帧预览不可用") : t("预览图不可用") : ""}</p></div>;
 }
 export function PreviewCard({ payload, measured, carouselRef }: { payload: PreviewPayload; measured: () => void; carouselRef: React.Ref<CarouselHandle | null> }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -58,16 +59,16 @@ export function PreviewCard({ payload, measured, carouselRef }: { payload: Previ
   const body = textForUse(payload.body, payload.removeTrailingNewlines !== false);
   // An empty inline box gives the final empty line a real line box without changing copied text.
   const terminalLine = hasTrailingNewline(body) && <span className="terminal-line" aria-hidden="true" />;
-  const status = payload.status === "missing" ? "文件已不可用" : payload.status === "copy_failed" ? "副本保存失败" : "";
+  const status = payload.status === "missing" ? t("文件已不可用") : payload.status === "copy_failed" ? t("副本保存失败") : "";
   return <div ref={ref} className={`card${payload.kind === "text" ? " text-card" : ""}`} style={{ width: payload.width, maxHeight: payload.kind === "text" ? payload.maxHeight : undefined }}>
     {payload.title && <div className="record-preview-title"><Highlight text={payload.title} query={payload.search} /></div>}
     {(payload.kind === "text" || payload.kind === "link") && <pre className="text-content"><Highlight text={body} query={payload.search} />{terminalLine}</pre>}
     {payload.kind === "color" && <div className="color-content"><span className="color-disc" style={{ background: color }} /><span className="color-text"><Highlight text={body} query={payload.search} />{terminalLine}</span></div>}
     {(payload.kind === "image" || payload.kind === "video") && (payload.files.length > 1
       ? <div className="media multi"><MediaCarousel count={payload.files.length} load={index => call("preview_data", { id: payload.id, role: "preview", index })}
-        unavailable={payload.kind === "video" ? "首帧预览不可用" : "预览图不可用"} anchor="frame" carouselRef={carouselRef} onReady={onMediaReady} /></div>
+        unavailable={payload.kind === "video" ? t("首帧预览不可用") : t("预览图不可用")} anchor="frame" carouselRef={carouselRef} onReady={onMediaReady} /></div>
       : <SingleMedia payload={payload} onReady={onMediaReady} />)}
-    {payload.groupName !== null && <dl className="details"><div><dt>分组</dt><dd>{payload.groupName}</dd></div></dl>}
+    {payload.groupName !== null && <dl className="details"><div><dt>{t("分组")}</dt><dd>{payload.groupName}</dd></div></dl>}
     {payload.files.length > 0 && <ul className={`files${payload.files.length === 1 ? " single-file" : ""}`}>{payload.files.map((file, index) => {
       const name = file.original.split(/[\\/]/).pop() || file.original;
       return <li key={index} className="file" data-index={index}><div className="path"><Highlight text={file.original.slice(0, file.original.length - name.length)} query={payload.search} /><strong><Highlight text={name} query={payload.search} /></strong></div>

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Settings {
+    #[serde(default = "default_language")]
+    pub(super) language: String,
     #[serde(default = "default_theme", deserialize_with = "deserialize_theme")]
     pub(super) theme: String,
     #[serde(default)]
@@ -51,6 +53,10 @@ pub(super) const THEMES: [&str; 11] = [
     "violet",
     "charcoal",
 ];
+fn default_language() -> String {
+    "system".into()
+}
+
 fn default_font_size() -> u16 {
     14
 }
@@ -137,6 +143,7 @@ fn default_remove_trailing_newlines() -> bool {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            language: default_language(),
             theme: default_theme(),
             font_family: String::new(),
             font_size: default_font_size(),
@@ -165,19 +172,22 @@ impl Default for Settings {
 
 impl Settings {
     pub(super) fn validate(&self) -> Result<()> {
+        if !["system", "zh-CN", "en"].contains(&self.language.as_str()) {
+            return Err(super::i18n::tr("无效的语言设置").into());
+        }
         if !(10..=20).contains(&self.font_size) {
-            return Err("字号须为 10 至 20 之间的整数".into());
+            return Err(crate::app::i18n::tr("字号须为 10 至 20 之间的整数").into());
         }
         if !THEMES.contains(&self.theme.as_str()) {
-            return Err("无效的主题配色".into());
+            return Err(crate::app::i18n::tr("无效的主题配色").into());
         }
         if !super::fonts::valid_name(&self.font_family) || !self.font_style.valid() {
-            return Err("无效的字体名称".into());
+            return Err(crate::app::i18n::tr("无效的字体名称").into());
         }
         if !valid_rename_shortcut(&self.rename_shortcut)
             || (!self.rename_shortcut.is_empty() && self.rename_shortcut == self.shortcut)
         {
-            return Err("重命名快捷键无效或与其他操作冲突".into());
+            return Err(crate::app::i18n::tr("重命名快捷键无效或与其他操作冲突").into());
         }
         if self.max_ordinary == 0
             || ![1, 3, 5, 7, 30].contains(&self.retention_days)
@@ -187,7 +197,7 @@ impl Settings {
             || self.panel_width < 340.0
             || self.panel_height < 400.0
         {
-            return Err("设置值超出允许范围".into());
+            return Err(crate::app::i18n::tr("设置值超出允许范围").into());
         }
         Ok(())
     }

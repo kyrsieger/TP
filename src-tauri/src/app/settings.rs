@@ -117,7 +117,7 @@ fn persist_panel_geometry(conn: &Connection, value: PanelGeometry) -> Result<()>
         || value.panel_x.is_some_and(|v| !v.is_finite())
         || value.panel_y.is_some_and(|v| !v.is_finite())
     {
-        return Err("面板位置或尺寸无效".into());
+        return Err(crate::app::i18n::tr("面板位置或尺寸无效").into());
     }
     let mut current = settings(conn)?;
     current.panel_x = value.panel_x;
@@ -184,7 +184,7 @@ pub(super) fn save_settings(
     let previous = settings(&conn)?;
     if previous.always_on_top != value.always_on_top {
         app.get_webview_window("main")
-            .ok_or("面板窗口不存在")?
+            .ok_or(crate::app::i18n::tr("面板窗口不存在"))?
             .set_always_on_top(value.always_on_top)
             .map_err(err)?;
     }
@@ -238,6 +238,10 @@ pub(super) fn save_settings(
         remove_record(&conn, &store.dir, id)?;
     }
     drop(conn);
+    if previous.language != value.language {
+        super::i18n::set_preference(&value.language);
+        super::i18n::changed(&app);
+    }
     if !ids.is_empty() {
         changed(&app);
     }
