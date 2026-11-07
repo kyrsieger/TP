@@ -1,0 +1,34 @@
+[
+  {
+    "name": "NSIS 3.11 installer runtime and compression modules",
+    "file": "licenses/installers/NSIS-3.11-COPYING",
+    "source": "https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip",
+    "archive_sha256": "c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1",
+    "member": "nsis-3.11/COPYING",
+    "sha256": "e7dd514003ab96cb3ddccbc028fe5c795fccf57dc41f21cfb9d4dd16ead23bf5"
+  },
+  {
+    "name": "nsis-tauri-utils 0.5.3 LICENSE_MIT",
+    "file": "licenses/installers/nsis-tauri-utils-LICENSE_MIT",
+    "source": "https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/13d9edd27b69310e108d6fbd49f90992f8a05390/LICENSE_MIT",
+    "sha256": "1c1020fa10a6bf318717e82c911bcc54ebdfb9bb280460ae332bcb2f82f57fbe"
+  },
+  {
+    "name": "Tauri CLI 2.11.5 NSIS template LICENSE_MIT",
+    "file": "packaging/windows/nsis/upstream/LICENSE_MIT",
+    "source": "https://raw.githubusercontent.com/tauri-apps/tauri/9452ddee5ebefd9b678a94ff003521379df6c9ae/LICENSE_MIT",
+    "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+  },
+  {
+    "name": "nsis-tauri-utils 0.5.3 LICENSE_APACHE-2.0",
+    "file": "licenses/installers/nsis-tauri-utils-LICENSE_APACHE-2.0",
+    "source": "https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/13d9edd27b69310e108d6fbd49f90992f8a05390/LICENSE_APACHE-2.0",
+    "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+  },
+  {
+    "name": "Tauri CLI 2.11.5 NSIS template LICENSE_APACHE-2.0",
+    "file": "packaging/windows/nsis/upstream/LICENSE_APACHE-2.0",
+    "source": "https://raw.githubusercontent.com/tauri-apps/tauri/9452ddee5ebefd9b678a94ff003521379df6c9ae/LICENSE_APACHE-2.0",
+    "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+  }
+]

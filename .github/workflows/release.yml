@@ -33,11 +33,8 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
       - id: discover
-        run: node scripts/release.mjs discover
+        run: python scripts/release.py discover
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -76,33 +73,49 @@ jobs:
           path: source
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: source/package-lock.json
       - name: Recheck CI and publication after acquiring the tag lock
         id: ready
-        run: node ../automation/scripts/release.mjs ready
+        run: python ../automation/scripts/release.py ready
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Validate version, main ancestry and CHANGELOG
+        id: prepare
         if: steps.ready.outputs.ready == 'true'
-        run: node ../automation/scripts/release.mjs prepare
+        run: python ../automation/scripts/release.py prepare
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         if: steps.ready.outputs.ready == 'true'
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.ready.outputs.ready == 'true'
         with:
-          workspaces: source/src-tauri -> target
-          shared-key: windows-release
-      - run: npm ci
+          workspaces: source -> target
+          shared-key: windows-release-gpui
+      - name: Build and verify native Windows installers
         if: steps.ready.outputs.ready == 'true'
-      - name: Build Windows installers
-        if: steps.ready.outputs.ready == 'true'
-        run: npm run tauri -- build --ci --bundles nsis,msi -- --locked
+        shell: pwsh
+        run: |
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency fetch failed' }
+          ./scripts/build-gpui-windows.ps1 -Offline
+          python scripts/audit-gpui-licenses.py
+          if ($LASTEXITCODE -ne 0) { throw 'License audit failed' }
+          python scripts/build_gpui_notices.py
+          if ($LASTEXITCODE -ne 0) { throw 'Notice generation failed' }
+          $version = $env:RELEASE_TAG.Substring(1)
+          ./scripts/stage-gpui-windows.ps1 -BinaryPath target/release/tp-gpui.exe -OutputDirectory target/gpui-package/windows -NoticesPath target/gpui-third-party-notices.txt -ExpectedVersion $version
+          python scripts/prepare_gpui_nsis.py --output target/gpui-tools/nsis
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS preparation failed' }
+          python scripts/prepare_gpui_wix.py --output target/gpui-tools/wix
+          if ($LASTEXITCODE -ne 0) { throw 'WiX preparation failed' }
+          python scripts/package_gpui_windows_nsis.py --stage target/gpui-package/windows --output target/gpui-package/nsis --compiler target/gpui-tools/nsis/makensis.exe --plugins target/gpui-tools/nsis/Plugins/x86-unicode/additional
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS compilation failed' }
+          python scripts/package_gpui_windows_msi.py --stage target/gpui-package/windows --output target/gpui-package/msi --wix-tools target/gpui-tools/wix
+          if ($LASTEXITCODE -ne 0) { throw 'MSI compilation failed' }
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          python scripts/verify_gpui_windows_nsis.py --installer "target/gpui-package/nsis/TP_${version}_x64-setup.exe" --stage target/gpui-package/windows --seven-zip $sevenZip
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS verification failed' }
+          ./scripts/verify-gpui-msi.ps1 -MsiPath "target/gpui-package/msi/TP_${version}_x64_zh-CN.msi" -StageDirectory target/gpui-package/windows -DarkPath target/gpui-tools/wix/dark.exe
       - name: Upload Windows installers and publish Release from CHANGELOG
         if: steps.ready.outputs.ready == 'true'
-        run: node ../automation/scripts/release.mjs publish
+        run: python ../automation/scripts/release.py publish
         env:
           GH_TOKEN: ${{ github.token }}

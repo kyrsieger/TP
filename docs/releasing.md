@@ -2,21 +2,17 @@
 
 ## 本地检查与主分支 CI
 
-开发分支推送、创建或更新 PR 不再自动运行 CI。开发时按改动运行相关测试，合并前执行一次 `npm run check`。首次使用先安装 Node.js 24、Rust 和当前系统的 Tauri 构建依赖，并执行 `npm ci`。
+开发时按改动运行相关测试。完整本地检查入口为 `python scripts/check.py`，要求 Python 3.11+、Rust 及目标平台的原生编译工具；无需 Node.js。检查包括 Rust 格式、翻译、安装器身份、Python 工具测试及 Rust 编译/测试/构建，失败即停止。
 
-`npm run check` 依次执行前端测试、前端构建、Chromium 安装检查、浏览器界面测试、Rust 编译检查和 Rust 测试；任何一步失败即停止。浏览器测试加载实际客户端界面并模拟桌面接口，不能替代系统剪贴板、托盘等原生功能验证。脚本支持 Windows 和 macOS，当前仅在 Windows 上运行验证。
-
-默认只安装 Playwright 无界面测试需要的 Chromium headless shell。若本地已经设置 `TP_TEST_BROWSER` 为可用的 Chrome 等浏览器可执行文件路径，则复用该浏览器并跳过下载；云端始终使用 Playwright 配套的 Chromium。
-
-`Checks` 工作流（`.github/workflows/ci.yml`）只在推送到 `main`（包括合并 PR）时自动运行同一套完整检查，也保留手动触发入口，不生成安装包。不同提交的 main CI 不互相取消；同一事件和提交的重复检查会取消旧运行。Rust 检查和发布打包分别缓存依赖及编译结果，首次运行或缓存失效时重新编译。
+`Checks` 工作流（`.github/workflows/ci.yml`）在推送到 `main` 时运行，并保留手动触发入口。Windows 和 macOS 作业执行原生检查、构建和静态打包验证，并保存未签名待验收产物；不会启动程序或执行安装。macOS 作业配置不代表已在 Mac 上通过验证。不同提交不互相取消；同一事件和提交的重复检查会取消旧运行。
 
 若分支保护或规则集要求 PR 的旧 `Checks` 状态通过才能合并，需在启用新流程时移除对应要求，避免 PR 永远等待不会触发的检查。其他审查要求可以保留。本地检查结果不会自动成为 GitHub 的必需检查。
 
-`Release` 工作流（`.github/workflows/release.yml`）由版本标签推送或 main 的 `Checks` 完成事件触发。仅接受 `vX.Y.Z` 正式版本标签；只有对应提交的 main push CI 成功才构建 Windows x64 的 `.exe` 和 `.msi` 并正式发布。macOS 构建仍保持暂停，不代表通过了 macOS 验证。
+`Release` 工作流（`.github/workflows/release.yml`）由版本标签推送或 main 的 `Checks` 完成事件触发。仅接受 `vX.Y.Z` 正式版本标签；只有对应提交的 main push CI 成功才构建 Windows x64 的 `.exe` 和 `.msi` 并正式发布。macOS 应用包目前仅由 Checks 保存为待验收产物，不在该发布流程中正式分发。
 
 ## 准备版本
 
-1. 在版本准备提交或 PR 中统一修改 `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 的应用版本，并同步 Cargo 锁文件中的应用版本。
+1. 在版本准备提交或 PR 中修改根 `Cargo.toml` 的 `[workspace.package].version`，通过 Cargo 同步根 `Cargo.lock` 中 `tp-core`、`tp-desktop`、`tp-gpui` 三个本地包版本。保留 `packaging/release.json` 的 GPUI 标记，安装器身份不随版本更改。
 2. 在根目录 `CHANGELOG.md` 中编写对应版本的更新说明。文件不存在时先创建。版本章节使用二级标题，分类使用三级标题，例如：
 
    ```markdown
@@ -45,9 +41,11 @@
 1. Linux 上的轻量任务一次性查询发布条件，不安装应用依赖、不轮询等待。标签先到而 CI 未完成时直接结束；CI 成功后通过 `workflow_run` 再次判断。CI 先成功时，稍后推送标签即可进入发布。没有正式版本标签或已正式发布的版本直接跳过。
 2. 仅接受同一完整提交编号、`main` 分支、`push` 事件的 `ci.yml` 结果；有多次运行时选择最新一次。失败、取消、运行中或缺少结果都不放行。手动触发或其他提交的成功结果不能替代；API 查询失败会报错而不是当作成功。
 3. 条件满足后才安排 Windows 打包任务。同一标签的任务通过并发锁串行执行，取得锁后重新查询 CI 和 Release 状态；若前一个任务已经发布，则跳过构建。控制脚本从 main 获取，产品源码显式检出筛选出的完整提交编号，避免 `workflow_run` 默认分支位置或后续 main 更新改变打包内容。
-4. 解析版本标签实际指向的提交（支持附注和轻量标签），核对检出的提交、main 归属、版本文件一致性，并提取该提交的 CHANGELOG 条目。恢复发布用 Rust 缓存，构建 Windows `.exe` 和 `.msi`。打包会执行前端构建和 Rust 编译，不重复运行测试或单独的 `cargo check`。
+4. 解析版本标签实际指向的提交（支持附注和轻量标签），核对检出的提交、main 归属、版本文件一致性，并提取该提交的 CHANGELOG 条目。恢复发布用 Rust 缓存，构建 Windows `.exe` 和 `.msi`。打包仅执行原生 Rust 构建、许可声明生成、独立 NSIS/WiX 编译和包内容核对，不重复执行完整测试。
 5. 正式发布前再次确认该提交的 main CI 仍成功。创建标题为 `TP vX.Y.Z` 的 Release 草稿，使用 CHANGELOG 对应版本的正文作为说明，上传两种安装包后才正式发布。重试可以更新已有草稿并替换同名附件，拒绝覆盖已正式发布的版本。上传或发布失败时保留草稿。这里没有配置安装包代码签名。
 
 若 CI 失败或被取消，修复问题后发布新提交，或在 Actions 中重跑原提交的 main push `Checks`；重跑成功会再次触发发布判断。若打包或上传失败，可重跑失败的 Release 任务。无需占用 Runner 等待，轻量条件查询本身仍有少量运行开销。此改动必须先进入 main，`workflow_run` 衔接才生效。
 
 工作流使用仓库自动提供的 `GITHUB_TOKEN`：查询结果需要 `actions: read`，创建或更新草稿、上传附件和正式发布需要 `contents: write`，无需配置个人访问令牌。若仓库或组织策略禁止这些权限，需要先调整对应策略。
+
+发布编排由 `scripts/release.py` 实现，使用 Python 标准库、Git 和 GitHub CLI。仅支持原生 GPUI 版本；旧 Tauri 标签不再由当前工作流重建。此工作流尚未完成远程发布验证。

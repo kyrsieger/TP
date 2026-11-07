@@ -1,0 +1,34 @@
+[package]
+name = "tp-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tp-core = { path = "../tp-core" }
+serde_json = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+clipboard-rs = "0.3.5"
+scraper = { version = "0.27", default-features = false }
+html5ever = "0.39"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+url = "2"
+enigo = "0.6"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "tiff", "ico"] }
+active-win-pos-rs = "0.11"
+rfd = "0.15"
+auto-launch = "=0.5.0"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Graphics_DirectWrite", "Win32_Graphics_Dwm", "Win32_System_Com", "Win32_System_Registry", "Win32_System_LibraryLoader", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
+clipboard-win = "5.4.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["block2"] }
+objc2-foundation = { version = "0.3", features = ["block2"] }
+
+[dev-dependencies]
+tp-core = { path = "../tp-core", features = ["test-support"] }

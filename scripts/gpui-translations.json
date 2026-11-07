@@ -1,0 +1,23 @@
+{
+  "搜索字体样式": "Search font styles",
+  "TP 预览": "TP Preview",
+  "设置未保存": "Settings were not saved",
+  "无法保存重命名快捷键：": "Could not save rename shortcut: ",
+  "无法清除快捷键：": "Could not clear shortcut: ",
+  " 已被占用，请更换组合键或解除占用。": " is already in use. Choose another combination or release it.",
+  "无法启用 ": "Could not enable ",
+  "：": ": ",
+  "已清空": "Cleared",
+  "清空数据失败：": "Failed to clear data: ",
+  "记录已导入，刷新界面失败：": "Records imported, but refresh failed: ",
+  "开启": "On",
+  "关闭": "Off",
+  "选择 TP 导出包": "Choose a TP export archive",
+  "无法读取导出包：": "Could not read export: ",
+  "导出（ZIP 未加密）": "Export (unencrypted ZIP)",
+  "导入失败：": "Import failed: ",
+  "保存失败：": "Save failed: ",
+  "加载中": "Loading",
+  "收藏和自建分组中的记录会保留。此操作无法撤销。": "Favorites and records in custom groups are kept. This cannot be undone.",
+  "天": "days"
+}

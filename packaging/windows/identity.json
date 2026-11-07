@@ -1,0 +1,13 @@
+{
+  "productName": "TP",
+  "publisher": "TP",
+  "bundleIdentifier": "TP",
+  "executable": "TP.exe",
+  "msiUpgradeCode": "005599cc-eef4-57b7-9ab6-5f56e0b6e57d",
+  "installLocationRegistryKey": "Software\\TP\\TP",
+  "nsisUninstallRegistryKey": "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\TP",
+  "msiInstallScope": "perMachine",
+  "nsisInstallMode": "currentUser",
+  "msiLanguages": ["zh-CN"],
+  "nsisLanguages": ["SimpChinese"]
+}

@@ -13,37 +13,102 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend and browser tests
-    runs-on: windows-latest
-    timeout-minutes: 20
+  gpui:
+    name: GPUI (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - run: npx playwright install --only-shell chromium
-      - run: npm run test:ui
-
-  desktop:
-    name: Desktop (windows-latest)
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          cache: npm
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt
+      - name: Check macOS native build tools
+        if: runner.os == 'macOS'
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --find metal
+          xcrun --sdk macosx --find metallib
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: src-tauri -> target
-          shared-key: windows-checks
-      - run: npm ci
-      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
-      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+          workspaces: . -> target
+          shared-key: gpui-${{ runner.os }}-${{ runner.arch }}
+      - run: cargo fmt --all -- --check
+      - name: Check GPUI translations against the preserved catalog
+        run: python scripts/check-gpui-translations.py
+      - name: Check installer compatibility
+        run: python scripts/gpui_windows_identity.py
+      - name: Test packaging and license audit tools
+        run: python -m unittest discover -s tests/scripts -p "test_*.py" -v
+      - name: Check vendored input patch formatting
+        run: rustfmt --edition 2024 --check vendor/gpui-component/src/input/state.rs vendor/gpui-component/src/input/utf16_limit.rs vendor/gpui-component/src/scroll/scrollbar.rs
+      - run: cargo check --workspace --locked
+      - run: cargo test --workspace --locked
+      - run: cargo build -p tp-gpui --locked
+      - name: Fetch locked native dependencies
+        run: cargo fetch --locked
+      - name: Collect native dependency evidence
+        run: python scripts/audit-gpui-licenses.py
+      - name: Generate native third-party notices
+        run: python scripts/build_gpui_notices.py
+      - name: Build Windows GPUI release and verify executable identity
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/build-gpui-windows.ps1
+          $metadataJson = cargo metadata --no-deps --format-version 1 --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Native version metadata failed' }
+          $metadata = $metadataJson | ConvertFrom-Json
+          $nativePackages = @($metadata.packages | Where-Object name -eq 'tp-gpui')
+          if ($nativePackages.Count -ne 1 -or -not $nativePackages[0].version) { throw 'Expected one native package version' }
+          $version = $nativePackages[0].version
+          ./scripts/verify-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -ExpectedVersion $version
+          ./tests/packaging/windows/test-stage-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -ExpectedVersion $version
+          ./scripts/stage-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -OutputDirectory ./target/gpui-ci/windows -NoticesPath ./target/gpui-third-party-notices.txt -ExpectedVersion $version
+      - name: Prepare pinned NSIS tools and verify native installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/prepare_gpui_nsis.py --output target/gpui-tools/nsis
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS preparation failed' }
+          python scripts/package_gpui_windows_nsis.py --stage target/gpui-ci/windows --output target/gpui-ci/nsis --compiler target/gpui-tools/nsis/makensis.exe --plugins target/gpui-tools/nsis/Plugins/x86-unicode/additional
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS compilation failed' }
+          $installer = @(Get-ChildItem target/gpui-ci/nsis -Filter '*.exe')
+          if ($installer.Count -ne 1) { throw 'Expected one native NSIS installer' }
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          python scripts/verify_gpui_windows_nsis.py --installer $installer[0].FullName --stage target/gpui-ci/windows --seven-zip $sevenZip
+      - name: Build macOS GPUI release
+        if: runner.os == 'macOS'
+        run: |
+          cargo build -p tp-gpui --release --locked
+          python scripts/package-gpui-macos.py --binary target/release/tp-gpui --output target/gpui-ci/macos/TP.app --notices target/gpui-third-party-notices.txt
+          plutil -lint target/gpui-ci/macos/TP.app/Contents/Info.plist
+          # Preserve executable permissions and the bundle structure in artifacts.
+          ditto -c -k --sequesterRsrc --keepParent target/gpui-ci/macos/TP.app target/gpui-ci/TP-macos.zip
+      - name: Prepare pinned WiX tools and verify native MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/prepare_gpui_wix.py --output target/gpui-tools/wix
+          if ($LASTEXITCODE -ne 0) { throw 'WiX preparation failed' }
+          python scripts/package_gpui_windows_msi.py --stage target/gpui-ci/windows --output target/gpui-ci/msi --wix-tools target/gpui-tools/wix
+          if ($LASTEXITCODE -ne 0) { throw 'MSI compilation failed' }
+          $installer = @(Get-ChildItem target/gpui-ci/msi -Filter '*.msi')
+          if ($installer.Count -ne 1) { throw 'Expected one native MSI' }
+          ./scripts/verify-gpui-msi.ps1 -MsiPath $installer[0].FullName -StageDirectory target/gpui-ci/windows -DarkPath target/gpui-tools/wix/dark.exe
+      - name: Keep unsigned native packages for acceptance testing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpui-unverified-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          path: |
+            target/gpui-ci/windows/
+            target/gpui-ci/nsis/*.exe
+            target/gpui-ci/msi/*.msi
+            target/gpui-ci/TP-macos.zip
+            target/gpui-license-audit.json
+            target/gpui-license-audit.zip
+          if-no-files-found: error
+          retention-days: 14

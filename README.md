@@ -1,7 +1,8 @@
 # TP
 
-面向 Windows 11 和 macOS 的本地剪贴板历史工具，使用 Tauri 2、React、TypeScript、Rust 和 SQLite 构建。
+面向 Windows 11 和 macOS 的本地剪贴板历史工具。当前原生实现使用 GPUI、Rust 和 SQLite。
 
+开发与构建使用 Rust 和 Python。Windows 发布流程见 [版本发布说明](docs/releasing.md)。
 - 保存文字、链接、图片和文件，视频文件支持首帧预览。
 - 支持搜索、类型筛选、去重、收藏、自建分组和自动清理。
 - 通过系统托盘或菜单栏打开面板，也可以自行设置全局快捷键。
@@ -25,66 +26,66 @@
 
 ## 开发环境
 
-推荐 Node.js 24 LTS（含 npm）和通过 [rustup](https://rustup.rs/) 安装的 Rust stable。本项目本地验证使用 Node.js 24.16.0、Rust 1.98.1；这组版本是验证基线，并非经过逐版本测试的最低要求。依赖版本以 `package-lock.json` 和 `src-tauri/Cargo.lock` 为准。
-
+开发需要 Git、Rust stable 和 Python 3.11+（脚本仅使用标准库），无需 Node.js/npm。Rust 依赖以根目录 `Cargo.lock` 为准。
 ### Windows 11
 
-安装以下工具，详细步骤参见 [Tauri 2 环境准备](https://v2.tauri.app/start/prerequisites/)：
+安装以下工具：
 
-1. Git、Node.js 和 Rust，Rust 选择 MSVC 工具链。
+1. Git 和 Rust，Rust 选择 MSVC 工具链。
 2. Visual Studio 2022 Build Tools，勾选“使用 C++ 的桌面开发”，包含 MSVC 与 Windows SDK。
-3. Microsoft Edge WebView2 Runtime，Windows 11 通常已经安装；缺失时安装 Evergreen Runtime。
+3. Windows SDK 中的 `fxc.exe`，供 GPUI 编译着色器。正式构建脚本会自动寻找已安装 SDK，也支持通过 `GPUI_FXC_PATH` 指定路径。
 
-默认构建包含 NSIS 和 MSI 两种安装包；MSI 使用的 WiX 工具还需要系统 VBScript 功能。只构建 NSIS 可使用下方指定命令。第一次构建可能需要联网下载 Rust 依赖、NSIS 或 WiX 工具。
-
+首次构建需要联网下载 Rust 依赖；安装包工具及验证方法见 [贡献说明](CONTRIBUTING.md)。
 ### macOS（待验证）
 
-在 Mac 上安装 Git、Node.js、Rust 和 Xcode Command Line Tools：
+在 Mac 上安装 Git、Rust 和完整 Xcode，并完成 Xcode 初始化。GPUI 需要 Metal 编译工具，仅安装 Command Line Tools 不足以保证可构建。检查：
 
 ```sh
-xcode-select --install
+xcodebuild -version
+xcrun --sdk macosx --find metal
+xcrun --sdk macosx --find metallib
 ```
 
-也可以安装并启动完整 Xcode 完成初始化。在“系统设置 → 隐私与安全性”中，跨应用模拟粘贴可能需要为 TP 开启“辅助功能”；通过 System Events 切换前台应用时，也可能出现“自动化”授权提示。这些权限和实际行为尚未实机验证。
+在“系统设置 → 隐私与安全性”中，跨应用模拟粘贴可能需要为 TP 开启“辅助功能”；通过 System Events 切换前台应用时，也可能出现“自动化”授权提示。这些权限和实际行为尚未实机验证。
 
-请在对应系统上构建安装包。macOS 面向他人分发时的 Developer ID 签名和公证需另行配置，参见 [Tauri macOS 签名说明](https://v2.tauri.app/distribute/sign/macos/)。
+请在对应系统上构建安装包。macOS 面向他人分发所需的签名和公证尚未完成配置。
 
 ## 本地运行
 
+在项目根目录构建 GPUI 原生程序：
+
+使用 Cargo 运行开发版，使用 `python scripts/build_native.py` 构建当前系统的正式程序。Windows 构建脚本会自动查找 SDK 着色器编译器。
 ```sh
-git clone https://github.com/kyrsieger/TP.git
-cd TP
-npm ci
-npm run tauri dev
+cargo build -p tp-gpui --locked
+cargo test --workspace --locked
 ```
 
-开发服务使用 `http://localhost:5173`。只运行 `npm run dev` 会启动前端服务，完整剪贴板功能需要 Tauri 桌面宿主。
+使用 `cargo run -p tp-gpui --locked` 可启动原生程序。未设置诊断目录时，它使用正常 TP 数据目录，并操作真实系统剪贴板。开发验证应使用独立数据目录和合成记录；Windows 已准备好测试数据库时，可运行：
 
-## 构建安装包
-
-在项目根目录执行：
-
-```sh
-npm ci
-npm run tauri -- build -- --locked
+```powershell
+./scripts/run-gpui-diagnostic.ps1 -DataDirectory ./target/my-fixture
 ```
 
-也可以只构建指定格式：
+测试目录必须已包含 `history.sqlite3`，该脚本会先验证目录再启动 Debug 程序。诊断目录设置仅用于 Debug 构建，不适用于正式二进制。详细检查命令见 [贡献说明](CONTRIBUTING.md)。
 
-```sh
-# Windows：NSIS 安装程序
-npm run tauri -- build --bundles nsis -- --locked
+## GPUI 正式构建与安装包
 
-# Windows：MSI 安装程序
-npm run tauri -- build --bundles msi -- --locked
+Windows 正式二进制：
 
-# macOS：应用与 DMG（须在 Mac 上执行，待验证）
-npm run tauri -- build --bundles app,dmg -- --locked
+```powershell
+./scripts/build-gpui-windows.ps1
+./scripts/verify-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -ExpectedVersion 1.1.0
 ```
 
-默认输出位于 `src-tauri/target/release/bundle/` 下的 `nsis/`、`msi/`、`macos/` 或 `dmg/` 子目录。显式指定 Rust target 或 `CARGO_TARGET_DIR` 时，输出路径会相应变化。`npm run build` 只构建前端，不生成桌面程序或安装包。
+macOS 正式二进制（须在 Mac 上执行，待实机验证）：
 
-应用、主程序和安装包名称为 TP，npm 与 Rust 包名为 `tp`，应用标识为 `TP`。后续升级保持该标识稳定；旧版本数据目录的迁移规则见[应用标识和数据目录决策](docs/adr/0009-app-identity-and-data-directory.md)。
+```sh
+cargo build -p tp-gpui --release --locked
+```
+
+Windows NSIS/MSI 和 macOS 应用包的组装脚本已提供。发布流程仅支持带 `packaging/release.json` 原生标记的版本，上传前核对两种 Windows 安装包；不再构建历史 Tauri 标签。分发材料最终审核、安装升级、macOS 实机与远程发布验证仍独立进行。macOS 应用包目前作为 CI 待验收产物。
+
+应用和安装包名称为 TP，Rust 工作区包含 `tp-core`、`tp-desktop`、`tp-gpui`，应用标识保持为 `TP`。旧数据迁移规则见[应用标识和数据目录决策](docs/adr/0009-app-identity-and-data-directory.md)。
 
 ## 开发方式与贡献
 
@@ -94,4 +95,4 @@ npm run tauri -- build --bundles app,dmg -- --locked
 
 ## 许可证
 
-项目原创代码采用 [MIT 许可证](LICENSE)，Copyright (c) 2026 kyrsieger。第三方依赖和参考资料保留各自许可，详见[第三方声明](public/third-party-notices.txt)。更新依赖时需同步核对声明，分发安装包时保留许可证和第三方声明。
+项目原创代码采用 [MIT 许可证](LICENSE)，Copyright (c) 2026 kyrsieger。第三方依赖和参考资料保留各自许可，原生声明由 `python scripts/audit-gpui-licenses.py` 和 `python scripts/build_gpui_notices.py` 生成，原始许可资料位于 [licenses](licenses/)。更新依赖时需同步核对声明，分发安装包时保留许可证和第三方声明。

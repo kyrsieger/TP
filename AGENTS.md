@@ -4,10 +4,10 @@
 
 本工具是面向 Windows 11 和 macOS 的本地剪贴板历史工具。它保存文字、链接、图片和文件，支持搜索、类型筛选、收藏、自建分组、去重、自动清理，以及通过小面板和快捷键应用历史记录。视频作为文件记录，使用首帧预览。领域定义以 [术语表](GLOSSARY.md) 为准，长期决策及原因见 [架构决策记录](docs/adr/)，具体行为结合代码和测试核对。
 
-当前使用 Tauri 2、React、TypeScript、Rust 和 SQLite 实现。macOS 和 Windows 11 的代码都必须实现；当前机器只有 Windows，现阶段只在 Windows 11 上运行验证。不要把未在 Mac 上运行的功能写成已通过 macOS 验证。
+当前入口使用 GPUI、Rust 和 SQLite，翻译与主题测试数据保存在 `crates/tp-gpui/resources/`。macOS 和 Windows 11 的代码都必须实现；当前机器只有 Windows，现阶段只在 Windows 11 上运行验证。不要把未在 Mac 上运行的功能写成已通过 macOS 验证。
 
 ## 文档入口
 
 - [术语表](GLOSSARY.md)：统一领域术语，仅记录概念及定义；发现歧义时先查阅此文档。
 - [架构决策记录](docs/adr/)：系统边界、数据所有权、记录身份、保留保护和桌面生命周期等长期决策及原因。
-- 应用标志资源位于 `src-tauri/icons/` 和 `public/`，修改时同步检查应用、托盘及标题栏实际使用的资源。
+- GPUI 应用和托盘标志资源位于 `packaging/icons/`，标题栏使用 `packaging/icons/tp-mark.svg`。修改时同步检查应用、托盘、标题栏及安装器实际使用的资源。
