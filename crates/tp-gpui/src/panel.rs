@@ -165,7 +165,7 @@ impl Panel {
         self.selection = Default::default();
         self.reconcile();
         self.scroll.scroll_to_item(0);
-        self.search.update(cx, |input, cx| input.focus(window, cx));
+        self.panel_focus.focus(window);
         if let Some(settings) = self.settings_view.clone() {
             settings.update(cx, |settings, cx| settings.focus_work(window, cx));
         }
@@ -553,7 +553,6 @@ impl Panel {
                 cx.notify();
             }
         });
-        search.update(cx, |input, cx| input.focus(window, cx));
         let group_focus = cx.focus_handle();
         let group_blur_subscription = cx.on_blur(&group_focus, window, |this, _, _| {
             // Key-up may be delivered elsewhere. Do not retain an armed
@@ -698,6 +697,7 @@ impl Panel {
         };
         panel.reconcile();
         if show_on_start {
+            panel.panel_focus.focus(window);
             if let Some(error) = panel.pending_startup_error.take() {
                 panel.show_toast(error, cx);
             }
