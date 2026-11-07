@@ -31,6 +31,28 @@ cargo build -p tp-gpui --locked
 
 若改动涉及系统剪贴板、文件、权限、快捷键或安装包，请说明实际验证的系统和未验证部分。三个默认忽略的 Rust 测试会操作真实系统剪贴板，不要随意启用。
 
+## 开发版界面热更新
+
+使用 Dioxus CLI 0.7.10 的 `dx` 启动 TP。首次启动会完整编译，随后自动打开主面板。之后保存 TP 的界面渲染代码，`dx` 会编译并发送补丁，TP 收到后会重绘窗口。可以从终端的 `TP hot reload applied` 和进程 ID 确认补丁是否应用到了当前进程。
+
+```sh
+dx serve --desktop --hot-patch --features hot-reload -p tp-gpui --locked --addr 127.0.0.1 --open false
+```
+
+例如，主面板的 `panel.rs` 中 `render_view` 里的边框、圆角和间距适合用这个流程调试。改动状态结构、初始化代码或依赖后，请用 `Ctrl+C` 结束会话再重新运行。调试时可以继续设置 `TP_DIAGNOSTIC_DATA_DIR` 使用独立数据目录。
+
+Windows x64 请用仓库里的补丁构建 `dx`。补丁包含 [Dioxus #5967 的栈溢出修复](https://github.com/DioxusLabs/dioxus/pull/5967)，并让 `dx` 使用 TP 自己的图标和版本资源。下列命令在项目 `target` 目录中准备工具，首次需要编译。
+
+```powershell
+New-Item -ItemType Directory -Force target/hot-reload-tools | Out-Null
+git clone --depth 1 --branch v0.7.10 https://github.com/DioxusLabs/dioxus.git target/hot-reload-tools/dioxus-0.7.10
+$dxPatch = (Resolve-Path scripts/patches/dx-0.7.10-windows-hot-reload.patch).Path
+git -C target/hot-reload-tools/dioxus-0.7.10 apply $dxPatch
+cargo --config profile.dev.debug=0 rustc --locked --manifest-path target/hot-reload-tools/dioxus-0.7.10/Cargo.toml -p dioxus-cli --bin dx -- -C link-arg=/STACK:16777216
+```
+
+将启动命令里的 `dx` 换成 `./target/hot-reload-tools/dioxus-0.7.10/target/debug/dx.exe`。macOS 可使用 [Dioxus 0.7.10 的对应构建](https://github.com/DioxusLabs/dioxus/releases/tag/v0.7.10)，目前待实机验证。
+
 ## GPUI Windows 正式二进制检查
 
 在 Windows 上执行以下命令，随后以根 Cargo.toml 中的版本检查产物：

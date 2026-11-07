@@ -1,5 +1,5 @@
 use crate::theme::Palette;
-use gpui::{div, prelude::*, px, Context, EventEmitter, Render, Window};
+use gpui::{div, prelude::*, px, Context, EventEmitter, Window};
 use std::sync::{atomic::Ordering, Arc};
 use tp_core::i18n::choose;
 use tp_desktop::Store;
@@ -128,8 +128,11 @@ impl CleanupView {
         }
     }
 }
-impl Render for CleanupView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(CleanupView);
+
+impl CleanupView {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, _: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = Palette::for_id(&self.settings.theme);
         let scale = self.settings.font_size as f32 / 13.;
         let mut card = div().id("cleanup-confirmation").w(px(340.)).max_w_full().max_h_full().overflow_y_scroll().p(px(20.)).rounded(px(12.)).border_1().border_color(p.line).bg(p.surface).shadow(vec![Palette::popup_shadow()]).text_size(px(12.*scale)).text_color(p.text)
@@ -256,5 +259,6 @@ impl Render for CleanupView {
             .on_action(cx.listener(|this, _: &Up, window, cx| this.key("arrow", window, cx)))
             .on_action(cx.listener(|this, _: &Down, window, cx| this.key("arrow", window, cx)))
             .child(card)
+            .into_any_element()
     }
 }

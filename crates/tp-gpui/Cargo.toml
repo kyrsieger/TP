@@ -8,8 +8,21 @@ license.workspace = true
 name = "tp-gpui"
 path = "src/main.rs"
 
+[features]
+hot-reload = [
+    "dep:async-channel",
+    "dep:dioxus-cli-config",
+    "dep:dioxus-devtools-types",
+    "dep:serde_json",
+    "dep:subsecond",
+    "dep:tungstenite",
+]
+
 [dependencies]
+async-channel = { version = "2", optional = true }
 anyhow = "1"
+dioxus-cli-config = { version = "=0.7.10", optional = true }
+dioxus-devtools-types = { version = "=0.7.10", optional = true }
 gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
 tp-core = { path = "../tp-core" }
 tp-desktop = { path = "../tp-desktop" }
@@ -22,6 +35,9 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
 dpi = "0.1.2"
 chrono = "0.4"
+serde_json = { version = "1", optional = true }
+subsecond = { version = "=0.7.10", optional = true }
+tungstenite = { version = "0.27", optional = true }
 unicode-segmentation = "1.13.3"
 
 [target.'cfg(windows)'.dependencies]

@@ -4,7 +4,7 @@ use crate::{
     native_window::hover_preview::Anchor,
     theme::{self, Palette},
 };
-use gpui::{div, prelude::*, px, Context, Render, Window};
+use gpui::{div, prelude::*, px, Context, Window};
 use std::{cell::Cell, rc::Rc, sync::Arc};
 use tp_core::{i18n::choose, records::Record, settings::Settings};
 
@@ -417,8 +417,11 @@ impl HoverCard {
         .detach();
     }
 }
-impl Render for HoverCard {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(HoverCard);
+
+impl HoverCard {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if let Some((index, incoming)) = self.media.finish(std::time::Instant::now()) {
             self.commit_media(index, incoming, window, cx);
             if self.media.desired() != self.media.current() {
@@ -1030,6 +1033,6 @@ impl Render for HoverCard {
                 .detach();
             }
         }));
-        theme::typography(card, &self.settings)
+        theme::typography(card, &self.settings).into_any_element()
     }
 }

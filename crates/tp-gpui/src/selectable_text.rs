@@ -1,8 +1,8 @@
 //! Plain text selection uses byte offsets into the original, never a display copy.
 use crate::theme::Palette;
 use gpui::{
-    div, prelude::*, ClipboardItem, Context, FocusHandle, HighlightStyle, MouseButton, Render,
-    StyledText, TextLayout, Window,
+    div, prelude::*, ClipboardItem, Context, FocusHandle, HighlightStyle, MouseButton, StyledText,
+    TextLayout, Window,
 };
 use std::ops::Range;
 
@@ -121,8 +121,11 @@ impl SelectableText {
     }
 }
 
-impl Render for SelectableText {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(SelectableText);
+
+impl SelectableText {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, _: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = self.palette;
         let highlights = segments(&self.text, &self.query, self.selection());
         let mut boundaries = vec![0, self.text.len()];
@@ -301,6 +304,7 @@ impl Render for SelectableText {
                     cx.stop_propagation();
                 }
             }))
+            .into_any_element()
     }
 }
 

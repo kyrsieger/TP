@@ -1,8 +1,31 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+macro_rules! impl_view_render {
+    ($view:ty) => {
+        impl gpui::Render for $view {
+            fn render(
+                &mut self,
+                window: &mut gpui::Window,
+                cx: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                #[cfg(all(debug_assertions, feature = "hot-reload"))]
+                {
+                    // A named render function with an erased element type gives patches a stable call boundary.
+                    subsecond::HotFn::current(Self::render_view).call((self, window, cx))
+                }
+                #[cfg(not(all(debug_assertions, feature = "hot-reload")))]
+                self.render_view(window, cx)
+            }
+        }
+    };
+}
+
 mod cleanup_view;
 mod font_picker;
 mod highlight;
 mod host;
+#[cfg(all(debug_assertions, feature = "hot-reload"))]
+mod hot_reload;
 mod hover_card;
 mod hover_lifetime;
 mod icons;
@@ -64,9 +87,16 @@ fn load(show_panel: bool) -> Result<(Arc<Store>, Snapshot), String> {
 }
 
 fn main() {
+    #[cfg(all(debug_assertions, feature = "hot-reload"))]
+    let devserver = hot_reload::devserver_address();
+    #[cfg(all(debug_assertions, feature = "hot-reload"))]
+    let hot_reload = devserver.is_some();
+    #[cfg(not(all(debug_assertions, feature = "hot-reload")))]
+    let hot_reload = false;
     let show_panel = startup::show_panel(
         cfg!(debug_assertions),
         std::env::var_os("TP_DIAGNOSTIC_DATA_DIR").is_some(),
+        hot_reload,
         std::env::var_os("TP_DIAGNOSTIC_START_HIDDEN").is_some(),
     );
     let (store, snapshot) = match load(show_panel) {
@@ -84,6 +114,10 @@ fn main() {
         .with_assets(icons::Assets)
         .run(move |cx: &mut App| {
             gpui_component::init(cx);
+            #[cfg(all(debug_assertions, feature = "hot-reload"))]
+            if let Some(address) = devserver {
+                hot_reload::start(cx, address);
+            }
             transfer_view::init(cx);
             cleanup_view::init(cx);
             let host = match host::Host::new(store.clone(), &snapshot.settings.shortcut) {

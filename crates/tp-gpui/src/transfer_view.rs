@@ -1,5 +1,5 @@
 use crate::theme::Palette;
-use gpui::{div, prelude::*, px, Context, EventEmitter, Render, Window};
+use gpui::{div, prelude::*, px, Context, EventEmitter, Window};
 use std::sync::{atomic::Ordering, Arc};
 use tp_core::{
     i18n::choose,
@@ -235,8 +235,11 @@ mod hide_tests {
     }
 }
 
-impl Render for TransferView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(TransferView);
+
+impl TransferView {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, _: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = Palette::for_id(&self.settings.theme);
         let scale = self.settings.font_size as f32 / 13.;
         let title = if self.busy {
@@ -446,6 +449,7 @@ impl Render for TransferView {
                 cx.listener(|this, _: &Cancel, window, cx| this.key("escape", false, window, cx)),
             )
             .child(dialog)
+            .into_any_element()
     }
 }
 

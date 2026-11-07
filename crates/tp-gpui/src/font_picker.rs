@@ -1,6 +1,6 @@
 use crate::theme::Palette;
 use gpui::{
-    div, prelude::*, px, Context, Entity, EntityInputHandler, EventEmitter, Render, ScrollHandle,
+    div, prelude::*, px, Context, Entity, EntityInputHandler, EventEmitter, ScrollHandle,
     Subscription, Window,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
@@ -415,8 +415,11 @@ impl FontPicker {
         cx.notify();
     }
 }
-impl Render for FontPicker {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(FontPicker);
+
+impl FontPicker {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = Palette::for_id(&self.theme);
         let scale = self.font_size as f32 / 13.;
         let anchor = self.anchor.get();
@@ -624,6 +627,7 @@ impl Render for FontPicker {
                 .child(panel),
         )
         .priority(8)
+        .into_any_element()
     }
 }
 

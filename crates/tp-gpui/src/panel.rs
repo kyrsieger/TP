@@ -18,7 +18,7 @@ use gpui::Focusable;
 gpui::actions!(tp_panel, [FocusSearch, NextGroup, PreviousGroup]);
 use gpui::{
     div, prelude::*, px, Context, Entity, EntityInputHandler, FocusHandle, IntoElement,
-    KeyDownEvent, Render, ScrollHandle, Subscription, Window,
+    KeyDownEvent, ScrollHandle, Subscription, Window,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 use std::sync::{atomic::Ordering, Arc};
@@ -947,8 +947,11 @@ impl Panel {
     }
 }
 
-impl Render for Panel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(Panel);
+
+impl Panel {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.scroll.advance_return(std::time::Instant::now()) {
             window.request_animation_frame();
         }

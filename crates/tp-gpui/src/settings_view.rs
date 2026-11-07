@@ -9,8 +9,7 @@ mod theme;
 mod work_queue;
 use crate::theme::Palette;
 use gpui::{
-    div, prelude::*, px, Context, Entity, EntityInputHandler, EventEmitter, Render, Subscription,
-    Window,
+    div, prelude::*, px, Context, Entity, EntityInputHandler, EventEmitter, Subscription, Window,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 use std::sync::Arc;
@@ -1354,8 +1353,11 @@ impl SettingsView {
             .child(control)
     }
 }
-impl Render for SettingsView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl_view_render!(SettingsView);
+
+impl SettingsView {
+    #[cfg_attr(all(debug_assertions, feature = "hot-reload"), inline(never))]
+    fn render_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if !self.has_font_styles() {
             // FontStyleSetting unmounts when the selected family has no styles.
             self.font_style_scroll = gpui::ScrollHandle::new();
@@ -1856,7 +1858,7 @@ impl Render for SettingsView {
                     .child(transfer.clone()),
             );
         }
-        crate::theme::typography(root, &self.value)
+        crate::theme::typography(root, &self.value).into_any_element()
     }
 }
 
