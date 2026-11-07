@@ -1094,6 +1094,8 @@ impl Panel {
                         })),
                 )
             });
+        let search_focus = self.search.read(cx).focus_handle(cx);
+        let search_focused = search_focus.contains_focused(window, cx);
         let toolbar = div()
             .flex()
             .flex_shrink_0()
@@ -1107,52 +1109,27 @@ impl Panel {
                     .flex_1()
                     .min_w_0()
                     .h(px(30.))
-                    .px(px(10.))
+                    .px(px(9.))
                     .flex()
                     .items_center()
                     .gap(px(7.))
                     .rounded(px(8.))
-                    .bg(p.control)
-                    .id("search-box")
-                    .track_focus(&self.search.read(cx).focus_handle(cx))
-                    .when(
-                        self.search
-                            .read(cx)
-                            .focus_handle(cx)
-                            .contains_focused(window, cx),
-                        |d| d.bg(p.surface),
-                    )
-                    .relative()
-                    .child({
-                        let focus = self.search.read(cx).focus_handle(cx);
-                        gpui::canvas(
-                            move |_, window, cx| focus.contains_focused(window, cx),
-                            move |bounds, focused, window, _| {
-                                if focused {
-                                    window.paint_quad(
-                                        gpui::outline(
-                                            bounds.dilate(px(1.5)),
-                                            p.accent,
-                                            gpui::BorderStyle::Solid,
-                                        )
-                                        .corner_radii(px(9.5))
-                                        .border_widths(px(1.5)),
-                                    );
-                                }
-                            },
-                        )
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full()
+                    .border_1()
+                    .border_color(if search_focused {
+                        p.accent
+                    } else {
+                        gpui::rgba(0x00000000)
                     })
+                    .bg(if search_focused { p.surface } else { p.control })
+                    .id("search-box")
+                    .track_focus(&search_focus)
                     .child(crate::icons::icon("search", 13.).text_color(p.subtle))
                     .child(div().flex_1().min_w_0().child({
                         let mut input = Input::new(&self.search)
                             .appearance(false)
                             .p_0()
                             .text_size(px(12. * self.snapshot.settings.font_size as f32 / 13.));
-                        input.style().size.height = Some(px(30.).into());
+                        input.style().size.height = Some(px(28.).into());
                         input
                     }))
                     .when(!self.session.search.is_empty(), |d| {
