@@ -112,7 +112,7 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.keystroke.modifiers.modified() {
+        if self.busy || self.has_modal() || event.keystroke.modifiers.modified() {
             return;
         }
         let key = event.keystroke.key.as_str();
@@ -214,7 +214,7 @@ impl SettingsView {
                     .child(language_label(&self.value.language))
                     .child(div().child(crate::icons::icon("chevron", 12.).text_color(p.subtle)))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        if !disabled {
+                        if !disabled && !this.busy && !this.has_modal() {
                             if this.language_open {
                                 this.language_open = false;
                                 focus.focus(window);
@@ -274,6 +274,9 @@ impl SettingsView {
                         .child(language_icon(id))
                         .child(language_label(id))
                         .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.busy || this.has_modal() {
+                                return;
+                            }
                             if let Some(focus) = this.toggle_focus.borrow().get("language-trigger")
                             {
                                 focus.focus(window);

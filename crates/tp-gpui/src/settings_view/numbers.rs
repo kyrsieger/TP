@@ -124,7 +124,7 @@ impl SettingsView {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
-                    if disabled {
+                    if disabled || this.busy || this.has_modal() {
                         return;
                     }
                     window.prevent_default();
@@ -212,7 +212,7 @@ impl SettingsView {
             .is_focused(window);
         let mut input = Input::new(&self.numbers[index])
             .appearance(false)
-            .disabled(disabled)
+            .disabled(disabled || self.busy)
             .pl(((width - px(2.) - measured) / 2.).max(px(7.)))
             .pr(px(7.))
             .py_0()
@@ -256,6 +256,8 @@ impl SettingsView {
             .on_key_down(
                 cx.listener(move |this, event: &gpui::KeyDownEvent, window, cx| {
                     if disabled
+                        || this.busy
+                        || this.has_modal()
                         || event.keystroke.modifiers.modified()
                         || !matches!(event.keystroke.key.as_str(), "up" | "down")
                     {

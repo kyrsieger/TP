@@ -16,12 +16,7 @@ impl SettingsView {
         cx: &mut Context<Self>,
     ) -> bool {
         use gpui::Focusable;
-        if !self.retention_open
-            || self.busy
-            || self.pending.is_some()
-            || self.cleanup.is_some()
-            || self.transfer.is_some()
-        {
+        if !self.retention_open || self.has_modal() {
             return false;
         }
         let keys = [
@@ -122,7 +117,7 @@ impl SettingsView {
                             .child(crate::icons::icon("chevron", 12.).text_color(p.subtle)),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        if !disabled {
+                        if !disabled && !this.busy && !this.has_modal() {
                             focus.focus(window);
                             this.retention_open = !this.retention_open;
                             cx.notify();
@@ -175,6 +170,9 @@ impl SettingsView {
                         .cursor_pointer()
                         .child(retention_label(days))
                         .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.busy || this.has_modal() {
+                                return;
+                            }
                             if let Some(focus) = this.toggle_focus.borrow().get("retention-trigger")
                             {
                                 focus.focus(window);

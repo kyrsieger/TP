@@ -359,7 +359,7 @@ impl SettingsView {
         cx.notify();
     }
     fn set_autostart(&mut self, cx: &mut Context<Self>, window: &mut Window) {
-        if self.busy || self.pending.is_some() {
+        if self.busy || self.has_modal() {
             return;
         }
         let Some(current) = self.autostart else {
@@ -540,7 +540,9 @@ impl SettingsView {
             self.value.max_ordinary.to_string(),
             self.value.sensitive_seconds.to_string(),
         ]) {
-            input.update(cx, |input, cx| input.set_value(value, window, cx));
+            if input.read(cx).value().as_str() != value {
+                input.update(cx, |input, cx| input.set_value(value, window, cx));
+            }
         }
     }
     fn save(
@@ -1036,8 +1038,7 @@ impl SettingsView {
         patch: Patch,
     ) -> impl IntoElement {
         let p = Palette::for_id(&self.value.theme);
-        let disabled = self.busy
-            || self.pending.is_some()
+        let disabled = self.has_modal()
             || (self.value.position_mode != "fixed"
                 && matches!(
                     patch,
@@ -1050,7 +1051,7 @@ impl SettingsView {
                     if toggle_click_allowed(event)
                         && !disabled
                         && !this.busy
-                        && this.pending.is_none()
+                        && !this.has_modal()
                     {
                         this.save(patch.clone(), None, window, cx);
                     }
@@ -1068,7 +1069,7 @@ impl SettingsView {
             .when(disabled, |d| d.opacity(0.45))
             .child(label)
             .on_click(cx.listener(move |this, _, window, cx| {
-                if !disabled && !this.busy && this.pending.is_none() {
+                if !disabled && !this.busy && !this.has_modal() {
                     this.save(patch.clone(), None, window, cx);
                 }
             }))
@@ -1082,10 +1083,7 @@ impl SettingsView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected = self.value.position_mode == mode;
-        let disabled = self.busy
-            || self.pending.is_some()
-            || self.transfer.is_some()
-            || self.cleanup.is_some();
+        let disabled = self.has_modal();
         let p = Palette::for_id(&self.value.theme);
         let focus = self
             .toggle_focus
@@ -1138,7 +1136,7 @@ impl SettingsView {
             )
             .child(label)
             .on_click(cx.listener(move |this, event, window, cx| {
-                if !disabled && toggle_click_allowed(event) {
+                if !disabled && !this.busy && !this.has_modal() && toggle_click_allowed(event) {
                     focus.focus(window);
                     if this.value.position_mode != mode {
                         this.save(Patch::PositionMode(mode.into()), None, window, cx);
@@ -1147,7 +1145,11 @@ impl SettingsView {
             }))
             .on_key_down(
                 cx.listener(move |this, event: &gpui::KeyDownEvent, window, cx| {
-                    if disabled || event.keystroke.modifiers != gpui::Modifiers::default() {
+                    if disabled
+                        || this.busy
+                        || this.has_modal()
+                        || event.keystroke.modifiers != gpui::Modifiers::default()
+                    {
                         return;
                     }
                     if matches!(
@@ -1367,10 +1369,9 @@ impl SettingsView {
             self.font_style_scroll = gpui::ScrollHandle::new();
         }
         let p = Palette::for_id(&self.value.theme);
-        let disabled = self.busy
-            || self.pending.is_some()
-            || self.transfer.is_some()
-            || self.cleanup.is_some();
+        // Writes are serialized in the handlers. Only modal dialogs disable
+        // the settings page visually, so a write cannot dim unrelated controls.
+        let disabled = self.has_modal();
         let wide = window.viewport_size().width >= px(760.);
         let narrow = window.viewport_size().width < px(360.);
         // Match .settings-content: the centered box includes its own padding.

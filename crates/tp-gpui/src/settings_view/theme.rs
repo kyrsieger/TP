@@ -238,7 +238,7 @@ impl SettingsView {
                     .child(choose(current.1, current.2))
                     .child(crate::icons::icon("chevron", 12.).text_color(p.subtle))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        if disabled {
+                        if disabled || this.has_modal() || (this.busy && !this.theme_open) {
                             return;
                         }
                         if this.theme_open {
