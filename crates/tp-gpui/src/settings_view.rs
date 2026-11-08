@@ -20,6 +20,7 @@ pub enum Event {
     #[cfg(debug_assertions)]
     ReleasePanel,
     Changed,
+    Restored,
     Reposition,
     Close,
     Toast(String),
@@ -867,7 +868,7 @@ impl SettingsView {
                             ))),
                         }
                         this.refresh_cache_size(window, cx);
-                        cx.emit(Event::Changed);
+                        cx.emit(Event::Restored);
                     }
                     this.transfer = None;
                     this.transfer_subscription = None;

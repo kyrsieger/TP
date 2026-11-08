@@ -71,7 +71,7 @@ pub struct Panel {
     record_edit: Option<record_menu::RecordEditor>,
     record_menu: Option<record_menu::RecordMenu>,
     thumbnails: std::collections::HashMap<String, thumbnails::Thumbnail>,
-    media_generation: u64,
+    thumbnail_request: u64,
     preview: crate::preview::Preview,
     toast: Option<toast::Toast>,
     toast_task: Option<gpui::Task<()>>,
@@ -598,7 +598,7 @@ impl Panel {
                         );
                         if this.idle.release_due(std::time::Instant::now()) {
                             this.close_floating(cx);
-                            this.clear_thumbnails(cx);
+                            this.clear_thumbnails(window);
                             this.snapshot.records = Vec::new();
                             this.snapshot.groups = Vec::new();
                             this.selection = Default::default();
@@ -683,7 +683,7 @@ impl Panel {
             record_edit: None,
             record_menu: None,
             thumbnails: Default::default(),
-            media_generation: 0,
+            thumbnail_request: 0,
             toast: None,
             toast_task: None,
             pending_startup_error: startup_error,
@@ -708,7 +708,6 @@ impl Panel {
     fn refresh(&mut self, result: Result<(), String>, cx: &mut Context<Self>) {
         self.keyboard_move_pending = None;
         self.scroll.cancel_return();
-        self.clear_thumbnails(cx);
         if let Err(error) = result {
             self.show_toast(error, cx);
         }
@@ -735,6 +734,7 @@ impl Panel {
                 }
                 self.preview
                     .reconcile(snapshot.records.iter().map(|record| record.id.as_str()));
+                self.retry_failed_thumbnails();
                 self.snapshot = snapshot;
                 if let Some(settings) = &self.settings_view {
                     settings.update(cx, |settings, cx| {
@@ -1269,6 +1269,10 @@ impl Panel {
                                 this.show_toast(message.clone(), cx)
                             }
                             crate::settings_view::Event::Changed => this.refresh(Ok(()), cx),
+                            crate::settings_view::Event::Restored => {
+                                this.clear_thumbnails(window);
+                                this.refresh(Ok(()), cx);
+                            }
                             crate::settings_view::Event::Reposition => {
                                 this.refresh(Ok(()), cx);
                                 this.place_window(window, cx);
@@ -1380,9 +1384,11 @@ impl Panel {
             .map(|(i, r)| (i, r.clone()))
             .collect();
         self.thumbnails.retain(|id, thumbnail| {
-            let keep = mounted.iter().any(|(_, r)| &r.id == id);
+            let keep = mounted
+                .iter()
+                .any(|(_, record)| &record.id == id && thumbnails::has_preview(record));
             if !keep {
-                thumbnail.release_asset(cx);
+                thumbnail.release_image(window);
             }
             keep
         });

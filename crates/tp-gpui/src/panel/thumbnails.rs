@@ -1,19 +1,23 @@
 use super::*;
-use gpui::{img, Image, ImageFormat, ObjectFit};
+use gpui::{img, Image, ImageFormat, ObjectFit, RenderImage};
 
 pub(super) enum Thumbnail {
-    Loading,
-    Ready(Arc<Image>),
+    Loading { request: u64, retry_if_failed: bool },
+    Ready(Arc<RenderImage>),
     Failed,
 }
 
 impl Thumbnail {
-    pub(super) fn release_asset(&self, cx: &mut gpui::App) {
+    pub(super) fn release_image(&self, window: &mut Window) {
         if let Self::Ready(image) = self {
-            // Dropping our Arc does not evict GPUI's decoded-image cache.
-            gpui::ImageSource::from(image.clone()).remove_asset(cx);
+            let _ = window.drop_image(image.clone());
         }
     }
+}
+
+pub(super) fn has_preview(record: &tp_core::records::Record) -> bool {
+    record.preview
+        || (record.kind == "image" && !record.files.is_empty() && record.status != "pending")
 }
 
 pub(super) fn record_note(record: &tp_core::records::Record) -> &'static str {
@@ -26,12 +30,24 @@ pub(super) fn record_note(record: &tp_core::records::Record) -> &'static str {
     }
 }
 impl Panel {
-    pub(super) fn clear_thumbnails(&mut self, cx: &mut Context<Self>) {
-        // Invalidate outstanding requests before removing their decoded assets.
-        self.media_generation = self.media_generation.wrapping_add(1);
+    pub(super) fn clear_thumbnails(&mut self, window: &mut Window) {
         for (_, thumbnail) in self.thumbnails.drain() {
-            thumbnail.release_asset(cx);
+            thumbnail.release_image(window);
         }
+    }
+
+    pub(super) fn retry_failed_thumbnails(&mut self) {
+        self.thumbnails.retain(|_, thumbnail| match thumbnail {
+            Thumbnail::Loading {
+                retry_if_failed, ..
+            } => {
+                // The source may have become available while this request was running.
+                *retry_if_failed = true;
+                true
+            }
+            Thumbnail::Ready(_) => true,
+            Thumbnail::Failed => false,
+        });
     }
 
     pub(super) fn media_content(
@@ -41,40 +57,62 @@ impl Panel {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let id = &record.id;
-        let has_preview = record.preview
-            || (record.kind == "image" && !record.files.is_empty() && record.status != "pending");
+        let has_preview = has_preview(record);
         if has_preview && !self.thumbnails.contains_key(id) {
-            self.thumbnails.insert(id.clone(), Thumbnail::Loading);
+            self.thumbnail_request = self.thumbnail_request.wrapping_add(1);
+            let request = self.thumbnail_request;
+            self.thumbnails.insert(
+                id.clone(),
+                Thumbnail::Loading {
+                    request,
+                    retry_if_failed: false,
+                },
+            );
             let store = self.store.clone();
             let id = id.clone();
-            let generation = self.media_generation;
+            let renderer = cx.svg_renderer();
             cx.spawn(async move |panel, cx| {
                 let request_id = id.clone();
                 let result = cx
                     .background_executor()
                     .spawn(async move {
-                        tp_desktop::media::preview_png(
+                        let bytes = tp_desktop::media::preview_png(
                             &store,
                             request_id,
                             Some("thumbnail".into()),
                             None,
-                        )
+                        )?;
+                        // Own the decoded image so identical bytes in another row or
+                        // in a hover preview cannot evict this row's image.
+                        Image::from_bytes(ImageFormat::Png, bytes)
+                            .to_image_data(renderer)
+                            .map_err(|error| error.to_string())
                     })
                     .await;
                 let _ = panel.update(cx, |panel, cx| {
-                    if panel.media_generation == generation && panel.thumbnails.contains_key(&id) {
-                        let thumbnail = match result {
-                            Ok(bytes) => Thumbnail::Ready(Arc::new(Image::from_bytes(
-                                ImageFormat::Png,
-                                bytes,
-                            ))),
-                            Err(_) => Thumbnail::Failed,
-                        };
-                        if let Some(previous) = panel.thumbnails.insert(id, thumbnail) {
-                            previous.release_asset(cx);
-                        }
-                        cx.notify();
+                    let Some(Thumbnail::Loading {
+                        request: current,
+                        retry_if_failed,
+                    }) = panel.thumbnails.get(&id)
+                    else {
+                        return;
+                    };
+                    // A row may have left the mounted range and started a newer request.
+                    if *current != request {
+                        return;
                     }
+                    match result {
+                        Ok(image) => {
+                            panel.thumbnails.insert(id, Thumbnail::Ready(image));
+                        }
+                        Err(_) if *retry_if_failed => {
+                            panel.thumbnails.remove(&id);
+                        }
+                        Err(_) => {
+                            panel.thumbnails.insert(id, Thumbnail::Failed);
+                        }
+                    }
+                    cx.notify();
                 });
             })
             .detach();
@@ -92,13 +130,6 @@ impl Panel {
                 .h_full()
                 .max_h(px(160.))
                 .object_fit(ObjectFit::Contain)
-                .with_fallback(move || {
-                    div()
-                        .text_color(p.subtle)
-                        .text_size(px(12. * font_scale))
-                        .child(choose("预览图不可用", "Preview unavailable"))
-                        .into_any_element()
-                })
                 .into_any_element(),
             state => div()
                 .w_full()
@@ -108,7 +139,7 @@ impl Panel {
                 .justify_center()
                 .text_color(p.subtle)
                 .text_size(px(12. * font_scale))
-                .child(if matches!(state, Some(Thumbnail::Loading)) {
+                .child(if matches!(state, Some(Thumbnail::Loading { .. })) {
                     choose("加载中", "Loading")
                 } else if matches!(state, Some(Thumbnail::Failed)) {
                     choose("预览图不可用", "Preview unavailable")
