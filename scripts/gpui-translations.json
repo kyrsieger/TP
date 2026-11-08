@@ -1,4 +1,10 @@
 {
+  "面板出现位置": "Panel position",
+  "预设位置": "Preset position",
+  "开启记忆且已有保存位置时，优先使用记住的位置。": "When position memory is on, a saved position takes priority.",
+  "仅在「固定位置」模式下生效。": "Only applies in Fixed position mode.",
+  "展开固定位置设置": "Expand fixed position settings",
+  "收起固定位置设置": "Collapse fixed position settings",
   "搜索字体样式": "Search font styles",
   "TP 预览": "TP Preview",
   "设置未保存": "Settings were not saved",

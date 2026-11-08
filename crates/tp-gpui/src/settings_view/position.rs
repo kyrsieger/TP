@@ -7,6 +7,56 @@ fn position_label(id: &str) -> &'static str {
     }
 }
 impl SettingsView {
+    pub(super) fn fixed_position_disclosure(
+        &self,
+        disabled: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let p = Palette::for_id(&self.value.theme);
+        let expanded = self.fixed_position_expanded;
+        let focus = self
+            .toggle_focus
+            .borrow_mut()
+            .entry("fixed-position-disclosure".into())
+            .or_insert_with(|| cx.focus_handle())
+            .clone();
+        let label = if expanded {
+            choose("收起固定位置设置", "Collapse fixed position settings")
+        } else {
+            choose("展开固定位置设置", "Expand fixed position settings")
+        };
+        let mut chevron = crate::icons::icon("chevron", 16.).text_color(p.accent);
+        if expanded {
+            chevron = chevron.with_transformation(gpui::Transformation::rotate(gpui::radians(
+                std::f32::consts::PI,
+            )));
+        }
+        div()
+            .id("fixed-position-disclosure")
+            .track_focus(&focus.clone().tab_index(0).tab_stop(!disabled))
+            .size(px(32.))
+            .flex_shrink_0()
+            .rounded(px(6.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .when(disabled, |d| d.opacity(0.55))
+            .when(!disabled, |d| d.cursor_pointer().hover(|d| d.bg(p.hover)))
+            .focus(|d| d.bg(p.hover))
+            .child(chevron)
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(label).build(window, cx)
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if !disabled {
+                    focus.focus(window);
+                    this.fixed_position_expanded = !this.fixed_position_expanded;
+                    this.fixed_position_open = false;
+                    cx.notify();
+                }
+            }))
+    }
+
     // The popup is painted after the form, so its automatic tab insertion order
     // need not match the original inline DOM order. Keep this small span explicit.
     pub(crate) fn fixed_position_tab(

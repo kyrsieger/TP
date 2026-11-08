@@ -99,6 +99,7 @@ pub struct SettingsView {
     language_open: bool,
     retention_open: bool,
     fixed_position_open: bool,
+    fixed_position_expanded: bool,
     toggle_focus: std::cell::RefCell<std::collections::HashMap<String, gpui::FocusHandle>>,
     cleanup: Option<Entity<crate::cleanup_view::CleanupView>>,
     cleanup_subscription: Option<Subscription>,
@@ -207,6 +208,7 @@ impl SettingsView {
             language_open: false,
             retention_open: false,
             fixed_position_open: false,
+            fixed_position_expanded: false,
             font_bounds: Default::default(),
             toggle_focus: Default::default(),
             cleanup: None,
@@ -903,6 +905,7 @@ impl SettingsView {
         self.language_open = false;
         self.retention_open = false;
         self.fixed_position_open = false;
+        self.fixed_position_expanded = false;
         self.font_styles = false;
         self.font_picker = None;
         self.font_subscription = None;
@@ -1096,6 +1099,7 @@ impl SettingsView {
             .id(gpui::SharedString::from(format!("position-{mode}")))
             .track_focus(&focus.clone().tab_index(0).tab_stop(selected && !disabled))
             .relative()
+            .flex_1()
             .flex()
             .items_center()
             .gap(px(if narrow { 9. } else { 14. }))
@@ -1729,45 +1733,86 @@ impl SettingsView {
                 .mt(px(if wide { 20. } else { 16. }))
                 .mb(px(if wide { 20. } else { 16. })),
         );
-        let mut position_content = self
+        let fixed_mode = self.value.position_mode == "fixed";
+        let position_content = self
             .card()
-            .child(self.position_radio("fixed", choose("固定位置", "Fixed position"), window, cx))
-            .child(self.position_radio("cursor", choose("跟随光标", "Follow cursor"), window, cx));
-        position_content =
-            position_content.child(div().border_t_1().border_color(p.line).child(self.card_row(
+            .child(
+                div()
+                    .mx(px(if narrow { 10. } else { 14. }))
+                    .pt(px(10.))
+                    .pb(px(6.))
+                    .border_b_1()
+                    .border_color(p.line)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child(choose("面板出现位置", "Panel position")),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .pr(px(if narrow { 6. } else { 10. }))
+                    .child(self.position_radio(
+                        "fixed",
+                        choose("固定位置", "Fixed position"),
+                        window,
+                        cx,
+                    ))
+                    .child(self.fixed_position_disclosure(disabled, cx)),
+            )
+            .when(self.fixed_position_expanded, |d| {
+                d.child(
+                    div()
+                        .ml(px(if narrow { 18. } else { 22. }))
+                        .mb(px(8.))
+                        .border_l_1()
+                        .border_color(p.line)
+                        .when(!fixed_mode, |d| d.opacity(0.65))
+                        .child(self.card_row(
+                            window,
+                            choose("预设位置", "Preset position"),
+                            None,
+                            false,
+                            self.fixed_position_control(disabled, window, cx),
+                        ))
+                        .child(self.card_row(
+                            window,
+                            choose("记忆拖拽位置", "Remember dragged position"),
+                            None,
+                            false,
+                            self.button(
+                                "remember-position".into(),
+                                String::new(),
+                                self.value.remember_position,
+                                cx,
+                                Patch::RememberPosition(!self.value.remember_position, None),
+                            ),
+                        ))
+                        .child(
+                            div()
+                                .px(px(if narrow { 10. } else { 14. }))
+                                .pb(px(8.))
+                                .text_size(px(12. * self.value.font_size as f32 / 13.))
+                                .text_color(p.muted)
+                                .child(if fixed_mode {
+                                    choose(
+                                        "开启记忆且已有保存位置时，优先使用记住的位置。",
+                                        "When position memory is on, a saved position takes priority.",
+                                    )
+                                } else {
+                                    choose(
+                                        "仅在「固定位置」模式下生效。",
+                                        "Only applies in Fixed position mode.",
+                                    )
+                                }),
+                        ),
+                )
+            })
+            .child(self.position_radio(
+                "cursor",
+                choose("跟随光标", "Follow cursor"),
                 window,
-                choose("固定位置", "Fixed position"),
-                None,
-                false,
-                self.fixed_position_control(disabled, window, cx),
-            )));
-        position_content = position_content.child(
-            self.card_row(
-                window,
-                choose("记忆拖拽位置", "Remember dragged position"),
-                None,
-                true,
-                self.button(
-                    "remember-position".into(),
-                    choose(
-                        if self.value.remember_position {
-                            "开启"
-                        } else {
-                            "关闭"
-                        },
-                        if self.value.remember_position {
-                            "On"
-                        } else {
-                            "Off"
-                        },
-                    )
-                    .into(),
-                    self.value.remember_position,
-                    cx,
-                    Patch::RememberPosition(!self.value.remember_position, None),
-                ),
-            ),
-        );
+                cx,
+            ));
         content = content.child(position_content).child(
             div().mt(px(7.)).mx(px(10.)).text_size(px(12. * self.value.font_size as f32 / 13.))
                 .line_height(px(19.2 * self.value.font_size as f32 / 13.)).text_color(p.muted)
