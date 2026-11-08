@@ -1,5 +1,27 @@
 use super::*;
 
+const INDICATOR_SIZE: f32 = 24.;
+const INDICATOR_MARGIN: f32 = 4.;
+
+fn record_indicators(
+    record: &tp_core::records::Record,
+    p: Palette,
+) -> [(bool, &'static str, gpui::Rgba); 3] {
+    [
+        (record.pinned_at.is_some(), "pin", p.accent),
+        (record.favorite, "star-fill", p.star),
+        (record.group_id.is_some(), "group", p.accent),
+    ]
+}
+
+pub(super) fn record_indicator_width(record: &tp_core::records::Record, p: Palette) -> f32 {
+    let count = record_indicators(record, p)
+        .into_iter()
+        .filter(|(visible, _, _)| *visible)
+        .count();
+    count as f32 * (INDICATOR_SIZE + INDICATOR_MARGIN)
+}
+
 impl Panel {
     pub(super) fn record_actions(
         &self,
@@ -139,6 +161,7 @@ impl Panel {
             )))
             .flex()
             .items_center()
+            .flex_shrink_0()
             .when(media, |d| {
                 d.absolute()
                     .top(px(8.))
@@ -149,16 +172,12 @@ impl Panel {
                         ..p.surface
                     })
             });
-        for (visible, icon, color) in [
-            (record.pinned_at.is_some(), "pin", p.accent),
-            (record.favorite, "star-fill", p.star),
-            (record.group_id.is_some(), "group", p.accent),
-        ] {
+        for (visible, icon, color) in record_indicators(record, p) {
             if visible {
                 indicators = indicators.child(
                     div()
-                        .size(px(24.))
-                        .ml(px(4.))
+                        .size(px(INDICATOR_SIZE))
+                        .ml(px(INDICATOR_MARGIN))
                         .flex()
                         .items_center()
                         .justify_center()
@@ -167,11 +186,11 @@ impl Panel {
                 );
             }
         }
-        div()
-            .flex()
-            .items_center()
-            .flex_shrink_0()
-            .when(!hovered, |d| d.child(indicators))
-            .when(hovered, |d| d.child(actions))
+        // The absolute media controls must be positioned directly within the row.
+        if hovered {
+            actions
+        } else {
+            indicators
+        }
     }
 }

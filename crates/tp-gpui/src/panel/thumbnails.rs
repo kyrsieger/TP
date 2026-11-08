@@ -163,7 +163,11 @@ impl Panel {
                         .absolute()
                         .top(px(10.))
                         .left_0()
-                        .right(px(if hovered { 104. } else { 0. }))
+                        .right(px(if hovered {
+                            104.
+                        } else {
+                            actions::record_indicator_width(record, p)
+                        }))
                         .text_size(px(12.5 * font_scale))
                         .line_height(px(17. * font_scale))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
