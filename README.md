@@ -68,7 +68,7 @@ cargo test --workspace --locked
 
 测试目录必须已包含 `history.sqlite3`，该脚本会先验证目录再启动 Debug 程序。诊断目录设置仅用于 Debug 构建，不适用于正式二进制。详细检查命令见 [贡献说明](CONTRIBUTING.md)。
 
-调试界面时，可以使用[开发版热更新](CONTRIBUTING.md#开发版界面热更新)，保存 Rust 界面代码后在运行中的 TP 窗口查看效果。
+调试界面时，按[热更新工具准备说明](CONTRIBUTING.md#开发版界面热更新)配置一次 `dx`，之后运行 `python scripts/dev.py`。保存 Rust 界面代码后，可以在运行中的 TP 窗口查看效果。
 
 ## GPUI 正式构建与安装包
 

@@ -33,11 +33,13 @@ cargo build -p tp-gpui --locked
 
 ## 开发版界面热更新
 
-使用 Dioxus CLI 0.7.10 的 `dx` 启动 TP。首次启动会完整编译，随后自动打开主面板。之后保存 TP 的界面渲染代码，`dx` 会编译并发送补丁，TP 收到后会重绘窗口。可以从终端的 `TP hot reload applied` 和进程 ID 确认补丁是否应用到了当前进程。
+按下方说明准备 Dioxus CLI 0.7.10 后，在项目根目录运行：
 
 ```sh
-dx serve --desktop --hot-patch --features hot-reload -p tp-gpui --locked --addr 127.0.0.1 --open false
+python scripts/dev.py
 ```
+
+脚本会用 `dx` 启动 TP 的热更新模式，服务仅监听本机。首次启动会完整编译，随后自动打开主面板。之后保存 TP 的界面渲染代码，`dx` 会编译并发送补丁，TP 收到后会重绘窗口。可以从终端的 `TP hot reload applied` 和进程 ID 确认补丁是否应用到了当前进程。
 
 例如，主面板的 `panel.rs` 中 `render_view` 里的边框、圆角和间距适合用这个流程调试。改动状态结构、初始化代码或依赖后，请用 `Ctrl+C` 结束会话再重新运行。调试时可以继续设置 `TP_DIAGNOSTIC_DATA_DIR` 使用独立数据目录。
 
@@ -51,7 +53,7 @@ git -C target/hot-reload-tools/dioxus-0.7.10 apply $dxPatch
 cargo --config profile.dev.debug=0 rustc --locked --manifest-path target/hot-reload-tools/dioxus-0.7.10/Cargo.toml -p dioxus-cli --bin dx -- -C link-arg=/STACK:16777216
 ```
 
-将启动命令里的 `dx` 换成 `./target/hot-reload-tools/dioxus-0.7.10/target/debug/dx.exe`。macOS 可使用 [Dioxus 0.7.10 的对应构建](https://github.com/DioxusLabs/dioxus/releases/tag/v0.7.10)，目前待实机验证。
+脚本在 Windows 上自动使用 `target/hot-reload-tools/dioxus-0.7.10/target/debug/dx.exe`。macOS 可使用 [Dioxus 0.7.10 的对应构建](https://github.com/DioxusLabs/dioxus/releases/tag/v0.7.10)，并将 `dx` 加入 `PATH`，目前待实机验证。
 
 ## GPUI Windows 正式二进制检查
 
