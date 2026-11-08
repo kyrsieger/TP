@@ -53,6 +53,7 @@ struct Bitmap {
     dc: HDC,
     bitmap: HBITMAP,
     old: HGDIOBJ,
+    bits: *mut [u8; 4],
     width: i32,
     height: i32,
 }
@@ -79,17 +80,97 @@ impl Bitmap {
                 return Err(err(e));
             }
         };
+        let bits: *mut [u8; 4] = bits.cast();
         if let Some(p) = pixels {
             std::ptr::copy_nonoverlapping(p.as_ptr(), bits.cast(), p.len());
+        } else {
+            // GDI may leave the unused fourth byte untouched.
+            bits.write_bytes(0, width as usize * height as usize);
         }
         let old = SelectObject(dc, bitmap.into());
         Ok(Self {
             dc,
             bitmap,
             old,
+            bits,
             width,
             height,
         })
+    }
+
+    // The caller flushes pending GDI draws before blending into this DIB.
+    unsafe fn fill_rounded_rect(&mut self, rect: RECT, view: SIZE, radius: f64, color: [u8; 4]) {
+        let left = rect.left.max(0);
+        let right = rect.right.min(view.cx).min(self.width);
+        let top = rect.top.max(0);
+        let bottom = rect.bottom.min(view.cy).min(self.height);
+        if left >= right || top >= bottom {
+            return;
+        }
+        let radius = radius
+            .min((rect.right - rect.left) as f64 / 2.)
+            .min((rect.bottom - rect.top) as f64 / 2.);
+        let inner_left = rect.left as f64 + radius;
+        let inner_right = rect.right as f64 - radius;
+        let inner_top = rect.top as f64 + radius;
+        let inner_bottom = rect.bottom as f64 - radius;
+
+        for y in top..bottom {
+            let start = y as usize * self.width as usize + left as usize;
+            let row = std::slice::from_raw_parts_mut(self.bits.add(start), (right - left) as usize);
+            let center_y = y as f64 + 0.5;
+            let dy = (inner_top - center_y).max(center_y - inner_bottom);
+            if dy <= 0. {
+                row.fill(color);
+                continue;
+            }
+            for (x, pixel) in (left..right).zip(row) {
+                let center_x = x as f64 + 0.5;
+                let dx = (inner_left - center_x).max(center_x - inner_right).max(0.);
+                // Blend across a one-pixel band along the curved edge.
+                let coverage = (radius + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0., 1.);
+                if coverage == 1. {
+                    *pixel = color;
+                } else if coverage > 0. {
+                    for (channel, fill) in pixel[..3].iter_mut().zip(color) {
+                        *channel = (*channel as f64 + (fill as f64 - *channel as f64) * coverage)
+                            .round() as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    unsafe fn draw_close_icon(&mut self, rect: RECT, view: SIZE, dpi: f64) {
+        let size = (CLOSE_ICON_SIZE * dpi)
+            .min((rect.right - rect.left) as f64)
+            .min((rect.bottom - rect.top) as f64);
+        let cx = (rect.left as f64 + rect.right as f64) / 2.;
+        let cy = (rect.top as f64 + rect.bottom as f64) / 2.;
+        let left = ((cx - size / 2.).floor() as i32).max(0);
+        let right = ((cx + size / 2.).ceil() as i32)
+            .min(view.cx)
+            .min(self.width);
+        let top = ((cy - size / 2.).floor() as i32).max(0);
+        let bottom = ((cy + size / 2.).ceil() as i32)
+            .min(view.cy)
+            .min(self.height);
+        for y in top..bottom {
+            for x in left..right {
+                let coverage = close_icon_coverage(
+                    x as f64 + 0.5 - cx,
+                    y as f64 + 0.5 - cy,
+                    size / CLOSE_ICON_SIZE,
+                );
+                if coverage > 0. {
+                    let pixel = &mut *self.bits.add(y as usize * self.width as usize + x as usize);
+                    for channel in &mut pixel[..3] {
+                        *channel =
+                            (*channel as f64 + (255. - *channel as f64) * coverage).round() as u8;
+                    }
+                }
+            }
+        }
     }
 }
 impl Drop for Bitmap {
@@ -101,6 +182,35 @@ impl Drop for Bitmap {
         }
     }
 }
+
+fn control_bounds(rect: Rect) -> RECT {
+    RECT {
+        left: rect.x as i32,
+        top: rect.y as i32,
+        right: (rect.x + rect.w) as i32,
+        bottom: (rect.y + rect.h) as i32,
+    }
+}
+
+unsafe fn preview_font(height: f64) -> HFONT {
+    CreateFontW(
+        -height.round() as i32,
+        0,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY,
+        DEFAULT_PITCH.0 as u32,
+        w!("Segoe UI"),
+    )
+}
+
 struct Surface {
     app: Callbacks,
     picture: Picture,
@@ -175,6 +285,10 @@ impl Surface {
         }
         let width = view.w as i32;
         let height = view.h as i32;
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
         if self
             .target
             .as_ref()
@@ -186,7 +300,8 @@ impl Surface {
                 None,
             )?);
         }
-        let dc = self.target.as_ref().unwrap().dc;
+        let target = self.target.as_mut().unwrap();
+        let dc = target.dc;
         SetStretchBltMode(dc, HALFTONE);
         SetBrushOrgEx(dc, 0, 0, None).ok().map_err(err)?;
         StretchBlt(
@@ -206,22 +321,7 @@ impl Surface {
         .map_err(err)?;
         if self.hovered || self.picture.unavailable.is_some() {
             let dpi = self.geometry.dpi;
-            let font = CreateFontW(
-                -(13. * dpi).round() as i32,
-                0,
-                0,
-                0,
-                400,
-                0,
-                0,
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                DEFAULT_PITCH.0 as u32,
-                w!("Segoe UI"),
-            );
+            let font = preview_font(13. * dpi);
             let old_font = SelectObject(dc, font.into());
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, COLORREF(0x00ffffff));
@@ -240,65 +340,52 @@ impl Surface {
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE,
                 );
             }
-            for control in controls(
-                view.w,
-                view.h,
-                dpi,
-                self.geometry.scale,
-                self.picture.index,
-                self.picture.count,
-            )
-            .into_iter()
-            .filter(|_| self.hovered)
-            {
-                let r = control.rect;
-                // Fill only: close control has no white border.
-                if matches!(control.action, Some(Action::Close)) {
-                    let shadow = CreateSolidBrush(COLORREF(0x00101010));
-                    let old = SelectObject(dc, shadow.into());
-                    let pen = SelectObject(dc, GetStockObject(NULL_PEN));
-                    let offset = (2. * dpi).round() as i32;
-                    let _ = RoundRect(
-                        dc,
-                        r.x as i32,
-                        r.y as i32 + offset,
-                        (r.x + r.w) as i32,
-                        (r.y + r.h) as i32 + offset,
-                        (12. * dpi) as i32,
-                        (12. * dpi) as i32,
-                    );
-                    SelectObject(dc, old);
-                    SelectObject(dc, pen);
-                    let _ = DeleteObject(shadow.into());
+            if self.hovered {
+                let controls = controls(
+                    view.w,
+                    view.h,
+                    dpi,
+                    self.geometry.scale,
+                    self.picture.index,
+                    self.picture.count,
+                );
+                let _ = GdiFlush();
+                for (rect, divider) in control_backgrounds(&controls, dpi) {
+                    let (radius, color) = if divider {
+                        (0., [0x5b, 0x4c, 0x42, 0xff])
+                    } else {
+                        (4. * dpi, [0x27, 0x18, 0x11, 0xff])
+                    };
+                    target.fill_rounded_rect(control_bounds(rect), size, radius, color);
                 }
-                let brush = CreateSolidBrush(COLORREF(0x00271811));
-                let old_brush = SelectObject(dc, brush.into());
-                let old_pen = SelectObject(dc, GetStockObject(NULL_PEN));
-                let _ = RoundRect(
-                    dc,
-                    r.x as i32,
-                    r.y as i32,
-                    (r.x + r.w) as i32,
-                    (r.y + r.h) as i32,
-                    (8. * dpi) as i32,
-                    (8. * dpi) as i32,
-                );
-                SelectObject(dc, old_brush);
-                SelectObject(dc, old_pen);
-                let _ = DeleteObject(brush.into());
-                let mut rect = RECT {
-                    left: r.x as i32,
-                    top: r.y as i32,
-                    right: (r.x + r.w) as i32,
-                    bottom: (r.y + r.h) as i32,
-                };
-                let mut text: Vec<u16> = control.text.encode_utf16().collect();
-                DrawTextW(
-                    dc,
-                    &mut text,
-                    &mut rect,
-                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-                );
+                target.draw_close_icon(control_bounds(controls[0].rect), size, dpi);
+
+                let size_font = controls
+                    .iter()
+                    .any(|control| control.group == ControlGroup::Size)
+                    .then(|| preview_font(12. * dpi));
+                for control in controls.into_iter().skip(1) {
+                    let (label_font, color) = if control.group == ControlGroup::Size {
+                        (size_font.unwrap_or(font), COLORREF(0x00f2ebe7))
+                    } else {
+                        (font, COLORREF(0x00ffffff))
+                    };
+                    SelectObject(dc, label_font.into());
+                    SetTextColor(dc, color);
+                    let mut rect = control_bounds(control.rect);
+                    let mut text: Vec<u16> = control.text.encode_utf16().collect();
+                    DrawTextW(
+                        dc,
+                        &mut text,
+                        &mut rect,
+                        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                    );
+                }
+                SelectObject(dc, font.into());
+                SetTextColor(dc, COLORREF(0x00ffffff));
+                if let Some(size_font) = size_font {
+                    let _ = DeleteObject(size_font.into());
+                }
             }
             if self.hovered && self.picture.video && height > 65 {
                 let mut text: Vec<u16> = crate::i18n::tr("视频首帧").encode_utf16().collect();
@@ -320,10 +407,7 @@ impl Surface {
                 x: view.x as i32,
                 y: view.y as i32,
             }),
-            Some(&SIZE {
-                cx: width,
-                cy: height,
-            }),
+            Some(&size),
             Some(dc),
             Some(&POINT::default()),
             COLORREF(0),

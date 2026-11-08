@@ -35,7 +35,8 @@ struct Surface {
     root: Retained<NSView>,
     image: Retained<NSImageView>,
     message: Retained<NSTextField>,
-    backdrop: Retained<NSBox>,
+    backdrop: Retained<NSView>,
+    backdrop_shapes: Vec<Retained<NSBox>>,
     buttons: Vec<Retained<NSButton>>,
     timer: Retained<NSTimer>,
     monitor: Retained<AnyObject>,
@@ -71,6 +72,31 @@ fn from_native(r: NSRect) -> Rect {
 fn to_native(r: Rect) -> NSRect {
     NSRect::new(NSPoint::new(r.x, -r.y - r.h), NSSize::new(r.w, r.h))
 }
+fn control_frame(rect: Rect, height: f64) -> NSRect {
+    NSRect::new(
+        NSPoint::new(rect.x, height - rect.y - rect.h),
+        NSSize::new(rect.w, rect.h),
+    )
+}
+fn close_icon() -> Option<Retained<NSImage>> {
+    // Rasterize above Retina resolution so AppKit can scale the strokes smoothly.
+    let scale = 4.;
+    let pixels = (CLOSE_ICON_SIZE * scale) as u32;
+    let center = pixels as f64 / 2.;
+    let bitmap = image::RgbaImage::from_fn(pixels, pixels, |x, y| {
+        let coverage = close_icon_coverage(x as f64 + 0.5 - center, y as f64 + 0.5 - center, scale);
+        image::Rgba([255, 255, 255, (255. * coverage).round() as u8])
+    });
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(bitmap)
+        .write_to(&mut encoded, image::ImageFormat::Png)
+        .ok()?;
+    let icon = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(encoded.get_ref()))?;
+    icon.setSize(NSSize::new(CLOSE_ICON_SIZE, CLOSE_ICON_SIZE));
+    let label = NSString::from_str(crate::i18n::choose("关闭", "Close"));
+    icon.setAccessibilityDescription(Some(&label));
+    Some(icon)
+}
 fn point() -> (f64, f64) {
     let p = NSEvent::mouseLocation();
     (p.x, -p.y)
@@ -101,6 +127,42 @@ impl Surface {
         );
         self.pending_index = (self.pending_index as isize + direction)
             .rem_euclid(self.picture.count as isize) as usize;
+    }
+    fn layout_backdrop(&mut self, layout: &[Control], height: f64, mtm: MainThreadMarker) {
+        self.backdrop.setHidden(!self.hovered);
+        if !self.hovered {
+            return;
+        }
+        self.backdrop.setFrame(self.root.bounds());
+        let panel_color =
+            NSColor::colorWithSRGBRed_green_blue_alpha(17. / 255., 24. / 255., 39. / 255., 1.);
+        let divider_color =
+            NSColor::colorWithSRGBRed_green_blue_alpha(66. / 255., 76. / 255., 91. / 255., 1.);
+        let mut used = 0;
+        for (rect, divider) in control_backgrounds(layout, 1.) {
+            if used == self.backdrop_shapes.len() {
+                let shape = NSBox::initWithFrame(NSBox::alloc(mtm), NSRect::default());
+                shape.setBoxType(NSBoxType::Custom);
+                shape.setBorderWidth(0.);
+                shape.setTitlePosition(NSTitlePosition::NoTitle);
+                self.backdrop.addSubview(&shape);
+                self.backdrop_shapes.push(shape);
+            }
+            let shape = &self.backdrop_shapes[used];
+            let (radius, color) = if divider {
+                (0., &divider_color)
+            } else {
+                (4., &panel_color)
+            };
+            shape.setCornerRadius(radius);
+            shape.setFillColor(color);
+            shape.setFrame(control_frame(rect, height));
+            shape.setHidden(false);
+            used += 1;
+        }
+        for shape in &self.backdrop_shapes[used..] {
+            shape.setHidden(true);
+        }
     }
     fn draw(&mut self) {
         // Window Server owns the frame until the drag ends. Re-clipping it mid-drag
@@ -139,15 +201,7 @@ impl Surface {
             self.picture.count,
         );
         let mtm = MainThreadMarker::new().expect("native preview is main-thread only");
-        if let Some(last) = layout.last() {
-            let left = last.rect.x;
-            let first = &layout[0].rect;
-            self.backdrop.setFrame(NSRect::new(
-                NSPoint::new(left, visible.h - first.y - first.h),
-                NSSize::new(first.x + first.w - left, first.h),
-            ));
-            self.backdrop.setHidden(!self.hovered);
-        }
+        self.layout_backdrop(&layout, visible.h, mtm);
         while self.buttons.len() > layout.len() {
             if let Some(button) = self.buttons.pop() {
                 button.removeFromSuperview();
@@ -158,17 +212,33 @@ impl Surface {
                 NSButton::buttonWithTitle_target_action(&NSString::from_str(""), None, None, mtm)
             };
             button.setBordered(false);
-            button.setContentTintColor(Some(&NSColor::whiteColor()));
+            if matches!(layout[self.buttons.len()].action, Some(Action::Close)) {
+                if let Some(image) = close_icon() {
+                    button.setImage(Some(&image));
+                    button.setImagePosition(NSCellImagePosition::ImageOnly);
+                    button.setImageScaling(NSImageScaling::ScaleProportionallyDown);
+                }
+            }
             self.root.addSubview(&button);
             self.buttons.push(button);
         }
+        let size_font = NSFont::systemFontOfSize(12.);
+        let normal_font = NSFont::systemFontOfSize(13.);
+        let size_text =
+            NSColor::colorWithSRGBRed_green_blue_alpha(231. / 255., 235. / 255., 242. / 255., 1.);
+        let normal_text = NSColor::whiteColor();
         for (button, control) in self.buttons.iter().zip(layout) {
-            button.setTitle(&NSString::from_str(&control.text));
-            let r = control.rect;
-            button.setFrame(NSRect::new(
-                NSPoint::new(r.x, visible.h - r.y - r.h),
-                NSSize::new(r.w, r.h),
-            ));
+            let (font, color) = if control.group == ControlGroup::Size {
+                (&size_font, &size_text)
+            } else {
+                (&normal_font, &normal_text)
+            };
+            if button.image().is_none() {
+                button.setTitle(&NSString::from_str(&control.text));
+            }
+            button.setFont(Some(font));
+            button.setContentTintColor(Some(color));
+            button.setFrame(control_frame(control.rect, visible.h));
             button.setHidden(!self.hovered);
         }
         self.root.displayIfNeeded();
@@ -207,6 +277,10 @@ pub(super) fn refresh_language() {
                 .setStringValue(&NSString::from_str(crate::i18n::tr(
                     surface.picture.unavailable.unwrap_or(""),
                 )));
+            if let Some(image) = surface.buttons.first().and_then(|button| button.image()) {
+                let label = NSString::from_str(crate::i18n::choose("关闭", "Close"));
+                image.setAccessibilityDescription(Some(&label));
+            }
             surface.draw();
         }
     });
@@ -438,12 +512,7 @@ pub(super) fn show(app: Callbacks, mut picture: Picture) -> Result<()> {
     message.setTextColor(Some(&NSColor::whiteColor()));
     message.setHidden(picture.unavailable.is_none());
     root.addSubview(&message);
-    let backdrop = NSBox::initWithFrame(NSBox::alloc(mtm), NSRect::default());
-    backdrop.setBoxType(NSBoxType::Custom);
-    backdrop.setBorderWidth(0.);
-    backdrop.setTitlePosition(NSTitlePosition::NoTitle);
-    backdrop.setFillColor(&NSColor::colorWithWhite_alpha(0.08, 0.86));
-    backdrop.setCornerRadius(6.);
+    let backdrop = NSView::initWithFrame(NSView::alloc(mtm), root.bounds());
     root.addSubview(&backdrop);
     window.setContentView(Some(&root));
     let monitor = unsafe {
@@ -490,6 +559,7 @@ pub(super) fn show(app: Callbacks, mut picture: Picture) -> Result<()> {
         image,
         message,
         backdrop,
+        backdrop_shapes: Vec::new(),
         buttons: Vec::new(),
         timer,
         monitor,

@@ -291,10 +291,65 @@ pub(super) enum Action {
     Previous,
     Next,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ControlGroup {
+    Single,
+    Size,
+    Zoom,
+}
+
 pub(super) struct Control {
     pub rect: Rect,
     pub text: String,
     pub action: Option<Action>,
+    pub group: ControlGroup,
+}
+
+const CLOSE_ICON_SIZE: f64 = 14.;
+
+// Match the prototype: two diagonals across an 8-by-8 square, with round 1.5-unit strokes.
+fn close_icon_coverage(x: f64, y: f64, scale: f64) -> f64 {
+    use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2};
+    // Folding across both axes reduces the two diagonals to one segment.
+    let x = x.abs();
+    let y = y.abs();
+    let across = (x - y) * FRAC_1_SQRT_2;
+    let past_endpoint = ((x + y) * FRAC_1_SQRT_2 - 4. * SQRT_2 * scale).max(0.);
+    (0.75 * scale + 0.5 - across.hypot(past_endpoint)).clamp(0., 1.)
+}
+
+pub(super) fn control_backgrounds(
+    controls: &[Control],
+    dpi: f64,
+) -> impl Iterator<Item = (Rect, bool)> + '_ {
+    controls
+        .chunk_by(|a, b| a.group != ControlGroup::Single && a.group == b.group)
+        .flat_map(move |group| {
+            // Layout is built from right to left.
+            let right = group[0].rect;
+            let left = group.last().unwrap().rect.x;
+            let panel = Rect {
+                x: left,
+                w: right.x + right.w - left,
+                ..right
+            };
+            let dividers = group.windows(2).map(move |pair| {
+                let right = pair[0].rect;
+                let left = pair[1].rect;
+                let h = 12. * dpi;
+                (
+                    Rect {
+                        x: (right.x + left.x + left.w - dpi) / 2.,
+                        y: right.y + (right.h - h) / 2.,
+                        w: dpi,
+                        h,
+                    },
+                    true,
+                )
+            });
+            std::iter::once((panel, false)).chain(dividers)
+        })
 }
 pub(super) fn controls(
     width: f64,
@@ -319,40 +374,49 @@ pub(super) fn controls(
             w: size,
             h: size,
         },
-        text: "×".into(),
+        text: "✕".into(),
         action: Some(Action::Close),
+        group: ControlGroup::Single,
     }];
     let percent_width = (46. * dpi).min((x - gap).max(0.));
     let show_plus = !compact && x >= size + gap + percent_width + gap;
-    let mut add = |text: String, action: Option<Action>, w: f64| {
+    let mut add = |text: String, action: Option<Action>, w: f64, group: ControlGroup| {
         if x >= w + gap {
             x -= w + gap;
             items.push(Control {
                 rect: Rect { x, y, w, h: size },
                 text,
                 action,
+                group,
             });
         }
     };
     if show_plus {
-        add("+".into(), Some(Action::Bigger), size);
+        add("+".into(), Some(Action::Bigger), size, ControlGroup::Zoom);
     }
     if percent_width >= 20. * dpi {
-        add(format!("{}%", (scale * 100.).round()), None, percent_width);
+        add(
+            format!("{}%", (scale * 100.).round()),
+            None,
+            percent_width,
+            ControlGroup::Zoom,
+        );
     }
     if compact {
         return items;
     }
-    add("−".into(), Some(Action::Smaller), size);
+    add("−".into(), Some(Action::Smaller), size, ControlGroup::Zoom);
     add(
         super::i18n::choose("合适", "Fit").into(),
         Some(Action::Fit),
         40. * dpi,
+        ControlGroup::Size,
     );
     add(
         super::i18n::choose("撑满", "Fill").into(),
         Some(Action::Fill),
         40. * dpi,
+        ControlGroup::Size,
     );
     add(
         super::i18n::choose("原图", "Original").into(),
@@ -362,11 +426,22 @@ pub(super) fn controls(
         } else {
             64. * dpi
         },
+        ControlGroup::Size,
     );
     if count > 1 {
-        add("›".into(), Some(Action::Next), size);
-        add(format!("{}/{}", index + 1, count), None, 48. * dpi);
-        add("‹".into(), Some(Action::Previous), size);
+        add("›".into(), Some(Action::Next), size, ControlGroup::Single);
+        add(
+            format!("{}/{}", index + 1, count),
+            None,
+            48. * dpi,
+            ControlGroup::Single,
+        );
+        add(
+            "‹".into(),
+            Some(Action::Previous),
+            size,
+            ControlGroup::Single,
+        );
     }
     items
 }
