@@ -278,11 +278,18 @@ pub fn show(window: &Window) {
     if let RawWindowHandle::Win32(handle) = handle.as_raw() {
         use windows::Win32::{
             Foundation::HWND,
-            UI::WindowsAndMessaging::{ShowWindow, SW_SHOW},
+            UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_SHOW},
         };
+        let hwnd = HWND(handle.hwnd.get() as _);
         unsafe {
-            let _ = ShowWindow(HWND(handle.hwnd.get() as _), SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            // The launcher's show command can keep the window hidden on the first call.
+            if !IsWindowVisible(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_SHOW);
+            }
         }
+        activate_win32(hwnd);
+        return;
     }
     #[cfg(target_os = "macos")]
     if let RawWindowHandle::AppKit(handle) = handle.as_raw() {
@@ -291,7 +298,54 @@ pub fn show(window: &Window) {
             window.makeKeyAndOrderFront(None);
         }
     }
+    activate(window);
+}
+
+pub fn activate(window: &Window) {
+    #[cfg(windows)]
+    if let Ok(handle) = HasWindowHandle::window_handle(window) {
+        if let RawWindowHandle::Win32(handle) = handle.as_raw() {
+            activate_win32(windows::Win32::Foundation::HWND(handle.hwnd.get() as _));
+        }
+    }
+    #[cfg(not(windows))]
     window.activate_window();
+}
+
+#[cfg(windows)]
+fn activate_win32(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::UI::{
+        Input::KeyboardAndMouse::{
+            SendInput, SetActiveWindow, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+            KEYEVENTF_KEYUP, VK_MENU,
+        },
+        WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindowAsync, SW_RESTORE},
+    };
+
+    // GPUI 0.2.2 applies its cached creation bounds on the first activation
+    // of a hidden window. Activate natively to keep TP's chosen bounds.
+    unsafe {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindowAsync(hwnd, SW_RESTORE);
+        }
+        let _ = SetActiveWindow(hwnd);
+        let _ = SetFocus(Some(hwnd));
+        if !SetForegroundWindow(hwnd).as_bool() {
+            // Match GPUI's Alt key workaround when Windows blocks foreground activation.
+            let alt = [Default::default(), KEYEVENTF_KEYUP].map(|flags| INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VK_MENU,
+                        dwFlags: flags,
+                        ..Default::default()
+                    },
+                },
+            });
+            SendInput(&alt, std::mem::size_of::<INPUT>() as i32);
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
 }
 
 /// The shared Windows preview uses the panel's monitor when it first opens.

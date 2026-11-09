@@ -601,7 +601,7 @@ impl Panel {
                     this.poll_floating(cx);
                     match this.preview.poll() {
                         Ok(true) => {
-                            window.activate_window();
+                            crate::native_window::activate(window);
                             this.list_focus.focus(window);
                         }
                         Ok(false) => {}
