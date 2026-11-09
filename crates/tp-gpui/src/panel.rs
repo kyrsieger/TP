@@ -1271,7 +1271,7 @@ impl Panel {
                                 this.settings_view = None;
                                 this.settings_subscription = None;
                                 this.refresh(Ok(()), cx);
-                                this.search.update(cx, |input, cx| input.focus(window, cx));
+                                this.panel_focus.focus(window);
                             }
                         },
                     ));
