@@ -45,6 +45,7 @@ mod startup;
 mod text_selection;
 mod theme;
 mod transfer_view;
+mod updates;
 mod window_preferences;
 use gpui::{prelude::*, px, size, App, Application, Bounds, WindowBounds, WindowOptions};
 use gpui_component::Root;

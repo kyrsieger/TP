@@ -35,10 +35,12 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
 dpi = "0.1.2"
 chrono = "0.4"
+semver = "1"
 serde_json = { version = "1", optional = true }
 subsecond = { version = "=0.7.10", optional = true }
 tungstenite = { version = "0.27", optional = true }
 unicode-segmentation = "1.13.3"
+zed-reqwest = { version = "=0.12.15-zed", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com"] }

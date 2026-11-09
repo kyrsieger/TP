@@ -6,6 +6,7 @@ mod position;
 mod retention;
 mod storage;
 mod theme;
+mod update_check;
 mod work_queue;
 use crate::theme::Palette;
 use gpui::{
@@ -16,13 +17,14 @@ use std::sync::Arc;
 use tp_core::{i18n::choose, preferences::SaveOutcome, settings::Settings};
 use tp_desktop::Store;
 
-pub enum Event {
+pub(crate) enum Event {
     #[cfg(debug_assertions)]
     ReleasePanel,
     Changed,
     Restored,
     Reposition,
     Close,
+    UpdateAvailable(crate::updates::Release),
     Toast(String),
 }
 #[derive(Clone)]
@@ -111,6 +113,9 @@ pub struct SettingsView {
     ordinary_count: usize,
     autostart: Option<bool>,
     autostart_loading: bool,
+    update_check: update_check::State,
+    update_task: Option<gpui::Task<()>>,
+    available_update: Option<crate::updates::Release>,
     font_bounds: [std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>; 2],
     font_focus: gpui::FocusHandle,
     font_style_focus: gpui::FocusHandle,
@@ -136,9 +141,10 @@ pub struct SettingsView {
 }
 impl EventEmitter<Event> for SettingsView {}
 impl SettingsView {
-    pub fn new(
+    pub(crate) fn new(
         store: Arc<Store>,
         snapshot: tp_core::Snapshot,
+        available_update: Option<crate::updates::Release>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -220,6 +226,9 @@ impl SettingsView {
             value,
             autostart: None,
             autostart_loading: true,
+            update_check: update_check::State::Idle,
+            update_task: None,
+            available_update,
             ordinary_count: snapshot
                 .records
                 .iter()
@@ -898,6 +907,7 @@ impl SettingsView {
                 .as_ref()
                 .is_some_and(|view| view.read(cx).is_busy());
         self.retained_for_work = retain;
+        self.reset_update_check();
         self.number_repeat = None;
         self.sensitive_save = None;
         self.pending = None;
@@ -996,6 +1006,7 @@ impl SettingsView {
     }
     pub(crate) fn close(&mut self, cx: &mut Context<Self>) {
         if !self.busy && self.transfer.is_none() && self.cleanup.is_none() {
+            self.reset_update_check();
             self.number_repeat = None;
             self.sensitive_save = None;
             self.pending = None;
@@ -1810,31 +1821,15 @@ impl SettingsView {
                 self.storage_cards(disabled, cx)
                     .mt(px(if wide { 20. } else { 16. })),
             );
-        content = content
-            .child(
-                self.card()
-                    .mt(px(14.))
-                    .px(px(14.))
-                    .py(px(10.))
-                    .min_h(px(42.))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.))
-                    .text_color(p.muted)
-                    .text_size(px(12. * self.value.font_size as f32 / 13.))
-                    .child(choose("当前版本", "Current version"))
-                    .child(env!("CARGO_PKG_VERSION")),
-            )
-            .child(
-                self.card()
-                    .mt(px(if wide { 20. } else { 16. }))
-                    .overflow_hidden()
-                    .child(crate::settings_reference::render(
-                        &self.value,
-                        window.viewport_size().width < px(360.),
-                    )),
-            );
+        content = content.child(self.update_card(disabled, cx)).child(
+            self.card()
+                .mt(px(if wide { 20. } else { 16. }))
+                .overflow_hidden()
+                .child(crate::settings_reference::render(
+                    &self.value,
+                    window.viewport_size().width < px(360.),
+                )),
+        );
         let mut root = div()
             .relative()
             .size_full()

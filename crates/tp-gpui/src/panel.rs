@@ -30,6 +30,7 @@ pub struct Panel {
     snapshot: Snapshot,
     settings_view: Option<Entity<crate::settings_view::SettingsView>>,
     settings_subscription: Option<Subscription>,
+    available_update: Option<crate::updates::Release>,
     session: PanelSession,
     hidden: bool,
     idle: idle::IdleContent,
@@ -110,6 +111,7 @@ impl Panel {
         self.geometry_save = None;
         self.resize_task = None;
         self.hidden = true;
+        self.available_update = None;
         self.idle.hide(std::time::Instant::now());
         self.close_floating(cx);
         self.hovered_record = None;
@@ -634,6 +636,7 @@ impl Panel {
             store,
             snapshot,
             settings_view: None,
+            available_update: None,
             resize_task: None,
             settings_subscription: None,
             session: PanelSession::default(),
@@ -1242,8 +1245,15 @@ impl Panel {
                             return;
                         }
                     };
+                    let available_update = this.available_update.clone();
                     let view = cx.new(|cx| {
-                        crate::settings_view::SettingsView::new(store, snapshot, window, cx)
+                        crate::settings_view::SettingsView::new(
+                            store,
+                            snapshot,
+                            available_update,
+                            window,
+                            cx,
+                        )
                     });
                     this.settings_subscription = Some(cx.subscribe_in(
                         &view,
@@ -1258,6 +1268,9 @@ impl Panel {
                                 this.show_toast(message.clone(), cx)
                             }
                             crate::settings_view::Event::Changed => this.refresh(Ok(()), cx),
+                            crate::settings_view::Event::UpdateAvailable(release) => {
+                                this.available_update = Some(release.clone());
+                            }
                             crate::settings_view::Event::Restored => {
                                 this.clear_thumbnails(window);
                                 this.refresh(Ok(()), cx);

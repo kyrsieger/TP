@@ -25,5 +25,12 @@
   "保存失败：": "Save failed: ",
   "加载中": "Loading",
   "收藏和自建分组中的记录会保留。此操作无法撤销。": "Favorites and records in custom groups are kept. This cannot be undone.",
-  "天": "days"
+  "天": "days",
+  "检查更新": "Check for updates",
+  "版本更新": "Software update",
+  "正在检查…": "Checking…",
+  "已是最新版": "You’re up to date",
+  "有新版本：": "New version: ",
+  "去下载": "Download",
+  "检查更新失败，请重试。": "Couldn’t check for updates. Try again."
 }
