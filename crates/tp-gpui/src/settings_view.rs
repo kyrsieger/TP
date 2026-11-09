@@ -27,7 +27,6 @@ pub enum Event {
 }
 #[derive(Clone)]
 enum Patch {
-    BackgroundResident(bool),
     #[cfg(windows)]
     TaskbarIcon(bool),
     PositionMode(String),
@@ -49,7 +48,6 @@ enum Patch {
 impl Patch {
     fn is_toggle(&self) -> bool {
         match self {
-            Self::BackgroundResident(_) => true,
             #[cfg(windows)]
             Self::TaskbarIcon(_) => true,
             Self::RememberPosition(_, _)
@@ -61,7 +59,6 @@ impl Patch {
     }
     fn apply(&self, value: &mut Settings) {
         match self {
-            Self::BackgroundResident(v) => value.background_resident = *v,
             #[cfg(windows)]
             Self::TaskbarIcon(v) => value.show_taskbar_icon = *v,
             Self::RememberPosition(enabled, position) => {
@@ -1049,11 +1046,7 @@ impl SettingsView {
             return self
                 .toggle_control(id, selected, disabled, cx)
                 .on_click(cx.listener(move |this, event, window, cx| {
-                    if toggle_click_allowed(event)
-                        && !disabled
-                        && !this.busy
-                        && !this.has_modal()
-                    {
+                    if toggle_click_allowed(event) && !disabled && !this.busy && !this.has_modal() {
                         this.save(patch.clone(), None, window, cx);
                     }
                 }))
@@ -1391,8 +1384,7 @@ impl SettingsView {
             .pb(px(if wide { 52. } else { 36. }));
         #[cfg(debug_assertions)]
         {
-            let release_disabled =
-                disabled || self.value.background_resident || self.queued_theme.is_pending();
+            let release_disabled = disabled || self.queued_theme.is_pending();
             let focus = self
                 .toggle_focus
                 .borrow_mut()
@@ -1405,10 +1397,8 @@ impl SettingsView {
                 .child(div().text_size(px(13. * scale)).font_weight(gpui::FontWeight::MEDIUM)
                     .child(choose("开发测试", "Development tools")))
                 .child(div().text_size(px(12. * scale)).line_height(px(19.2 * scale)).text_color(p.muted).child(choose(
-                    "立即隐藏面板、卸载内容并挂起页面，跳过一分钟等待。历史记录和设置会保留，可用快捷键或托盘重新唤出。",
-                    "Hide the panel, unload its contents, and suspend the page immediately, skipping the one-minute wait. History and settings are kept. Reopen with the shortcut or tray icon.")))
-                .when(self.value.background_resident, |d| d.child(div().text_size(px(12. * scale)).line_height(px(19.2 * scale)).text_color(p.muted)
-                    .child(choose("请先关闭“后台常驻”再测试。", "Turn off “Keep running in background” before testing."))))
+                    "立即隐藏面板并释放列表和缩略图，跳过 30 秒等待。历史记录和设置会保留，可用快捷键或托盘重新唤出。",
+                    "Hide the panel and release the list and thumbnails immediately, skipping the 30-second wait. History and settings are kept. Reopen with the shortcut or tray icon.")))
                 .child(div().flex().justify_end().child(div().id("release-panel")
                     .track_focus(&focus.tab_index(0).tab_stop(!release_disabled))
                     .px(px(12.)).py(px(6.)).text_size(px(13. * scale)).rounded(px(6.)).border_1().border_color(p.control_border)
@@ -1462,12 +1452,6 @@ impl SettingsView {
                 })),
             ),
         );
-        general = general.child(self.card_row(
-            window, choose("后台常驻", "Keep running in background"),
-            Some(choose("开启后，关闭面板仍保留内容且不挂起，快捷键唤出更快，但会占用更多内存。", "Keep panel contents loaded when closed for faster reopening, at the cost of more memory.")),
-            true,
-            self.button("background-resident".into(), String::new(), self.value.background_resident, cx, Patch::BackgroundResident(!self.value.background_resident)),
-        ));
         #[cfg(windows)]
         {
             general = general.child(self.card_row(window,

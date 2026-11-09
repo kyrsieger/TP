@@ -33,8 +33,6 @@ pub struct Settings {
     pub retain_type_filter: bool,
     #[serde(default = "default_show_taskbar_icon")]
     pub show_taskbar_icon: bool,
-    #[serde(default)]
-    pub background_resident: bool,
     #[serde(default = "default_remove_trailing_newlines")]
     pub remove_trailing_newlines: bool,
 }
@@ -163,7 +161,6 @@ impl Default for Settings {
             retain_search_input: true,
             retain_type_filter: true,
             show_taskbar_icon: true,
-            background_resident: false,
             remove_trailing_newlines: true,
         }
     }

@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+const RELEASE_DELAY: Duration = Duration::from_secs(30);
+
 #[derive(Default)]
 pub(super) struct IdleContent {
     deadline: Option<Instant>,
@@ -18,17 +20,14 @@ impl IdleContent {
     }
     #[cfg(debug_assertions)]
     pub fn expire_delay(&mut self, now: Instant) {
-        // Only shorten an already scheduled release. Residency and reopening
-        // cancel the deadline and must not be overridden by the debug action.
+        // Only shorten an already scheduled release.
         if self.deadline.is_some() {
             self.deadline = Some(now);
         }
     }
-    pub fn hide(&mut self, resident: bool, now: Instant) {
-        if resident {
-            self.deadline = None;
-        } else if !self.released && self.deadline.is_none() {
-            self.deadline = Some(now + Duration::from_secs(60));
+    pub fn hide(&mut self, now: Instant) {
+        if !self.released && self.deadline.is_none() {
+            self.deadline = Some(now + RELEASE_DELAY);
         }
     }
     pub fn show(&mut self) {
@@ -50,10 +49,10 @@ impl IdleContent {
 mod tests {
     use super::*;
     #[test]
-    fn silent_start_defers_history_until_first_open_even_when_resident() {
+    fn silent_start_defers_history_until_first_open() {
         let mut idle = IdleContent::at_start(false);
         assert!(!idle.needs_snapshot(true));
-        idle.hide(true, Instant::now());
+        idle.hide(Instant::now());
         assert!(!idle.needs_snapshot(true));
         idle.show();
         assert!(idle.needs_snapshot(false));
@@ -64,12 +63,12 @@ mod tests {
         let now = Instant::now();
         let mut idle = IdleContent::default();
         assert!(idle.needs_snapshot(false));
-        idle.hide(false, now);
+        idle.hide(now);
         assert!(idle.needs_snapshot(true));
-        assert!(idle.release_due(now + Duration::from_secs(60)));
+        assert!(idle.release_due(now + Duration::from_secs(30)));
         // Multiple task completions remain deferred until the panel reopens.
         assert!(!idle.needs_snapshot(true));
-        idle.hide(false, now + Duration::from_secs(61));
+        idle.hide(now + Duration::from_secs(31));
         assert!(!idle.needs_snapshot(true));
         idle.show();
         assert!(idle.needs_snapshot(true));
@@ -77,19 +76,16 @@ mod tests {
     }
     #[test]
     #[cfg(debug_assertions)]
-    fn debug_release_requires_a_pending_nonresident_hide() {
+    fn debug_release_requires_a_pending_hide() {
         let now = Instant::now();
         let mut idle = IdleContent::default();
         idle.expire_delay(now);
         assert!(!idle.release_due(now));
-        idle.hide(false, now);
+        idle.hide(now);
         idle.expire_delay(now);
         assert!(idle.release_due(now));
         idle.show();
-        idle.hide(true, now);
-        idle.expire_delay(now);
-        assert!(!idle.release_due(now));
-        idle.hide(false, now);
+        idle.hide(now);
         idle.show();
         idle.expire_delay(now);
         assert!(!idle.release_due(now));
@@ -98,25 +94,23 @@ mod tests {
     fn idle_grace_period_is_not_extended_by_repeated_hides() {
         let now = Instant::now();
         let mut idle = IdleContent::default();
-        idle.hide(false, now);
-        idle.hide(false, now + Duration::from_secs(40));
-        assert!(!idle.release_due(now + Duration::from_secs(59)));
-        assert!(idle.release_due(now + Duration::from_secs(60)));
+        idle.hide(now);
+        idle.hide(now + Duration::from_secs(20));
+        assert!(!idle.release_due(now + Duration::from_secs(29)));
+        assert!(idle.release_due(now + Duration::from_secs(30)));
         assert!(idle.released);
-        assert!(!idle.release_due(now + Duration::from_secs(61)));
+        assert!(!idle.release_due(now + Duration::from_secs(31)));
     }
     #[test]
-    fn residency_and_reopening_cancel_release() {
+    fn reopening_cancels_release_and_next_hide_starts_a_new_delay() {
         let now = Instant::now();
         let mut idle = IdleContent::default();
-        idle.hide(false, now);
-        idle.hide(true, now);
-        assert!(!idle.release_due(now + Duration::from_secs(100)));
-        idle.hide(false, now);
+        idle.hide(now);
         idle.show();
-        assert!(!idle.release_due(now + Duration::from_secs(100)));
-        idle.hide(false, now);
-        assert!(idle.release_due(now + Duration::from_secs(60)));
+        assert!(!idle.release_due(now + Duration::from_secs(30)));
+        idle.hide(now + Duration::from_secs(35));
+        assert!(!idle.release_due(now + Duration::from_secs(64)));
+        assert!(idle.release_due(now + Duration::from_secs(65)));
         idle.show();
         assert!(!idle.released);
     }

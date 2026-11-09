@@ -74,21 +74,20 @@ fn type_filter_retention_defaults_on_for_older_settings_and_round_trips() {
 }
 
 #[test]
-fn background_residency_defaults_off_and_round_trips_without_resetting_preferences() {
-    let mut config = Settings::default();
-    assert!(!config.background_resident);
-    config.max_ordinary = 100;
-    let mut value = serde_json::to_value(&config).unwrap();
-    value.as_object_mut().unwrap().remove("backgroundResident");
-    let restored: Settings = serde_json::from_value(value).unwrap();
-    assert!(!restored.background_resident);
-    assert_eq!(restored.max_ordinary, 100);
+fn old_background_residency_is_ignored_without_resetting_preferences() {
+    let config = Settings {
+        max_ordinary: 100,
+        retain_search_input: false,
+        ..Settings::default()
+    };
+    let current = serde_json::to_value(&config).unwrap();
     for enabled in [true, false] {
-        config.background_resident = enabled;
-        let value = serde_json::to_value(&config).unwrap();
-        assert_eq!(value["backgroundResident"], enabled);
-        let restored: Settings = serde_json::from_value(value).unwrap();
-        assert_eq!(restored.background_resident, enabled);
+        let mut legacy = current.clone();
+        legacy["backgroundResident"] = enabled.into();
+        let restored: Settings = serde_json::from_value(legacy).unwrap();
+        let saved = serde_json::to_value(restored).unwrap();
+        assert!(saved.get("backgroundResident").is_none());
+        assert_eq!(saved, current);
     }
 }
 

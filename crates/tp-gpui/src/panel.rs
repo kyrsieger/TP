@@ -110,10 +110,7 @@ impl Panel {
         self.geometry_save = None;
         self.resize_task = None;
         self.hidden = true;
-        self.idle.hide(
-            self.snapshot.settings.background_resident,
-            std::time::Instant::now(),
-        );
+        self.idle.hide(std::time::Instant::now());
         self.close_floating(cx);
         self.hovered_record = None;
         self.preview.hide();
@@ -591,21 +588,15 @@ impl Panel {
                         this.refresh(Ok(()), cx);
                         this.clear_hidden_browse(window, cx);
                     }
-                    if this.hidden {
-                        this.idle.hide(
-                            this.snapshot.settings.background_resident,
-                            std::time::Instant::now(),
-                        );
-                        if this.idle.release_due(std::time::Instant::now()) {
-                            this.close_floating(cx);
-                            this.clear_thumbnails(window);
-                            this.snapshot.records = Vec::new();
-                            this.snapshot.groups = Vec::new();
-                            this.selection = Default::default();
-                            this.scroll
-                                .update(tp_core::list_layout::ListLayout::new(std::iter::empty()));
-                            cx.notify();
-                        }
+                    if this.hidden && this.idle.release_due(std::time::Instant::now()) {
+                        this.close_floating(cx);
+                        this.clear_thumbnails(window);
+                        this.snapshot.records = Vec::new();
+                        this.snapshot.groups = Vec::new();
+                        this.selection = Default::default();
+                        this.scroll
+                            .update(tp_core::list_layout::ListLayout::new(std::iter::empty()));
+                        cx.notify();
                     }
                     this.poll_floating(cx);
                     match this.preview.poll() {
@@ -1260,10 +1251,8 @@ impl Panel {
                         |this, _, event, window, cx| match event {
                             #[cfg(debug_assertions)]
                             crate::settings_view::Event::ReleasePanel => {
-                                if !this.snapshot.settings.background_resident {
-                                    this.hide(window, cx);
-                                    this.idle.expire_delay(std::time::Instant::now());
-                                }
+                                this.hide(window, cx);
+                                this.idle.expire_delay(std::time::Instant::now());
                             }
                             crate::settings_view::Event::Toast(message) => {
                                 this.show_toast(message.clone(), cx)

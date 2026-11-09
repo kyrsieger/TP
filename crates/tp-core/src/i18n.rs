@@ -180,7 +180,6 @@ fn english(source: &str) -> &str {
         "面板窗口配置不存在" => "Panel window configuration not found",
         "面板窗口不存在" => "Panel window not found",
         "开发测试仅在开发构建中可用" => "Developer tests are only available in development builds",
-        "请先关闭后台常驻再测试" => "Turn off background residency before testing",
         "面板尚未就绪" => "The panel is not ready",
         "预览需要主线程" => "The preview requires the main thread",
         "无法确定当前屏幕" => "Could not determine the current screen",
