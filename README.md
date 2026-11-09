@@ -72,7 +72,15 @@ cargo test --workspace --locked
 
 ## GPUI 正式构建与安装包
 
-Windows 正式二进制：
+在 Windows 上，从项目根目录运行一条命令即可构建并校验 x64 的 EXE 和 MSI 安装包：
+
+```powershell
+python scripts/package.py
+```
+
+脚本从根目录 `Cargo.toml` 读取 TP 版本，不需要输入版本号。它会下载打包工具，并将两个未签名的安装包放到 `target/windows-installers/` 下本次打包专用的子目录，完成后打印文件路径。除了上述 Windows 构建环境，还需要安装 PowerShell 7 和 7-Zip，并确保 `pwsh.exe` 和 `7z.exe` 在 `PATH` 中。
+
+只构建 Windows 正式二进制：
 
 ```powershell
 ./scripts/build-gpui-windows.ps1

@@ -4,6 +4,7 @@ Run from any directory with Python 3: python scripts/audit-gpui-licenses.py
 Uses locked, offline Cargo metadata and writes a review report under target/.
 Includes normal/build dependencies reachable from tp-gpui, excluding dev edges.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -166,6 +167,10 @@ def apply_standard_terms(entries, sources, folder=None):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "target/gpui-license-audit.json",
+                        help="Path for the JSON report and its companion ZIP")
+    output = parser.parse_args().output
     entries = {}
     sources = {}
     for target in TARGETS:
@@ -188,8 +193,7 @@ def main():
     report = {"scope": "tp-gpui normal/build dependency union; offline Cargo metadata; not legal approval",
               "targets": TARGETS, "cargo_lock_sha256": hashlib.sha256((ROOT / "Cargo.lock").read_bytes()).hexdigest(),
               "packages": packages}
-    output = ROOT / "target/gpui-license-audit.json"
-    output.parent.mkdir(exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # A review artifact, not the application's completed distribution notice.
     # Preserve exact bytes and stable archive metadata for repeatable review.
