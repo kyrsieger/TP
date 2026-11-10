@@ -7,7 +7,7 @@ resolver = "2"
 gpui-component = { path = "vendor/gpui-component" }
 
 [workspace.package]
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 license = "MIT"
 
