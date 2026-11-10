@@ -1,4 +1,6 @@
-# Preserve the bytes pinned by the installer license and source manifests.
+# Preserve the bytes pinned by the license and source manifests.
+/licenses/gpui/*.txt -text
+/licenses/gpui/*LICENSE*.md -text
 /licenses/installers/NSIS-3.11-COPYING -text whitespace=cr-at-eol,-blank-at-eol
 /licenses/installers/nsis-tauri-utils-LICENSE_* text eol=lf
 /packaging/windows/nsis/upstream/* text eol=lf
