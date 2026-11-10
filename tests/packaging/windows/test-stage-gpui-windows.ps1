@@ -6,24 +6,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $RuntimeDirectory -or -not $DumpbinPath) {
-    $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    $taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ($LASTEXITCODE -ne 0 -or -not $taskVs) { throw 'Visual Studio C++ tools were not found' }
-    if (-not $DumpbinPath) {
-        $taskTools = Get-ChildItem -LiteralPath (Join-Path $taskVs 'VC/Tools/MSVC') -Directory |
-            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-        $DumpbinPath = Join-Path $taskTools.FullName 'bin/Hostx64/x64/dumpbin.exe'
-    }
-    if (-not $RuntimeDirectory) {
-        $taskRedist = Get-ChildItem -LiteralPath (Join-Path $taskVs 'VC/Redist/MSVC') -Directory |
-            Where-Object { $_.Name -match '^\d+\.\d+\.\d+(\.\d+)?$' } |
-            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-        $RuntimeDirectory = Join-Path $taskRedist.FullName 'x64/Microsoft.VC143.CRT'
-    }
-}
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $taskScripts = Join-Path $taskRoot 'scripts'
+. "$taskScripts/find-gpui-windows-tools.ps1"
+$taskTools = Find-GpuiWindowsTools $RuntimeDirectory $DumpbinPath
 $taskWork = Join-Path $taskRoot "target/gpui-stage-checks-$([guid]::NewGuid().ToString('N'))"
 [void][IO.Directory]::CreateDirectory($taskWork)
 $taskNotices = Join-Path $taskWork 'TEST-NOTICES.txt'
@@ -32,8 +18,8 @@ $taskBase = @{
     BinaryPath = (Resolve-Path -LiteralPath $BinaryPath).Path
     ExpectedVersion = $ExpectedVersion
     NoticesPath = $taskNotices
-    RuntimeDirectory = (Resolve-Path -LiteralPath $RuntimeDirectory).Path
-    DumpbinPath = (Resolve-Path -LiteralPath $DumpbinPath).Path
+    RuntimeDirectory = (Resolve-Path -LiteralPath $taskTools.RuntimeDirectory).Path
+    DumpbinPath = (Resolve-Path -LiteralPath $taskTools.DumpbinPath).Path
 }
 $taskStageScript = Join-Path $taskScripts 'stage-gpui-windows.ps1'
 $taskGood = Join-Path $taskWork 'valid'

@@ -9,22 +9,8 @@ param(
 
 # Assemble installer input only. Never runs or installs the application.
 $ErrorActionPreference = 'Stop'
-if (-not $RuntimeDirectory -or -not $DumpbinPath) {
-    $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    $taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ($LASTEXITCODE -ne 0 -or -not $taskVs) { throw 'Visual Studio C++ tools were not found' }
-    if (-not $DumpbinPath) {
-        $taskTools = Get-ChildItem -LiteralPath (Join-Path $taskVs 'VC/Tools/MSVC') -Directory |
-            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-        $DumpbinPath = Join-Path $taskTools.FullName 'bin/Hostx64/x64/dumpbin.exe'
-    }
-    if (-not $RuntimeDirectory) {
-        $taskRedist = Get-ChildItem -LiteralPath (Join-Path $taskVs 'VC/Redist/MSVC') -Directory |
-            Where-Object { $_.Name -match '^\d+\.\d+\.\d+(\.\d+)?$' } |
-            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-        $RuntimeDirectory = Join-Path $taskRedist.FullName 'x64/Microsoft.VC143.CRT'
-    }
-}
+. "$PSScriptRoot/find-gpui-windows-tools.ps1"
+$taskTools = Find-GpuiWindowsTools $RuntimeDirectory $DumpbinPath
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskInstallerIdentity = Get-Content -LiteralPath (Join-Path $taskRoot 'packaging/windows/identity.json') -Raw | ConvertFrom-Json
 if ($taskInstallerIdentity.productName -ne 'TP' -or $taskInstallerIdentity.executable -ne 'TP.exe') {
@@ -32,8 +18,8 @@ if ($taskInstallerIdentity.productName -ne 'TP' -or $taskInstallerIdentity.execu
 }
 $taskBinary = (Resolve-Path -LiteralPath $BinaryPath).Path
 $taskNotices = (Resolve-Path -LiteralPath $NoticesPath).Path
-$taskRuntime = (Resolve-Path -LiteralPath $RuntimeDirectory).Path
-$taskDumpbin = (Resolve-Path -LiteralPath $DumpbinPath).Path
+$taskRuntime = (Resolve-Path -LiteralPath $taskTools.RuntimeDirectory).Path
+$taskDumpbin = (Resolve-Path -LiteralPath $taskTools.DumpbinPath).Path
 $taskOutput = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $taskOutput) { throw 'Output directory already exists' }
 if ([string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($taskNotices))) { throw 'Third-party notices must not be empty' }
