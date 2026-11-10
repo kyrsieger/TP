@@ -21,6 +21,8 @@ jobs:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: target/rust-build
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -34,8 +36,8 @@ jobs:
           xcrun --sdk macosx --find metallib
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: . -> target
-          shared-key: gpui-${{ runner.os }}-${{ runner.arch }}
+          workspaces: . -> ${{ env.CARGO_TARGET_DIR }}
+          shared-key: gpui-build-${{ runner.os }}-${{ runner.arch }}
       - run: cargo fmt --all -- --check
       - name: Check GPUI translations against the preserved catalog
         run: python scripts/check-gpui-translations.py
@@ -65,9 +67,9 @@ jobs:
           $nativePackages = @($metadata.packages | Where-Object name -eq 'tp-gpui')
           if ($nativePackages.Count -ne 1 -or -not $nativePackages[0].version) { throw 'Expected one native package version' }
           $version = $nativePackages[0].version
-          ./scripts/verify-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -ExpectedVersion $version
-          ./tests/packaging/windows/test-stage-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -ExpectedVersion $version
-          ./scripts/stage-gpui-windows.ps1 -BinaryPath ./target/release/tp-gpui.exe -OutputDirectory ./target/gpui-ci/windows -NoticesPath ./target/gpui-third-party-notices.txt -ExpectedVersion $version
+          ./scripts/verify-gpui-windows.ps1 -BinaryPath "$env:CARGO_TARGET_DIR/release/tp-gpui.exe" -ExpectedVersion $version
+          ./tests/packaging/windows/test-stage-gpui-windows.ps1 -BinaryPath "$env:CARGO_TARGET_DIR/release/tp-gpui.exe" -ExpectedVersion $version
+          ./scripts/stage-gpui-windows.ps1 -BinaryPath "$env:CARGO_TARGET_DIR/release/tp-gpui.exe" -OutputDirectory ./target/gpui-ci/windows -NoticesPath ./target/gpui-third-party-notices.txt -ExpectedVersion $version
       - name: Prepare pinned NSIS tools and verify native installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -84,7 +86,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cargo build -p tp-gpui --release --locked
-          python scripts/package-gpui-macos.py --binary target/release/tp-gpui --output target/gpui-ci/macos/TP.app --notices target/gpui-third-party-notices.txt
+          python scripts/package-gpui-macos.py --binary "$CARGO_TARGET_DIR/release/tp-gpui" --output target/gpui-ci/macos/TP.app --notices target/gpui-third-party-notices.txt
           plutil -lint target/gpui-ci/macos/TP.app/Contents/Info.plist
           # Preserve executable permissions and the bundle structure in artifacts.
           ditto -c -k --sequesterRsrc --keepParent target/gpui-ci/macos/TP.app target/gpui-ci/TP-macos.zip

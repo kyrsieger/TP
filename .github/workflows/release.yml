@@ -58,6 +58,7 @@ jobs:
       run:
         working-directory: source
     env:
+      CARGO_TARGET_DIR: target/rust-build
       RELEASE_TAG: ${{ matrix.tag }}
       RELEASE_SHA: ${{ matrix.sha }}
     steps:
@@ -87,8 +88,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.ready.outputs.ready == 'true'
         with:
-          workspaces: source -> target
-          shared-key: windows-release-gpui
+          workspaces: source -> ${{ env.CARGO_TARGET_DIR }}
+          shared-key: windows-release-gpui-build
       - name: Build and verify native Windows installers
         if: steps.ready.outputs.ready == 'true'
         shell: pwsh
@@ -101,7 +102,7 @@ jobs:
           python scripts/build_gpui_notices.py
           if ($LASTEXITCODE -ne 0) { throw 'Notice generation failed' }
           $version = $env:RELEASE_TAG.Substring(1)
-          ./scripts/stage-gpui-windows.ps1 -BinaryPath target/release/tp-gpui.exe -OutputDirectory target/gpui-package/windows -NoticesPath target/gpui-third-party-notices.txt -ExpectedVersion $version
+          ./scripts/stage-gpui-windows.ps1 -BinaryPath "$env:CARGO_TARGET_DIR/release/tp-gpui.exe" -OutputDirectory target/gpui-package/windows -NoticesPath target/gpui-third-party-notices.txt -ExpectedVersion $version
           python scripts/prepare_gpui_nsis.py --output target/gpui-tools/nsis
           if ($LASTEXITCODE -ne 0) { throw 'NSIS preparation failed' }
           python scripts/prepare_gpui_wix.py --output target/gpui-tools/wix
