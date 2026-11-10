@@ -53,7 +53,8 @@ function Test-TaskX64([string]$Path) {
 $taskSystem = @('kernel32.dll', 'kernelbase.dll', 'bcrypt.dll', 'bcryptprimitives.dll',
     'advapi32.dll', 'user32.dll', 'ole32.dll', 'shell32.dll', 'oleaut32.dll', 'gdi32.dll',
     'comctl32.dll', 'version.dll', 'ntdll.dll', 'dwmapi.dll', 'dxgi.dll', 'd3d11.dll',
-    'dwrite.dll', 'icuuc.dll', 'dcomp.dll', 'imm32.dll', 'ucrtbase.dll', 'msvcrt.dll')
+    'dwrite.dll', 'icuuc.dll', 'dcomp.dll', 'imm32.dll', 'ucrtbase.dll', 'msvcrt.dll',
+    'crypt32.dll', 'ws2_32.dll', 'd3dcompiler_47.dll')
 $taskPending = [Collections.Generic.Queue[string]]::new()
 $taskPending.Enqueue($taskBinary)
 $taskRuntimeFiles = @{}
