@@ -131,7 +131,9 @@ fn quote_path(path: &str) -> String {
 
 #[cfg(target_os = "macos")]
 pub fn set_clipboard_image_with_file(path: &Path) -> std::io::Result<()> {
-    use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext, RustImageData};
+    use clipboard_rs::{
+        common::RustImage, Clipboard, ClipboardContent, ClipboardContext, RustImageData,
+    };
 
     let io_err = |error: String| std::io::Error::other(error);
     let path = path.to_string_lossy().into_owned();
@@ -425,13 +427,13 @@ pub fn paste_to_target(target: PasteTarget) -> bool {
         return false;
     };
     #[cfg(windows)]
-    let modifier = Key::Control;
+    let (modifier, paste_key) = (Key::Control, Key::V);
     #[cfg(target_os = "macos")]
-    let modifier = Key::Meta;
+    let (modifier, paste_key) = (Key::Meta, Key::Unicode('v'));
     if enigo.key(modifier, Direction::Press).is_err() {
         return false;
     }
-    let clicked = enigo.key(Key::V, Direction::Click).is_ok();
+    let clicked = enigo.key(paste_key, Direction::Click).is_ok();
     let released = enigo.key(modifier, Direction::Release).is_ok();
     clicked && released
 }
