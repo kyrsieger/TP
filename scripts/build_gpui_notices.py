@@ -102,7 +102,8 @@ def render(archive, lock_bytes, extra_texts):
 
 def build(audit_path, output):
     extra = [("Lucide 1.57.0 icons, including Feather-derived MIT notice", (ROOT / "crates/tp-gpui/assets/icons/LICENSE").read_bytes()),
-             ("TP modifications to gpui-component 0.5.1", (ROOT / "vendor/gpui-component/TP-PATCHES.md").read_bytes())]
+             ("TP modifications to gpui-component 0.5.1", (ROOT / "vendor/gpui-component/TP-PATCHES.md").read_bytes()),
+             ("TP modifications to taffy 0.9.0", (ROOT / "vendor/taffy/TP-PATCHES.md").read_bytes())]
     extra.extend(installer_texts())
     with zipfile.ZipFile(audit_path) as archive:
         result = render(archive, (ROOT / "Cargo.lock").read_bytes(), extra)

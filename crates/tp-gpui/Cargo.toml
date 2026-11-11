@@ -29,7 +29,8 @@ tp-desktop = { path = "../tp-desktop" }
 gpui-component = { version = "=0.5.1", default-features = false }
 dirs = "6"
 rfd = "0.15"
-tray-icon = "0.24.2"
+# TP supports Windows and macOS; GTK/libxdo are Linux-only tray backends.
+tray-icon = { version = "0.24.2", default-features = false }
 global-hotkey = "0.8"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"

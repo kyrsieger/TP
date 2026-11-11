@@ -1,10 +1,11 @@
 [workspace]
 members = ["crates/tp-core", "crates/tp-desktop", "crates/tp-gpui"]
-exclude = ["vendor/gpui-component"]
+exclude = ["vendor/gpui-component", "vendor/taffy"]
 resolver = "2"
 
 [patch.crates-io]
 gpui-component = { path = "vendor/gpui-component" }
+taffy = { path = "vendor/taffy" }
 
 [workspace.package]
 version = "1.2.1"
