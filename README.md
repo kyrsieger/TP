@@ -78,7 +78,14 @@ cargo test --workspace --locked
 python scripts/package.py
 ```
 
-脚本从根目录 `Cargo.toml` 读取 TP 版本，不需要输入版本号。它会下载打包工具，并将两个未签名的安装包放到 `target/windows-installers/` 下本次打包专用的子目录，完成后打印文件路径。除了上述 Windows 构建环境，还需要安装 PowerShell 7 和 7-Zip，并确保 `pwsh.exe` 和 `7z.exe` 在 `PATH` 中。
+只需要一种安装包时，运行对应的命令。
+
+```powershell
+python scripts/package.py --format exe
+python scripts/package.py --format msi
+```
+
+脚本从根目录 `Cargo.toml` 读取 TP 版本，下载所需的打包工具，将未签名的安装包放到 `target/windows-installers/` 下本次打包专用的子目录，并打印文件路径。除了上述 Windows 构建环境，所有格式都需要 PowerShell 7（`pwsh.exe` 在 `PATH` 中）。生成 EXE 时还需要 7-Zip（`7z.exe` 在 `PATH` 中）。
 
 只构建 Windows 正式二进制：
 

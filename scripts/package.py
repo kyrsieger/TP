@@ -1,4 +1,4 @@
-"""Build and verify both TP Windows x64 installers with one command."""
+"""Build and verify TP Windows x64 installers."""
 import argparse
 import json
 import os
@@ -25,12 +25,15 @@ def run(*command, **kwargs):
     return subprocess.run(command, cwd=ROOT, check=True, **kwargs)
 
 
-def package_windows():
+def package_windows(package_format=None):
     if sys.platform != "win32":
         raise ValueError("Run this command on Windows to build the x64 installers.")
-    seven_zip = shutil.which("7z.exe")
-    if not seven_zip:
-        raise ValueError("Install 7-Zip and add 7z.exe to PATH to verify the EXE installer.")
+    include_exe = package_format in (None, "exe")
+    include_msi = package_format in (None, "msi")
+    if include_exe:
+        seven_zip = shutil.which("7z.exe")
+        if not seven_zip:
+            raise ValueError("Install 7-Zip and add 7z.exe to PATH to verify the EXE installer.")
     powershell = shutil.which("pwsh.exe")
     if not powershell:
         raise ValueError("Install PowerShell 7 and add pwsh.exe to PATH to verify the installers.")
@@ -57,31 +60,40 @@ def package_windows():
             "-BinaryPath", target / WINDOWS_TARGET / "release/tp-gpui.exe", "-OutputDirectory", stage,
             "-NoticesPath", notices, "-ExpectedVersion", version)
 
-        print("Building the NSIS and MSI installers...", flush=True)
-        nsis = prepare_nsis(work / "nsis-tools")
-        wix = prepare_wix(work / "wix-tools")
-        exe = build_nsis(stage, work / "nsis", nsis / "makensis.exe",
-                         nsis / "Plugins/x86-unicode/additional")
-        msi = build_msi(stage, work / "msi", wix)
-        verify_nsis(exe, stage, Path(seven_zip))
-        run(powershell, "-NoProfile", "-File", ROOT / "scripts/verify-gpui-msi.ps1",
-            "-MsiPath", msi, "-StageDirectory", stage, "-DarkPath", wix / "dark.exe")
+        packages = []
+        if include_exe:
+            print("Building the EXE installer...", flush=True)
+            nsis = prepare_nsis(work / "nsis-tools")
+            exe = build_nsis(stage, work / "nsis", nsis / "makensis.exe",
+                             nsis / "Plugins/x86-unicode/additional")
+            verify_nsis(exe, stage, Path(seven_zip))
+            packages.append(exe)
+        if include_msi:
+            print("Building the MSI installer...", flush=True)
+            wix = prepare_wix(work / "wix-tools")
+            msi = build_msi(stage, work / "msi", wix)
+            run(powershell, "-NoProfile", "-File", ROOT / "scripts/verify-gpui-msi.ps1",
+                "-MsiPath", msi, "-StageDirectory", stage, "-DarkPath", wix / "dark.exe")
+            packages.append(msi)
 
         installers = work / "installers"
         installers.mkdir()
-        exe.rename(installers / exe.name)
-        msi.rename(installers / msi.name)
+        for package in packages:
+            package.rename(installers / package.name)
         destination = output / f"{version}-{work.name.removeprefix('work-')}"
         installers.rename(destination)
 
     print("Created unsigned Windows installers:")
-    print(destination / exe.name)
-    print(destination / msi.name)
+    for package in packages:
+        print(destination / package.name)
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__).parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("exe", "msi"),
+                        help="build only the selected format (default: build both)")
+    args = parser.parse_args()
     try:
-        package_windows()
+        package_windows(args.format)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         sys.exit(f"Windows packaging failed: {error}")
