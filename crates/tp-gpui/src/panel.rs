@@ -11,8 +11,8 @@ mod record_display;
 mod record_menu;
 mod resize;
 mod thumbnails;
-mod titlebar;
 mod toast;
+mod toolbar;
 mod viewport;
 use gpui::Focusable;
 gpui::actions!(tp_panel, [FocusSearch, NextGroup, PreviousGroup]);
@@ -44,6 +44,7 @@ pub struct Panel {
     observed_geometry: (gpui::Bounds<gpui::Pixels>, f32),
     placing_until: std::time::Instant,
     search: Entity<InputState>,
+    search_reveal: toolbar::SearchReveal,
     search_placeholder: &'static str,
     selection: tp_core::selection::Selection,
     list_focus: FocusHandle,
@@ -131,6 +132,7 @@ impl Panel {
         self.group_edit = None;
         self.record_edit = None;
         self.clear_hidden_browse(window, cx);
+        self.search_reveal.reset(!self.session.search.is_empty());
         crate::native_window::hide(window);
         cx.notify();
     }
@@ -455,6 +457,10 @@ impl Panel {
                     self.session.search.clear();
                     self.reconcile();
                     self.list_focus.focus(window);
+                    self.search_reveal.set_expanded(false);
+                } else if self.search_reveal.expanded() {
+                    self.search_reveal.set_expanded(false);
+                    self.list_focus.focus(window);
                 } else {
                     self.hide(window, cx);
                 }
@@ -540,6 +546,10 @@ impl Panel {
             InputState::new(window, cx).placeholder(choose("搜索 · Ctrl+F", "Search · Ctrl+F"))
         });
         let subscription = cx.subscribe_in(&search, window, |this, input, event, window, cx| {
+            if matches!(event, InputEvent::Blur) && this.session.search.is_empty() {
+                this.search_reveal.set_expanded(false);
+                cx.notify();
+            }
             if matches!(event, InputEvent::Change) {
                 this.close_floating(cx);
                 // A user browse change cancels editing even when the same
@@ -651,6 +661,7 @@ impl Panel {
             observed_geometry: (window.bounds(), window.scale_factor()),
             placing_until: std::time::Instant::now() + std::time::Duration::from_millis(350),
             search,
+            search_reveal: Default::default(),
             search_placeholder: choose("搜索 · Ctrl+F", "Search · Ctrl+F"),
             selection: Default::default(),
             list_focus: cx.focus_handle(),
@@ -1023,6 +1034,7 @@ impl Panel {
         let filter_bounds = self.filter_trigger_bounds.clone();
         let filter_control = div()
             .relative()
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 gpui::canvas(
                     move |bounds, _, _| filter_bounds.set(bounds),
@@ -1088,79 +1100,37 @@ impl Panel {
                         })),
                 )
             });
-        let search_focus = self.search.read(cx).focus_handle(cx);
-        let search_focused = search_focus.contains_focused(window, cx);
         let toolbar = div()
+            .id("panel-toolbar")
             .flex()
             .flex_shrink_0()
             .items_center()
             .gap(px(10.))
-            .h(px(52.))
+            .h(px(toolbar::HEIGHT))
             .pl(px(14.))
             .pr(px(10.))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .h(px(30.))
-                    .px(px(9.))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(if search_focused {
-                        p.accent
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
+                    let result = if event.click_count == 2 {
+                        crate::native_window::toggle_maximize(window)
                     } else {
-                        gpui::rgba(0x00000000)
-                    })
-                    .bg(if search_focused { p.surface } else { p.control })
-                    .id("search-box")
-                    .track_focus(&search_focus)
-                    .child(crate::icons::icon("search", 13.).text_color(p.subtle))
-                    .child(div().flex_1().min_w_0().child({
-                        let mut input = Input::new(&self.search)
-                            .appearance(false)
-                            .p_0()
-                            .text_size(px(12. * self.snapshot.settings.font_size as f32 / 13.));
-                        input.style().size.height = Some(px(28.).into());
-                        input
-                    }))
-                    .when(!self.session.search.is_empty(), |d| {
-                        d.child(
-                            div()
-                                .id("clear-search")
-                                .size(px(18.))
-                                .flex_shrink_0()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(4.))
-                                .cursor_pointer()
-                                .hover(|d| d.bg(p.soft))
-                                .tooltip(|window, cx| {
-                                    gpui_component::tooltip::Tooltip::new(choose(
-                                        "清空搜索",
-                                        "Clear search",
-                                    ))
-                                    .build(window, cx)
-                                })
-                                .child(crate::icons::icon("x", 13.).text_color(p.subtle))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.search.update(cx, |input, cx| {
-                                        input.set_value("", window, cx);
-                                        input.focus(window, cx);
-                                    });
-                                })),
-                        )
-                    }),
+                        crate::native_window::start_move(window)
+                    };
+                    if let Err(error) = result {
+                        this.show_toast(error, cx);
+                        cx.notify();
+                    }
+                }),
             )
+            .child(self.search_control(window, cx))
             .child(filter_control);
         let pinned = self.snapshot.settings.always_on_top;
         let toolbar = toolbar.child(
             div()
                 .id("pin-panel")
                 .group("pin-panel")
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .size(px(28.))
                 .flex_shrink_0()
                 .flex()
@@ -1204,6 +1174,7 @@ impl Panel {
         let toolbar = toolbar.child(
             div()
                 .id("open-settings")
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .size(px(28.))
                 .flex_shrink_0()
                 .flex()
@@ -1229,6 +1200,7 @@ impl Panel {
                         settings.update(cx, |settings, cx| settings.close(cx));
                         return;
                     }
+                    this.panel_focus.focus(window);
                     this.preview.hide();
                     this.close_floating(cx);
                     this.move_menu = None;
@@ -1292,6 +1264,8 @@ impl Panel {
                     cx.notify();
                 })),
         );
+        // Window controls remain usable above settings dialogs, as in the old title bar.
+        let toolbar = toolbar.child(gpui::deferred(self.toolbar_close(cx)).priority(10));
         let records = self.session.filtered(&self.snapshot.records);
         let layout = tp_core::list_layout::ListLayout::new(records.iter().map(|r| {
             (
@@ -1636,18 +1610,7 @@ impl Panel {
                 cx.listener(|this, _: &PreviousGroup, window, cx| this.cycle_group(-1, window, cx)),
             )
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
-                if this.move_menu.is_none()
-                    && this.group_edit.is_none()
-                    && this.record_edit.is_none()
-                    // The original settings keyboard handler returns before
-                    // the panel-wide Ctrl+F branch, even without a modal.
-                    && this.settings_view.is_none()
-                {
-                    this.group_menu = None;
-                    this.record_menu = None;
-                    this.search.update(cx, |input, cx| input.focus(window, cx));
-                    cx.notify();
-                }
+                this.open_search(window, cx);
             }))
             .relative()
             .size_full()
@@ -1656,7 +1619,6 @@ impl Panel {
             .bg(p.bg)
             .text_color(p.text)
             .text_size(px(self.snapshot.settings.font_size as f32))
-            .child(self.titlebar(cx))
             .child(toolbar)
             .when(self.settings_view.is_none(), |d| {
                 d.child(tabs).child(
@@ -1704,6 +1666,10 @@ impl Panel {
                         + px(51.)
                 })
                 .fold(px(128.), |width, next| width.max(next));
+            let trigger = self.filter_trigger_bounds.get();
+            let menu_left = (trigger.right() - menu_width)
+                .max(px(8.))
+                .min((window.viewport_size().width - menu_width - px(8.)).max(px(8.)));
             let mut menu = div()
                 .id("filter-menu")
                 .on_mouse_down_out(cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
@@ -1715,9 +1681,8 @@ impl Panel {
                     }
                 }))
                 .absolute()
-                // 30px titlebar + 12px toolbar centering + 35px trigger offset.
-                .top(px(77.))
-                .right(px(86.))
+                .top(trigger.bottom() + px(7.))
+                .left(menu_left)
                 .w(menu_width)
                 .p(px(5.))
                 .border_1()

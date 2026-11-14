@@ -1,4 +1,6 @@
 {
+  "展开并聚焦搜索框": "Expand and focus search",
+  "清空或收起搜索；无搜索时隐藏面板": "Clear or collapse search; hide the panel when search is closed",
   "面板出现位置": "Panel position",
   "预设位置": "Preset position",
   "开启记忆且已有保存位置时，优先使用记住的位置。": "When position memory is on, a saved position takes priority.",

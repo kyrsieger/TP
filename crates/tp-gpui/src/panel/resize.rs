@@ -30,7 +30,7 @@ impl Panel {
                     // Keep right-edge resizing above it instead of intercepting
                     // every scrollbar drag with an invisible resize hitbox.
                     .when(edge == Edge::Right && self.settings_view.is_some(), |d| {
-                        d.bottom_auto().h(px(74.))
+                        d.bottom_auto().h(px(toolbar::HEIGHT - 8.))
                     })
             } else {
                 handle

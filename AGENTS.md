@@ -10,4 +10,4 @@
 
 - [术语表](GLOSSARY.md)：统一领域术语，仅记录概念及定义；发现歧义时先查阅此文档。
 - [架构决策记录](docs/adr/)：系统边界、数据所有权、记录身份、保留保护和桌面生命周期等长期决策及原因。
-- GPUI 应用和托盘标志资源位于 `packaging/icons/`，标题栏使用 `packaging/icons/tp-mark.svg`。修改时同步检查应用、托盘、标题栏及安装器实际使用的资源。
+- GPUI 应用和托盘标志资源位于 `packaging/icons/`，顶部工具栏使用 `packaging/icons/tp-mark.svg`。修改时同步检查应用、托盘、工具栏及安装器实际使用的资源。

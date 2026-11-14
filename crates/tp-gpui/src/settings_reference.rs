@@ -16,7 +16,8 @@ pub fn render(settings: &Settings, narrow: bool) -> impl gpui::IntoElement {
     let rows = vec![
         (shortcut(&settings.shortcut), choose("唤出面板（全局快捷键）", "Open panel (global shortcut)")),
         (shortcut(&settings.rename_shortcut), choose("重命名当前记录（仅记录列表）", "Rename current record (record list only)")),
-        ("Ctrl+F".into(), choose("聚焦搜索框", "Focus search")),
+        ("Ctrl+F".into(), choose("展开并聚焦搜索框", "Expand and focus search")),
+        ("Esc".into(), choose("清空或收起搜索；无搜索时隐藏面板", "Clear or collapse search; hide the panel when search is closed")),
         ((if cfg!(target_os="macos") { "Delete / Fn+Delete" } else { "Backspace / Delete" }).into(), choose("搜索框聚焦时编辑搜索词", "Edit search text when search is focused")),
         ("Tab / Shift+Tab".into(), choose("切换到下一个 / 上一个分组", "Switch to next / previous group")),
         ("←".into(), choose("选中图片或视频记录时打开大图预览", "Open large preview of selected image or video")),

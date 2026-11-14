@@ -134,7 +134,7 @@ GPUI Component 0.5.1 使用仓库内固定源码，补丁通过根 Cargo manifes
 
 Checks 的 GPUI 作业会获取锁定依赖、生成审核 ZIP 和第三方声明。Windows 准备带运行库与文件摘要的目录；macOS 组装真实 release 二进制为 TP.app，检查 Info.plist 后用 ditto 保存为保留权限的 ZIP。每次产物名含系统、架构及提交号，标记为 gpui-unverified，保留 14 天。产物用于验收，不等于签名或正式发行，也不证明应用已实际运行。此路径不执行安装器。
 
-原生图标、托盘图片及安装文案统一放在 `packaging/icons/` 和 `packaging/windows/installer/`；目录职责见 [原生打包资源](packaging/README.md)。标题栏标志为 `packaging/icons/tp-mark.svg`；主题配色对照数据为 `crates/tp-gpui/resources/themes.json`。
+原生图标、托盘图片及安装文案统一放在 `packaging/icons/` 和 `packaging/windows/installer/`；目录职责见 [原生打包资源](packaging/README.md)。顶部工具栏标志为 `packaging/icons/tp-mark.svg`；主题配色对照数据为 `crates/tp-gpui/resources/themes.json`。
 
 ## GPUI 发布脚本模式
 
