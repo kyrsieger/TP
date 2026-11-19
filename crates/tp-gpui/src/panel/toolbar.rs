@@ -1,8 +1,9 @@
 use super::*;
 use std::time::{Duration, Instant};
 
-const SEARCH_DURATION: Duration = Duration::from_millis(180);
+const SEARCH_DURATION: Duration = Duration::from_millis(260);
 const SEARCH_BUTTON_WIDTH: f32 = 30.;
+const SEARCH_INPUT_FADE_START: f32 = 0.8;
 pub(super) const HEIGHT: f32 = 52.;
 
 #[derive(Default)]
@@ -21,7 +22,7 @@ impl SearchReveal {
             / SEARCH_DURATION.as_secs_f32())
         .min(1.);
         let target = if self.expanded { 1. } else { 0. };
-        self.amount = from + (target - from) * (1. - (1. - progress).powi(3));
+        self.amount = from + (target - from) * gpui::ease_in_out(progress);
         if progress >= 1. {
             self.transition = None;
         }
@@ -50,6 +51,11 @@ impl SearchReveal {
 
     pub(super) fn expanded(&self) -> bool {
         self.expanded
+    }
+
+    fn input_opacity(&self) -> f32 {
+        // Show the input only while the field is wide enough to read it.
+        ((self.amount - SEARCH_INPUT_FADE_START) / (1. - SEARCH_INPUT_FADE_START)).max(0.)
     }
 }
 
@@ -87,9 +93,12 @@ impl Panel {
         };
         let expanded = available && self.search_reveal.expanded;
         let visible = expanded || amount > 0.;
+        let frame_opacity = amount * amount;
+        let input_opacity = self.search_reveal.input_opacity();
         let focus = self.search.read(cx).focus_handle(cx);
         let focused = focus.contains_focused(window, cx);
         let has_query = !self.session.search.is_empty();
+        let show_clear = has_query && input_opacity > 0.;
         div()
             .id("toolbar-search-area")
             .relative()
@@ -129,13 +138,14 @@ impl Panel {
                         .rounded(px(8.))
                         .border_1()
                         .border_color(if focused && visible {
-                            p.accent
+                            gpui::Hsla::from(p.accent).opacity(frame_opacity)
                         } else {
-                            gpui::rgba(0x00000000)
+                            gpui::transparent_black()
                         })
                         .overflow_hidden()
                         .when(visible, |d| {
-                            d.bg(if focused { p.surface } else { p.control })
+                            let background = if focused { p.surface } else { p.control };
+                            d.bg(gpui::Hsla::from(background).opacity(frame_opacity))
                         })
                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .when(visible, |d| {
@@ -147,7 +157,7 @@ impl Panel {
                                     .top_0()
                                     .h(px(28.))
                                     .overflow_hidden()
-                                    .opacity(amount)
+                                    .opacity(input_opacity)
                                     .child({
                                         let mut input = Input::new(&self.search)
                                             .appearance(false)
@@ -159,7 +169,7 @@ impl Panel {
                                         input
                                     }),
                             )
-                            .when(has_query, |d| {
+                            .when(show_clear, |d| {
                                 d.child(
                                     div()
                                         .id("clear-search")
@@ -172,7 +182,7 @@ impl Panel {
                                         .justify_center()
                                         .rounded(px(4.))
                                         .cursor_pointer()
-                                        .opacity(amount)
+                                        .opacity(input_opacity)
                                         .hover(|d| d.bg(p.soft))
                                         .tooltip(|window, cx| {
                                             gpui_component::tooltip::Tooltip::new(choose(
@@ -245,5 +255,29 @@ impl Panel {
                     .text_color(p.subtle)
                     .group_hover("hide-panel", |d| d.text_color(gpui::rgb(0xFFFFFF))),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_text_fades_while_the_field_is_still_wide() {
+        let now = Instant::now();
+        let mut reveal = SearchReveal {
+            expanded: false,
+            amount: 1.,
+            transition: Some((now, 1.)),
+        };
+
+        assert_eq!(reveal.input_opacity(), 1.);
+        assert!(reveal.advance(now + SEARCH_DURATION / 4));
+        assert!(reveal.input_opacity() > 0. && reveal.input_opacity() < 1.);
+        assert!(reveal.advance(now + SEARCH_DURATION / 3));
+        assert_eq!(reveal.input_opacity(), 0.);
+        assert!(reveal.amount > 0.75);
+        assert!(!reveal.advance(now + SEARCH_DURATION));
+        assert_eq!(reveal.amount, 0.);
     }
 }
